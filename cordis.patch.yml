@@ -1,0 +1,6 @@
+# dsh-subusage —— 订阅用量显示。
+# Host: subUsage remote（Z.ai/Kimi/小米三家额度取数 + 设置持久化 ~/.dsh/dsh-subusage.json）
+# Client: 模型选择器左侧用量药丸 + 设置页（settings.section）
+- insert:
+    - id: subusage
+      name: dsh-subusage

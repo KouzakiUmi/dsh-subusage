@@ -1,0 +1,4 @@
+{
+  "name": "Subscription usage",
+  "description": "Shows the current model's provider subscription usage (Z.ai / Kimi / Xiaomi) left of the model selector; the settings page inherits environment API keys and supports an embedded Xiaomi login window; 🟢 on fetch success, 🔴 on failure."
+}
