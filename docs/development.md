@@ -43,6 +43,7 @@
 - 状态灯三态：🟡 加载中 / 🟢 成功 / 🔴 失败，加载态标红很吓人。
 - 药丸弹层**向上**展开（`bottom: calc(100% + …)`）。
 - **`<webview>` 登录窗在当前桌面壳下仍渲染空白（未解，疑似壳的 guest 策略）**：已验证主窗口 `webviewTag: primary` 已开、布局修正（定位容器 + 绝对尺寸 + visibility 显隐）后依然空白、`did-fail-load` 无任何报错。功能暂缓，MiMo 只走 Cookie；后续可考虑改用壳持有的 `WebContentsView` 通道（主进程 `browserGuests`）。
+- **UX v2 是有定稿的设计**（见 [design-ux.md](design-ux.md)），实现不变量：档位色/徽标/数字文案的**唯一来源**是 `usageTier()`；药丸只答"余"、详单只答"已用 %"；药丸取 `worstWindow()`（根因窗优先）；tag 圆点取最差档位色。改 UI 先读定稿，别让三处重新分叉。
 - 配置缺失类失败（no-key / no-cookie）给**可行动指引**，不倒裸报错。
 
 ## 7. 测试
