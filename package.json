@@ -1,8 +1,12 @@
 {
   "name": "dsh-subusage",
   "displayName": "订阅用量显示",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KouzakiUmi/dsh-subusage.git"
+  },
   "description": "在模型选择器左侧显示当前模型商（Z.ai / Kimi / Xiaomi）的订阅用量，设置页自动继承环境 Key、支持小米内嵌登录窗；拉取成功 🟢 失败 🔴。",
   "keywords": [
     "dsh",

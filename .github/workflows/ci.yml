@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # 插件零运行时依赖,测试与校验无需 npm install
+      - name: Run tests
+        run: node tests/run-all.mjs
+
+      - name: Check manifest
+        run: node scripts/check-manifest.mjs
+
+      # 干跑 npm pack,确认 files 白名单产物与包体形状(不上传)
+      - name: Pack (dry run)
+        run: |
+          npm pack --dry-run 2>&1 | tee pack.log
+          grep -q 'cordis.patch.yml' pack.log
+          grep -q 'lib/index.js' pack.log
+          grep -q 'lib/client.js' pack.log
+          grep -q 'locale/zh.json' pack.log

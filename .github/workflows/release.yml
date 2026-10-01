@@ -1,0 +1,60 @@
+# 发布流水线 —— 打 tag(v0.1.1 等)自动触发:
+#   1. 全量测试 + 清单校验(与 CI 相同)
+#   2. npm pack 产出 tarball
+#   3. 资产重命名为无版本名 dsh-subusage.tgz 后附到 GitHub Release
+#
+# 无版本资产名是刻意的:awesome-dsh-plugin 条目的 tarball 字段用
+#   https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz
+# latest/download/ 在请求时解析 latest 但文件名照字面取 —— 资产名带版本号的话,
+# 下一次发版链接就 404(contributing.md 明确警告的 quiet rot)。
+#
+# 如需同时发布到 npm(收录非必需;发布后市场能显示并按下载量排序):
+#   - npm 包 repository 字段已指回本仓库,映射会由 registry 自动采集
+#   - 在仓库 Settings → Secrets 配置 NPM_TOKEN,取消下面 publish 注释即可
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          # registry-url: https://registry.npmjs.org   # npm publish 时取消注释
+
+      - name: Run tests
+        run: node tests/run-all.mjs
+
+      - name: Check manifest
+        run: node scripts/check-manifest.mjs
+
+      - name: Pack tarball
+        run: npm pack
+
+      # KouzakiUmi-dsh-subusage-<version>.tgz -> dsh-subusage.tgz(无版本,latest 链接永续)
+      - name: Rename asset (version-free)
+        run: |
+          src=$(ls KouzakiUmi-dsh-subusage-*.tgz)
+          cp "$src" dsh-subusage.tgz
+          echo "packed: $src -> dsh-subusage.tgz"
+
+      - name: Create GitHub Release and upload tarball
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dsh-subusage.tgz
+          generate_release_notes: true
+
+      # - name: Publish to npm
+      #   run: npm publish --access public
+      #   env:
+      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
