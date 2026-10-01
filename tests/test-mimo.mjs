@@ -18,4 +18,6 @@ assert(sub && sub.percent === 47, "percent 小数 ×100 = 47（原 0% bug）");
 assert(sub && sub.detail && sub.detail.used === 5218226015 && sub.detail.limit === 11000000000, "已用/总计 Credits 明细携带");
 assert(sub && typeof sub.resetsAt === "string" && sub.resetsAt.startsWith("2026-10-26"), "重置于下月（currentPeriodEnd）");
 assert(out.extras.some((x) => x.kind === "plan" && x.value === "Standard"), "extras 套餐名 Standard");
+const decimals = normalizeMimo(bal, detail, { data: { usage: { items: [{ name: "plan_total_token", used: 47.44, limit: 100, percent: 0.4744 }] } } });
+assert(decimals.windows[0].percent === 47.4 && decimals.windows[0].status === "ok", "保留一位百分比小数47.4，不提前舍入成47");
 assert.summary();

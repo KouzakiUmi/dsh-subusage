@@ -9,6 +9,7 @@ let spec, component;
 let hooks = [], memo, stateValues = [], stateIndex = 0;
 const react = {
   createElement: (type, props, ...children) => ({ type, props, children }),
+  Fragment: "fragment",
   useSyncExternalStore: (_subscribe, getSnapshot) => {
     hooks.push("useSyncExternalStore");
     return getSnapshot();
@@ -20,12 +21,12 @@ const react = {
     }
     return memo.value;
   },
-  useState: (initial) => [stateIndex < stateValues.length ? stateValues[stateIndex++] : (stateIndex++, initial), () => {}],
+  useState: (initial) => [stateIndex < stateValues.length ? stateValues[stateIndex++] : (stateIndex++, typeof initial === "function" ? initial() : initial), () => {}],
   useRef: (value) => ({ current: value }),
   useEffect: () => {}
 };
 const code = readFileSync(fileURLToPath(new URL("../lib/client.js", import.meta.url)), "utf8");
-vm.runInNewContext(code, {
+vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { SubusageSection }; exports.apply = apply;"), {
   window: { __ModuleLoader__: { load: (value) => { spec = value; } } }, console
 });
 const plugin = spec.factory((name) => {
@@ -87,4 +88,39 @@ const limited = { ...normal, windows: [{ kind: "sub", percent: 100, status: "rat
 assert.ok(JSON.stringify(renderPill(limited)).includes("pillLimited"));
 assert.ok(JSON.stringify(renderPill(null)).includes("loading"));
 assert.ok(JSON.stringify(renderPill(null, true, "fetch failed", "error")).includes("statusError"));
-console.log("PASS Hook 路径、reader 稳定性、空额度与弹层、正常/限额/加载/失败状态");
+function visibleText(node) {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node !== 'object') return String(node);
+  if (Array.isArray(node)) return node.map(visibleText).join(' ');
+  return (node.children || []).map(visibleText).join(' ');
+}
+const firstError = renderPill(null, true, 'fetch failed', 'error');
+assert.ok(!visibleText(firstError).includes('loading'), '首次失败弹层不能继续显示加载提示');
+const noKey = { ...normal, state: 'no-key', errorCode: 'subusage/no-key', retainPrevious: false, freshness: 'unknown' };
+const missingKeyTree = renderPill(noKey, true, 'missing key', 'no-key');
+assert.ok(!visibleText(missingKeyTree).includes('pillRemaining'), '删除凭据后不能渲染旧额度');
+assert.ok(visibleText(missingKeyTree).includes('pillNeedKey'), '删除凭据后必须展示配置指引');
+const stale = { ...normal, state: 'error', retainPrevious: true, freshness: 'stale', lastSuccessAt: new Date(0).toISOString(), errorCode: 'subusage/network' };
+assert.ok(visibleText(renderPill(stale, true, 'temporary network failure', 'error')).includes('cacheAge'), '允许保留的网络错误必须标注缓存年龄');
+assert.ok(!visibleText(renderPill({ ...stale, retainPrevious: false }, true, 'failed', 'error')).includes('pillRemaining'), '无保留许可不得展示旧额度');
+assert.ok(!visibleText(renderPill({ ...stale, errorCode: 'subusage/auth' }, true, 'expired', 'error')).includes('pillRemaining'), '认证失效不得展示旧额度');
+assert.ok(visibleText(renderPill({ ...empty, coverage: 'partial' })).includes('statusPartial'), '仅余额成功必须明确数据不完整、额度未知');
+// 原生菜单保留键盘导航，所有option随系统主题成对着色；敏感动作不再使用select。
+const flattenNodes = (node) => Array.isArray(node) ? node.flatMap(flattenNodes) : node && typeof node === "object" ? [node, ...flattenNodes(node.children || [])] : [];
+const settings = { revision: "public-1", zai: { type: 1 }, hasKeys: { "zai-coding-cn": true }, keyModes: {}, xiaomi: { hasCookie: true } };
+const usageStore = { subscribe: () => () => {}, getSnapshot: () => ({ settings, configured: {}, entries: [] }) };
+for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn"]) {
+  stateValues = [provider]; stateIndex = 0;
+  const section = plugin.__test.SubusageSection({ usageStore, t: (key) => key, getLocale: () => "zh" });
+  const all = flattenNodes(section), selects = all.filter((n) => n.type === "select");
+  assert.ok(selects.every((n) => !["keep", "replace", "clear", "inherit", "manual"].includes(n.props.value)));
+  assert.ok(selects.every((n) => n.props.style.colorScheme === "light dark"));
+  for (const option of all.filter((n) => n.type === "option")) {
+    assert.equal(option.props.style.color, "CanvasText"); assert.equal(option.props.style.backgroundColor, "Canvas");
+  }
+  if (provider === "xiaomi-token-plan-cn") {
+    assert.ok(visibleText(section).includes("登录并自动导入")); assert.ok(visibleText(section).includes("手动导入"));
+    assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));
+  } else assert.equal(all.filter((n) => typeof n.props?.["aria-pressed"] === "boolean").length, 2);
+}
+console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮与主题原生option");

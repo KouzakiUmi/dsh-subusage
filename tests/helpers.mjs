@@ -21,6 +21,7 @@ const HOST_STUBS = [
 export async function loadHostModule() {
 	let code = readFileSync(join(ROOT, "lib", "index.js"), "utf8");
 	for (const [pattern, stub] of HOST_STUBS) code = code.replace(pattern, stub);
+ code = code.replace('from "./mimo-login.js"', `from ${JSON.stringify(pathToFileURL(join(ROOT, "lib", "mimo-login.js")).href)}`);
 	const file = join(tmpdir(), `dsh-subusage-host-${process.pid}.mjs`);
 	writeFileSync(file, code, "utf8");
 	return import(pathToFileURL(file).href);

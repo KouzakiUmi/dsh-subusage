@@ -1,13 +1,13 @@
 {
   "name": "dsh-subusage",
   "displayName": "订阅用量显示",
-  "version": "0.1.1",
+  "version": "0.3.0",
   "private": true,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/KouzakiUmi/dsh-subusage.git"
   },
-  "description": "在模型选择器左侧显示当前模型商（Z.ai / Kimi / Xiaomi）的订阅用量，设置页自动继承环境 Key、支持小米内嵌登录窗；拉取成功 🟢 失败 🔴。",
+  "description": "显示 Z.ai / Kimi / MiMo / OpenCode Go 订阅余量；共享刷新、按钮式凭据编辑与隔离 Chrome 的 MiMo 登录自动导入。",
   "keywords": [
     "dsh",
     "dsh-plugin",
@@ -19,9 +19,9 @@
   "license": "MIT",
   "peerDependencies": {
     "@deepseek-ai/dsh": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2",
     "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-launch-environment": "0.2.0-rc.2"
+    "@deepseek-ai/dsh-launch-environment": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2"
   },
   "type": "module",
   "main": "./lib/index.js",
@@ -56,5 +56,8 @@
       ],
       "platform": "web"
     }
+  },
+  "dependencies": {
+    "playwright-core": "1.63.0"
   }
 }

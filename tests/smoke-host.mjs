@@ -32,5 +32,5 @@ try {
 assert(calls.plugins.includes("SubUsageService"), "SubUsageService 已注册");
 assert(calls.typert.length === 1 && calls.typert[0].package === "dsh-subusage", "typert 描述符已注册");
 const ids = (calls.typert[0].invocations || []).map((d) => d.id).sort();
-assert(ids.join(",") === "dsh-subusage#subUsage/read,dsh-subusage#subUsage/save", "invocations = read/save");
+assert(ids.join(",") === ["read", "refresh", "save", "startMimoLogin", "getMimoLoginStatus", "cancelMimoLogin"].map(method => `dsh-subusage#subUsage/${method}`).sort().join(","), "invocations = read/refresh/save + 三个登录 RPC");
 assert.summary();
