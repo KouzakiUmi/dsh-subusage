@@ -44,7 +44,8 @@ jobs:
       # KouzakiUmi-dsh-subusage-<version>.tgz -> dsh-subusage.tgz(无版本,latest 链接永续)
       - name: Rename asset (version-free)
         run: |
-          src=$(ls KouzakiUmi-dsh-subusage-*.tgz)
+          src=$(ls *.tgz)
+          [ "$src" = "dsh-subusage.tgz" ] && { echo "unexpected: only the renamed asset is present"; exit 1; }
           cp "$src" dsh-subusage.tgz
           echo "packed: $src -> dsh-subusage.tgz"
 
