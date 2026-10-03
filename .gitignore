@@ -5,3 +5,5 @@ pnpm-lock.yaml
 *.tgz
 .DS_Store
 debug/
+dist/
+pack.json

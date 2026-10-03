@@ -114,6 +114,12 @@ cd dsh-subusage
 
 **0.3.0 新增登录 RPC 和 `playwright-core` 依赖，必须让 Host/Client 及依赖一起更新。0.4.0 新增 Command Code 条目，同样要求两端一起更新（旧 Host 不识别 `commandcode`）。** 仅刷新页面不能升级正在运行的旧 Host。安装、重载或重启需要用户另行授权；仓库测试通过不代表运行中的插件已生效。
 
+## 自动发布
+
+推送或合并到 `main` 后，GitHub Actions 自动运行回归、清单/语法及打包检查，通过后发布当前提交的 GitHub Release。PR 只测试，不发布；不用手动打 tag，也不发布到 npm。
+
+每个提交使用独立的 `build-<SHA>` 标签，安装包内仍保留当前项目版本。固定下载：[最新安装包](<https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz>)。发布不会自动安装或重启插件，详见 [发布说明](<docs/publish.md>)。
+
 ## 开发与测试
 
 ```console
