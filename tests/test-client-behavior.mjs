@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import assert from "node:assert/strict";
-const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go"];
+const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go", "commandcode"];
 const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
 let spec, clock = Date.parse("2026-10-01T10:00:00Z"), nextTimer = 0;
 const intervals = new Map(), timeouts = new Map(), events = new Map();
@@ -60,7 +60,7 @@ await flush();
 assert.equal(calls.filter((c) => c.method === "refresh").length, 1);
 assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1).query)), { providerIds: [ids[0]], force: false });
 gate.resolve(result([entry(ids[0], 88)])); await Promise.all([r1, r2]);
-assert.equal(store.getSnapshot().entries.length, 4, "partial merge 保留其它家");
+assert.equal(store.getSnapshot().entries.length, 5, "partial merge 保留其它家");
 assert.equal(store.getSnapshot().entries.find((e) => e.providerId === ids[1]).windows[0].percent, 25);
 store.dispose();
 // 后到 readAll 不能覆盖新 force refresh（相同 revision 也必须挡）。
@@ -71,7 +71,7 @@ const force = raceStore.refresh([ids[0]], true);
 forceGate.resolve(result([entry(ids[0], 90)])); await force;
 readGate.resolve(result(ids.map((id) => entry(id, 10)))); await slowRead;
 assert.equal(raceStore.getSnapshot().entries.find((e) => e.providerId === ids[0]).windows[0].percent, 90);
-assert.equal(raceStore.getSnapshot().entries.length, 4, "read 的未冲突 provider 仍合并");
+assert.equal(raceStore.getSnapshot().entries.length, 5, "read 的未冲突 provider 仍合并");
 raceStore.dispose();
 // 保存立即失效旧quota、更新revision；旧在途结果不能恢复quota或回退revision。
 const oldGate = deferred(); let saveCalls = 0;
@@ -116,17 +116,20 @@ assert.ok(textOf(tree).includes("拉取失败")); assert.ok(!textOf(tree).includ
 const sharedPill = api.createUsageStore(() => result([entry(ids[0])]));
 const sh = new Hooks(); sh.render(api.UsagePill, { ...pillProps, readEntry: sharedPill.reader(ids[0]) }); await flush();
 assert.equal(intervals.size, 1); sh.unmount(); assert.equal(intervals.size, 0); assert.equal(events.get("visibilitychange").size, 0); sharedPill.dispose();
-// 设置：4col短label、公共凭据不回填、dirty保存/取消、键盘与持久化、MiMo无Key/桥。
+// 设置：5col短label、公共凭据不回填、dirty保存/取消、键盘与持久化、MiMo无Key/桥。
 const uiGate = deferred(); let uiSnapshot = result(ids.map((id) => entry(id))); let savedPatch;
 const uiStore = { getSnapshot: () => uiSnapshot, subscribe: () => () => {}, readAll: async () => uiSnapshot, activate: () => () => {}, save: async (patch) => { savedPatch = patch; uiSnapshot = result([], "2"); return uiSnapshot; }, refresh: async () => uiGate.promise };
 const uh = new Hooks(), props = { usageStore: uiStore, t, getLocale: () => "zh" };
 tree = uh.render(api.SubusageSection, props);
 let tabs = nodes(tree).filter((n) => n.props.role === "tab");
-assert.equal(tabs.length, 4); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go"]);
-assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.gridTemplateColumns, "repeat(4, minmax(0, 1fr))");
-assert.ok(textOf(tree).includes("max-width:399px")); assert.ok(!textOf(tree).includes("保存设置"));
+assert.equal(tabs.length, 5); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command"]);
+assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.gridTemplateColumns, "repeat(5, minmax(0, 1fr))");
+assert.ok(textOf(tree).includes("max-width:499px")); assert.ok(!textOf(tree).includes("保存设置"));
 let focused; tabs[0].props.onKeyDown({ key: "End", preventDefault() {}, currentTarget: { parentElement: { querySelectorAll: () => tabs.map((_, i) => ({ focus() { focused = i; } })) } } });
-assert.equal(focused, 3); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids[3]);
+assert.equal(focused, 4); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids[4]);
+assert.ok(textOf(tree).includes("直接拉取"), "Command Code 标签展示只读说明");
+assert.ok(!nodes(tree).some((n) => n.type === "input" && n.props.type === "password"), "Command Code 不提供本地 Key 输入");
+tabs = nodes(tree).filter((n) => n.props.role === "tab"); tabs[3].props.onClick(); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids[3]);
 nodes(tree).find((n) => n.type === "button" && n.children.includes("更换")).props.onClick();
 tree = uh.render(api.SubusageSection, props);
 const password = nodes(tree).find((n) => n.type === "input" && n.props.type === "password"); assert.equal(password.props.value, ""); password.props.onChange({ target: { value: "secret-new" } });
@@ -151,6 +154,7 @@ tree = emptyUi.render(api.SubusageSection, { ...props, usageStore: emptyStore })
 assert.equal(nodes(tree).find((n) => n.type === "fieldset").props.disabled, true);
 nodes(tree).find((n) => n.type === "button" && n.children.includes("手动导入")).props.onClick(); tree = emptyUi.render(api.SubusageSection, { ...props, usageStore: emptyStore }); assert.ok(!textOf(tree).includes("保存设置")); emptyUi.unmount();
 assert.throws(() => api.settingsPatch(ids[0], api.draftFor(publicSettings(), ids[0]), null));
+assert.deepEqual(Object.keys(api.settingsPatch(ids[4], api.draftFor(publicSettings(), ids[4]), "1")).sort(), ["expectedRevision", "providerId"], "managed 提供方不产生凭据补丁");
 assert.throws(() => api.validateCookieText("userId=42")); assert.equal(api.validateCookieText("api-platform_serviceToken=abc==\nuserId=42"), "api-platform_serviceToken=abc==; userId=42");
 assert.ok(!/webview|MimoBridge|executeJavaScript|persist:subusage/.test(source), "失效桥及自动创建行为全部移除");
 // 所有剩余 native option 显式配对系统主题色；凭据/来源不再使用 dropdown。
@@ -238,6 +242,18 @@ autoState = { jobId: "UI-job", state: "waiting" }; autoStartGate.resolve(autoSta
 assert.equal([...timeouts.values()].filter((timer) => timer.ms === 2000).length, 1);
 const loginTimer = [...timeouts.entries()].find(([, timer]) => timer.ms === 2000); timeouts.delete(loginTimer[0]); loginTimer[1].fn(); await flush(); tree = ah.render(api.SubusageSection, ap);
 assert.equal(autoStatusCalls, 2); assert.ok(textOf(tree).includes("请在浏览器中完成登录"));
+assert.equal(button("手动导入").props.disabled, true, "MiMo 登录期间禁止手动导入");
+assert.equal(button("清除登录凭据").props.disabled, true, "MiMo 登录期间禁止清除并产生误导提示");
+for (const providerId of [ids[0], ids[1], ids[3]]) {
+ nodes(tree).find((n) => n.props.role === "tab" && n.props.id === `subusage-tab-${providerId}`).props.onClick();
+ tree = ah.render(api.SubusageSection, ap); tree = ah.render(api.SubusageSection, ap);
+ assert.equal(button("更换").props.disabled, false, "后台 MiMo 登录不得阻止其他厂商更换 Key");
+ button("更换").props.onClick(); tree = ah.render(api.SubusageSection, ap);
+ assert.ok(nodes(tree).some((n) => n.type === "input" && n.props.type === "password"));
+ button("取消编辑").props.onClick(); tree = ah.render(api.SubusageSection, ap);
+}
+nodes(tree).find((n) => n.props.role === "tab" && n.props.id === `subusage-tab-${ids[2]}`).props.onClick();
+tree = ah.render(api.SubusageSection, ap); await flush(); tree = ah.render(api.SubusageSection, ap);
 await button("取消登录").props.onClick(); tree = ah.render(api.SubusageSection, ap);
 assert.equal(autoCancelCalls, 1); assert.equal(timeouts.size, 0); assert.ok(button("手动导入"));
 // 恢复正在运行job；dirty成功结果不得覆盖用户草稿，且成功effect只处理一次。
@@ -282,4 +298,4 @@ const mismatch = await scopedStore.refresh([ids[0]]).then(() => null, (error) =>
 assert.ok(mismatch.message.includes("契约版本不匹配")); assert.ok(mismatch.message.includes("重新加载或重启"));
 for (const fn of disposers) fn();
 assert.equal(intervals.size, 0); assert.equal(timeouts.size, 0);
-console.log("PASS partial store/读写race/生命周期/4col导航/凭据按钮dirty保存取消/主题option/自动登录状态轮询清理/旧job竞态/成功公共revision与草稿保护");
+console.log("PASS partial store/读写race/生命周期/5col导航/凭据按钮dirty保存取消/主题option/自动登录状态轮询清理/旧job竞态/成功公共revision与草稿保护");

@@ -30,7 +30,7 @@ vm.runInNewContext(code, context);
 const { SubusageSection, zh } = moduleSpec.factory(name => {
   if (name !== 'react') throw new Error('Unexpected module'); return react;
 }).__preview;
-const ids = ['zai-coding-cn', 'kimi-coding', 'xiaomi-token-plan-cn', 'opencode-go'];
+const ids = ['zai-coding-cn', 'kimi-coding', 'xiaomi-token-plan-cn', 'opencode-go', 'commandcode'];
 const entry = (providerId, percent, kind = 'sub') => ({ providerId, state: 'ok', keySource: providerId === 'xiaomi-token-plan-cn' ? 'cookie' : 'env', freshness: 'fresh', coverage: 'complete', lastSuccessAt: new PreviewDate(clock).toISOString(), lastAttemptAt: new PreviewDate(clock).toISOString(), windows: [{ kind, percent, status: percent >= 100 ? 'rate-limited' : 'ok' }], extras: [] });
 const result = {
   updatedAt: new PreviewDate(clock).toISOString(), configured: Object.fromEntries(ids.map(id => [id, true])),
@@ -40,7 +40,8 @@ const result = {
       { kind: '5h', percent: 37, status: 'ok', resetsAt: new PreviewDate(clock + 390000).toISOString(), detail: { used: 743, limit: 2000, unit: 'credits' } },
       { kind: 'week', percent: 40, status: 'ok', resetsAt: new PreviewDate(clock + 23 * 3600000).toISOString(), detail: { used: 4100, limit: 10000, unit: 'credits' } }
     ] },
-    entry(ids[1], 100, '7d'), entry(ids[2], 47.4), entry(ids[3], 80, 'week')
+    entry(ids[1], 100, '7d'), entry(ids[2], 47.4), entry(ids[3], 80, 'week'),
+    { ...entry(ids[4], 20.2, 'month'), windows: [{ kind: 'month', percent: 20.2, status: 'ok', detail: { used: 14.14, limit: 70, remaining: 55.86, unit: 'credits', limitSource: 'plan-snapshot' } }], extras: [{ kind: 'plan', value: 'individual-goat' }, { kind: 'monthly-balance', value: '55.86 credits' }] }
   ]
 };
 const tree = SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => result }, t: key => zh[key] || key, getLocale: () => 'zh-CN' });
@@ -65,7 +66,7 @@ function render(node) {
   return ['input', 'br', 'hr', 'img', 'meta', 'link'].includes(node.type) ? start : start + node.children.map(render).join('') + `</${node.type}>`;
 }
 const sidebar = width >= 400 ? `<aside><b>设置</b>${['账号与余额', '通用设置', '模型', '内置插件', 'xAI Grok', 'Agent 预设', '订阅用量', '插件市场'].map(x => `<div${x === '订阅用量' ? ' class="active"' : ''}>${x}</div>`).join('')}</aside>` : '';
-const html = `<!doctype html><html lang="zh-CN"><meta charset="UTF-8"><title>订阅用量离线布局预览</title><style>*{box-sizing:border-box}body{margin:0;background:${theme === 'light' ? '#fafafa' : '#292929'};color:${theme === 'light' ? '#202124' : '#eee'};color-scheme:${theme};font-family:Arial,"Microsoft YaHei",sans-serif;font-size:13px}main{display:flex;padding:14px 12px;gap:12px}aside{width:180px;flex-shrink:0;padding:0 8px}aside b{display:block;margin:4px 0 24px;font-size:16px}aside div{padding:12px 10px;border-radius:8px;margin:4px 0}.active{background:#414141}article{width:${width}px;min-width:0}button,select,input,textarea{font-family:inherit}details{padding-top:8px;border-top:1px solid #454545}progress{display:block}a{color:${theme === 'light' ? '#1a73e8' : '#82b1ff'}}footer{font-size:11px;opacity:.55;padding:8px 28px}</style><main>${sidebar}<article>${render(tree)}</article></main><footer>离线组件布局预览 · 虚构用量数据 · 非运行中的 DSH 截图</footer></html>`;
+const html = `<!doctype html><html lang="zh-CN"><meta charset="UTF-8"><title>订阅用量离线布局预览</title><style>*{box-sizing:border-box}body{margin:0;background:${theme === 'light' ? '#fafafa' : '#292929'};color:${theme === 'light' ? '#202124' : '#eee'};color-scheme:${theme};font-family:Arial,"Microsoft YaHei",sans-serif;font-size:13px}main{display:flex;padding:14px 12px;gap:12px}aside{width:180px;flex-shrink:0;padding:0 8px}aside b{display:block;margin:4px 0 24px;font-size:16px}aside div{padding:12px 10px;border-radius:8px;margin:4px 0}.active{background:#414141}article{width:${width + 32}px;min-width:0}button,select,input,textarea{font-family:inherit}details{padding-top:8px;border-top:1px solid #454545}progress{display:block}a{color:${theme === 'light' ? '#1a73e8' : '#82b1ff'}}footer{font-size:11px;opacity:.55;padding:8px 28px}</style><main>${sidebar}<article>${render(tree)}</article></main><footer>离线组件布局预览 · 虚构用量数据 · 非运行中的 DSH 截图</footer></html>`;
 mkdirSync(resolve('debug/ui-preview'), { recursive: true });
 const suffix = process.argv[3] ? `-${providerId}-${theme}${openCredentials ? '-credentials' : ''}` : '';
 const output = resolve(`debug/ui-preview/settings-${width}${suffix}.html`);

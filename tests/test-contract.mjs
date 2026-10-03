@@ -53,6 +53,7 @@ const refresh = host.subUsageRemote.descriptors.find(d => d.method === 'refresh'
 const query = refresh.parameters[0].codec.schema.parse({ providerIds: ['kimi-coding'], force: true });
 assert.deepEqual(query.providerIds, ['kimi-coding']);
 assert.equal(query.force, true);
+assert.deepEqual(refresh.parameters[0].codec.schema.parse({ providerIds: ['commandcode'], force: false }).providerIds, ['commandcode'], 'commandcode 在刷新契约内');
 assert.throws(() => refresh.parameters[0].codec.schema.parse({ providerIds: ['not-supported'], force: true }));
 const save = host.subUsageRemote.descriptors.find(d => d.method === 'save');
 const patch = save.parameters[0].codec.schema.parse({ providerId: 'kimi-coding', keyUpdate: { action: 'keep' } });

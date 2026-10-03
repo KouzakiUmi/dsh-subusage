@@ -22,10 +22,10 @@ try {
   await isolated.close();
   console.log(`PASS 独立 Chrome ${browser.version()} 启动与 HttpOnly/域/路径 Cookie 获取（全虚构）`);
 
-  for (const theme of ['dark', 'light']) for (const width of [530, 360]) {
+  for (const theme of ['dark', 'light']) for (const width of [530, 500, 499, 360]) {
     const file = resolve(`debug/ui-preview/settings-${width}-xiaomi-token-plan-cn-${theme}-credentials.html`);
     assert.ok(existsSync(file), `先生成预览：node scripts/render-ui-preview.mjs ${width} xiaomi-token-plan-cn ${theme} credentials`);
-    const context = await browser.newContext({ viewport: { width: width >= 400 ? 777 : 410, height: 1000 }, colorScheme: theme });
+    const context = await browser.newContext({ viewport: { width: width + (width >= 400 ? 248 : 56), height: 1000 }, colorScheme: theme });
     await context.route(/^https?:/, route => route.abort());
     const page = await context.newPage();
     await page.goto(pathToFileURL(file).href);
@@ -35,7 +35,7 @@ try {
       const tabRects = [...tabs.children].map(el => el.getBoundingClientRect());
       return {
         overflow: document.documentElement.scrollWidth > innerWidth,
-        nativeVisible: getComputedStyle(select).display !== 'none', selectedProvider: select.value,
+        nativeVisible: getComputedStyle(select).display !== 'none', selectedProvider: select.value, providerCount: select.options.length,
         tabsVisible: getComputedStyle(tabs).display !== 'none',
         tabY: tabRects.map(rect => rect.y), tabWidth: tabRects.map(rect => rect.width),
         options: [...document.querySelectorAll('option')].map(el => ({ color: getComputedStyle(el).color, background: getComputedStyle(el).backgroundColor })),
@@ -43,12 +43,14 @@ try {
       };
     });
     assert.equal(info.overflow, false, `${theme}/${width} 不得横向溢出`);
-    assert.equal(info.nativeVisible, width < 400);
+    assert.equal(info.providerCount, 5, '五家 provider 均可选择');
+    assert.equal(info.nativeVisible, width <= 499);
     assert.equal(info.selectedProvider, 'xiaomi-token-plan-cn', '离线选择框必须匹配当前详情');
-    assert.equal(info.tabsVisible, width >= 400);
-    if (width >= 400) {
-      assert.equal(new Set(info.tabY).size, 1, '四个 provider 必须单行');
-      assert.ok(Math.max(...info.tabWidth) - Math.min(...info.tabWidth) < 1, '四个 provider 必须等宽');
+    assert.equal(info.tabsVisible, width > 499);
+    if (width > 499) {
+      assert.equal(info.tabWidth.length, 5, '五个 provider 必须全部展示');
+      assert.equal(new Set(info.tabY).size, 1, '五个 provider 必须单行');
+      assert.ok(Math.max(...info.tabWidth) - Math.min(...info.tabWidth) < 1, '五个 provider 必须等宽');
     }
     assert.equal(info.credentialSelects, 0, 'MiMo 凭据不使用下拉动作');
     for (const option of info.options) {
@@ -59,6 +61,6 @@ try {
     }
     await page.screenshot({ path: file.replace(/\.html$/, '.png'), fullPage: true });
     await context.close();
-    console.log(`PASS ${theme}/${width} 四列或窄选择框、凭据按钮、option 对比度、无溢出`);
+    console.log(`PASS ${theme}/${width} 五列或窄选择框、凭据按钮、option 对比度、无溢出`);
   }
 } finally { await browser.close(); }

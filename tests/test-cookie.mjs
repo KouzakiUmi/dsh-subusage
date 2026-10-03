@@ -52,6 +52,10 @@ assert(normalizeCookieText(JSON.stringify({ cookies: [
 	{ name: "sid", value: "bad", domain: "xiaomimimo.com.evil" }
 ] })) === "token=good", "JSON cookies 包装及域边界过滤");
 assert(normalizeCookieText(".xiaomimimo.com\tTRUE\t/\tFALSE\t0\tuserId\t42") === "userId=42", "Netscape 多列 TAB");
+assert(normalizeCookieText("# Netscape HTTP Cookie File\n# exported cookies\n#HttpOnly_.platform.xiaomimimo.com\tTRUE\t/\tTRUE\t0\tapi-platform_serviceToken\tabc==\n.xiaomimimo.com\tTRUE\t/\tFALSE\t0\tuserId\t42\nother.example\tFALSE\t/\tFALSE\t0\tforeign\tsecret") === "api-platform_serviceToken=abc==; userId=42", "Netscape 注释和 HttpOnly 前缀兼容，仍过滤外域");
+assert(normalizeCookieText("sid\tabc\noptional\t") === "sid=abc; optional=", "两列 TAB 保留末行空 Cookie 值");
+assert(normalizeCookieText(".xiaomimimo.com\tTRUE\t/\tFALSE\t0\toptional\t") === "optional=", "Netscape 保留末列空 Cookie 值");
+assert(normalizeCookieText("#valid\tvalue\nuid\t42") === "#valid=value; uid=42", "非 Netscape TAB 不误删合法 # Cookie 名");
 assert(normalizeCookieText("a=1\na=2\nb=x=y") === "a=2; b=x=y", "重复 Cookie 后值覆盖，保留等号");
 throws("[{ broken", "JSON 失败明确抛错，不静默清空");
 throws("unrecognized input", "无法识别文本明确抛错");

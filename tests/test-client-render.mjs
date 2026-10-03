@@ -26,7 +26,7 @@ const react = {
   useEffect: () => {}
 };
 const code = readFileSync(fileURLToPath(new URL("../lib/client.js", import.meta.url)), "utf8");
-vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { SubusageSection }; exports.apply = apply;"), {
+vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { SubusageSection, UsageWindowRow }; exports.apply = apply;"), {
   window: { __ModuleLoader__: { load: (value) => { spec = value; } } }, console
 });
 const plugin = spec.factory((name) => {
@@ -61,7 +61,7 @@ const first = renderWrapper("xiaomi-token-plan-cn");
 const second = renderWrapper("xiaomi-token-plan-cn");
 assert.equal(first.props.readEntry, second.props.readEntry);
 assert.equal(readerCalls, 1, "相同 provider 不得重建 reader");
-for (const provider of ["openai-codex", null, "kimi-coding", "zai-coding-cn", "opencode-go", null, "xiaomi-token-plan-cn"]) {
+for (const provider of ["openai-codex", null, "kimi-coding", "zai-coding-cn", "opencode-go", "commandcode", null, "xiaomi-token-plan-cn"]) {
   const before = readerCalls;
   const element = renderWrapper(provider);
   assert.deepEqual(hooks, ["useSyncExternalStore", "useMemo"], `Hook 顺序必须稳定: ${provider}`);
@@ -105,11 +105,18 @@ assert.ok(visibleText(renderPill(stale, true, 'temporary network failure', 'erro
 assert.ok(!visibleText(renderPill({ ...stale, retainPrevious: false }, true, 'failed', 'error')).includes('pillRemaining'), '无保留许可不得展示旧额度');
 assert.ok(!visibleText(renderPill({ ...stale, errorCode: 'subusage/auth' }, true, 'expired', 'error')).includes('pillRemaining'), '认证失效不得展示旧额度');
 assert.ok(visibleText(renderPill({ ...empty, coverage: 'partial' })).includes('statusPartial'), '仅余额成功必须明确数据不完整、额度未知');
+const monthlyEntry = { state: "ok", coverage: "complete", windows: [{ kind: "month", percent: 20.2, status: "ok", detail: { used: 14.14, limit: 70, remaining: 55.86, unit: "credits", limitSource: "plan-snapshot" } }], extras: [{ kind: "monthly-balance", value: "55.86 credits" }] };
+assert.ok(visibleText(renderPill(monthlyEntry, true)).includes("monthlyBalanceLabel"));
+assert.ok(visibleText(renderPill(monthlyEntry, true)).includes("55.86 credits"));
+const monthlyRow = plugin.__test.UsageWindowRow({ w: monthlyEntry.windows[0], t: k => k === "detailUsed" ? "{used}/{limit} {unit}" : k, getLocale: () => "zh" });
+assert.ok(visibleText(monthlyRow).includes("wmonth"));
+assert.ok(visibleText(monthlyRow).includes("14.14/70 credits"));
+assert.ok(visibleText(monthlyRow).includes("planSnapshotLimit"));
 // 原生菜单保留键盘导航，所有option随系统主题成对着色；敏感动作不再使用select。
 const flattenNodes = (node) => Array.isArray(node) ? node.flatMap(flattenNodes) : node && typeof node === "object" ? [node, ...flattenNodes(node.children || [])] : [];
 const settings = { revision: "public-1", zai: { type: 1 }, hasKeys: { "zai-coding-cn": true }, keyModes: {}, xiaomi: { hasCookie: true } };
 const usageStore = { subscribe: () => () => {}, getSnapshot: () => ({ settings, configured: {}, entries: [] }) };
-for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn"]) {
+for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode"]) {
   stateValues = [provider]; stateIndex = 0;
   const section = plugin.__test.SubusageSection({ usageStore, t: (key) => key, getLocale: () => "zh" });
   const all = flattenNodes(section), selects = all.filter((n) => n.type === "select");
@@ -121,6 +128,9 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn"]) {
   if (provider === "xiaomi-token-plan-cn") {
     assert.ok(visibleText(section).includes("登录并自动导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));
+  } else if (provider === "commandcode") {
+    assert.ok(visibleText(section).includes("commandcodeManaged"), "Command Code 只读说明");
+    assert.equal(all.filter((n) => typeof n.props?.["aria-pressed"] === "boolean").length, 0, "Command Code 无凭据编辑按钮");
   } else assert.equal(all.filter((n) => typeof n.props?.["aria-pressed"] === "boolean").length, 2);
 }
 console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮与主题原生option");

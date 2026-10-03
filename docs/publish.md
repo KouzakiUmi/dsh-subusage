@@ -26,8 +26,8 @@ url: https://github.com/KouzakiUmi/dsh-subusage
 name: KouzakiUmi/dsh-subusage
 category: usage
 description:
-  en: 'Subscription usage pill beside the model selector for Z.ai, Kimi, Xiaomi MiMo and OpenCode Go, with a per-provider settings page.'
-  zh: 在模型选择器旁显示 Z.ai / Kimi / 小米 / OpenCode Go 订阅余量的状态药丸,附每家厂商的设置面板。
+  en: 'Subscription usage pill beside the model selector for Z.ai, Kimi, Xiaomi MiMo, OpenCode Go and Command Code, with a per-provider settings page.'
+  zh: 在模型选择器旁显示 Z.ai / Kimi / 小米 / OpenCode Go / Command Code 订阅余量的状态药丸,附每家厂商的设置面板。
 tarball: https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz
 ```
 

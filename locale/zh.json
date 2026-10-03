@@ -1,4 +1,4 @@
 {
   "name": "订阅用量显示",
-  "description": "显示 Z.ai / Kimi / MiMo / OpenCode Go 订阅余量；四等宽设置导航、按厂商共享刷新、凭据来源选择和 MiMo Cookie 验证。"
+  "description": "显示 Z.ai / Kimi / MiMo / OpenCode Go / Command Code 订阅余量；等宽设置导航、按厂商共享刷新、凭据来源选择和 MiMo Cookie 验证。"
 }

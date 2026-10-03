@@ -50,12 +50,58 @@ result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equa
 await h.service.save({ providerId: Z, keyMode: "inherit" }); delete h.credential[Z];
 h.respond(() => zBody); result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equal(result.entries[0].keySource, "env");
 const isolated = harness(); isolated.service.credentials = async id => { if (id === Z) throw new Error("DO NOT LEAK"); return undefined; };
-result = await isolated.service.read(); assert.equal(result.entries.length, 4); assert.equal(result.entries[0].errorCode, "subusage/credentials"); assert(!JSON.stringify(result).includes("DO NOT LEAK")); assert.equal(isolated.calls.length, 0);
+result = await isolated.service.read(); assert.equal(result.entries.length, 5); assert.equal(result.entries[0].errorCode, "subusage/credentials"); assert(!JSON.stringify(result).includes("DO NOT LEAK")); assert.equal(isolated.calls.length, 0);
 await assert.rejects(h.service.refresh({ providerIds: ["bad"], force: false })); await assert.rejects(h.service.refresh({ providerIds: [Z] }));
 for (const cookie of ["userId=1", "api-platform_serviceToken=x; userId=1\r\nX-Evil: y", "api-platform_serviceToken=x; userId=1; bad", "api-platform_serviceToken=x; userId=1; userId=2"]) await assert.rejects(h.service.save({ providerId: M, cookieUpdate: { action: "replace", value: cookie } }));
 const cookies = await h.service.save({ providerId: M, cookieUpdate: { action: "replace", value: 'api-platform_serviceToken="dummy"; userId=1; optional=' } }); assert.equal(cookies.settings.xiaomi.hasCookie, true); assert(!JSON.stringify(cookies).includes("dummy"));
 h.respond(url => url.endsWith("/balance") ? { data: { balance: "1", currency: "CNY" } } : { data: {} });
 result = await h.service.refresh({ providerIds: [M], force: true }); assert.equal(result.entries[0].coverage, "partial"); assert.deepEqual(result.entries[0].windows, []);
+// 手动 Cookie 的普通刷新/缓存路径也必须脱敏服务端回显；分号后的空格不能截断秘密。
+const reflectedCookie = "api-platform_serviceToken=REFLECTED-TOKEN; userId=REFLECTED-USER";
+const reflected = harness({ xiaomi: { cookie: reflectedCookie } });
+reflected.respond(url => url.endsWith("/balance") ? { data: { balance: "1", currency: "CNY" } } : url.endsWith("/detail") ? { data: { planName: reflectedCookie } } : { data: {} });
+const reflectedResult = await reflected.service.refresh({ providerIds: [M], force: true });
+assert.equal(reflectedResult.entries[0].state, "ok");
+for (const secret of [reflectedCookie, "REFLECTED-TOKEN", "REFLECTED-USER"]) {
+ assert(!JSON.stringify(reflectedResult).includes(secret), "刷新结果不得回显 Cookie 秘密");
+ assert(!JSON.stringify(await reflected.service.refresh({ providerIds: [M], force: false })).includes(secret), "缓存结果不得回显 Cookie 秘密");
+}
+const quoted = harness({ xiaomi: { cookie: 'api-platform_serviceToken="QUOTED-TOKEN";   userId="QUOTED-USER"' } });
+quoted.respond(url => url.endsWith("/balance") ? { data: { balance: "1" } } : url.endsWith("/detail") ? { data: { planName: "QUOTED-TOKEN / QUOTED-USER" } } : { data: {} });
+assert.equal((await quoted.service.refresh({ providerIds: [M], force: true })).entries[0].extras.find(x => x.kind === "plan").value, "[redacted] / [redacted]");
+// 短 Cookie 不得破坏可信语义/日期/数值余额；登录提交重复脱敏也一样。
+const shortCookie = "api-platform_serviceToken=SAFE-TOKEN; userId=1; optional=s; another=o";
+const short = harness({ xiaomi: { cookie: shortCookie } });
+short.respond(url => url.endsWith("/balance") ? { data: { balance: "12.50", currency: "CNY" } } : url.endsWith("/detail") ? { data: { currentPeriodEnd: "2026-10-26T23:59:59+08:00" } } : { data: { usage: { items: [{ name: "plan_total_token", percent: .2, used: 10, limit: 100 }] } } });
+const shortEntry = (await short.service.refresh({ providerIds: [M], force: true })).entries[0];
+const checkShort = value => {
+ assert.equal(value.providerId, M); assert.equal(value.state, "ok"); assert.equal(value.coverage, "complete");
+ assert.equal(value.windows[0].kind, "sub"); assert.equal(value.windows[0].detail.unit, "credits");
+ assert.equal(value.windows[0].resetsAt, "2026-10-26T15:59:59.000Z");
+ assert.equal(value.extras[0].value, "12.50 CNY"); assert(Number.isFinite(Date.parse(value.lastSuccessAt)));
+};
+checkShort(shortEntry);
+const verifiedShort = await short.service.fetchProvider(M, { key: shortCookie, source: "cookie" }, short.service.load());
+checkShort(short.service.commitMimoLogin(shortCookie, short.service.mimoMaterial(short.service.load()), verifiedShort).entries[0]);
+// Date.parse 接受 RFC 日期括号注释；只能返回规范化 ISO，不能回放注释中的秘密。
+const annotated = harness({ xiaomi: { cookie: reflectedCookie } });
+annotated.respond(url => url.endsWith("/balance") ? { data: { balance: "12.50", currency: "CNY" } } : url.endsWith("/detail") ? { data: { currentPeriodEnd: "Mon, 26 Oct 2026 23:59:59 GMT (REFLECTED-TOKEN)" } } : { data: { usage: { items: [{ name: "plan_total_token", percent: .2, used: 10, limit: 100 }] } } });
+const checkAnnotated = result => {
+ assert.equal(result.entries[0].windows[0].resetsAt, "2026-10-26T23:59:59.000Z");
+ assert(!JSON.stringify(result).includes("REFLECTED-TOKEN"));
+};
+checkAnnotated(await annotated.service.refresh({ providerIds: [M], force: true }));
+checkAnnotated(await annotated.service.refresh({ providerIds: [M], force: false }));
+const annotatedData = await annotated.service.fetchProvider(M, { key: reflectedCookie, source: "cookie" }, annotated.service.load());
+checkAnnotated(annotated.service.commitMimoLogin(reflectedCookie, annotated.service.mimoMaterial(annotated.service.load()), annotatedData));
+// 非法明细对象及对象键不能流入 RPC；缺数值明细不伪造 used/limit。
+const nested = harness({ xiaomi: { cookie: reflectedCookie } });
+nested.respond(url => url.endsWith("/balance") ? { data: { balance: "1", currency: "REFLECTED-TOKEN" } } : url.endsWith("/detail") ? { data: {} } : { data: { usage: { items: [{ name: "plan_total_token", percent: .2, used: { "REFLECTED-TOKEN": "echo" }, limit: 100 }] } } });
+const nestedResult = await nested.service.refresh({ providerIds: [M], force: true });
+assert.equal(nestedResult.entries[0].windows[0].detail, undefined);
+assert(!JSON.stringify(nestedResult).includes("REFLECTED-TOKEN"));
+assert(!JSON.stringify(await nested.service.refresh({ providerIds: [M], force: false })).includes("REFLECTED-TOKEN"));
+for (const balance of ["REFLECTED-TOKEN", "", "NaN", "Infinity", "0x10"]) assert.throws(() => normalizeMimo({ data: { balance } }, {}, {}));
 // 并发普通/force 合并；设置改变阻止旧请求写缓存。
 const concurrent = harness({ keys: { [Z]: "key1" }, keyModes: { [Z]: "manual" } });
 let release; concurrent.respond(() => new Promise(resolve => { release = resolve; }));

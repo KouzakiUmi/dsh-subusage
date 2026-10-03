@@ -1,6 +1,27 @@
 # dsh-subusage —— DeepSeek Harness 订阅用量显示
 
-在模型选择器旁显示当前模型商的订阅余量；点开药丸看用量、重置时间和套餐详情。支持 **Z.ai Coding CN / Kimi Coding / Xiaomi MiMo / OpenCode Go**。
+在模型选择器旁显示当前模型商的订阅余量；点开药丸看用量、重置时间和套餐详情。支持 **Z.ai Coding CN / Kimi Coding / Xiaomi MiMo / OpenCode Go / Command Code**。
+
+## 0.4.1：补齐 Command Code 月额度
+
+- 显示月额度剩余，并按已知套餐总额计算月已用百分比和已用/上限；例如 GOAT 总额 70、剩余 55.86，显示已用 14.14 / 70（20.2%）。
+- 套餐及账期来自 `/alpha/billing/subscriptions`，失败时可回退 credits 内的 planId；没有账期时不编造重置日期。
+- 月总额是[提供方插件套餐表](https://github.com/Mars-Sea/dsh-commandcode-provider/blob/main/src/capabilities.ts)的快照，不是计费接口直接报告的硬上限；未知套餐只显示剩余金额并标记部分数据。套餐变更后需核对更新。
+- 月余额不包含已购/赠送余额；月池耗尽不据此连坐周/5小时窗口。
+- 修复非法重置日期导致整包失败，以及旧配置中的 Command Code 手动 Key 绕过托管凭据来源的问题。
+- 修复 MiMo 普通刷新/缓存中的接口 Cookie 回显；脱敏正确处理分号后空格和带引号的值。
+- 修复 Netscape Cookie 导入：兼容注释、`#HttpOnly_` 域前缀及 TAB 末列空值，仍严格过滤外域。
+- MiMo 登录只锁定本厂商的手动导入/清除，不再阻止其他厂商更换 Key，也不产生实际未执行的待清除提示。
+
+## 0.4.0：Command Code 用量显示
+
+- **支持 Command Code**：该路由由另一个插件 [`@mars-sea/dsh-commandcode-provider`](https://github.com/Mars-Sea/dsh-commandcode-provider) 注册；本插件显示其 5 小时 / 每周 / 月额度池、重置时间、套餐（planId）、月剩余与已购 + 赠送余额，周窗用尽会连坐 5 小时窗口。
+- **快速直连刷新**：不消费提供方插件的用量服务（它按账户逐个串行多端点、超时预算长，作为药丸来源太慢），改为自读同一凭据后并行直连 `/alpha/billing/credits` 和 `/alpha/billing/subscriptions`（各 10 秒超时）；不读取请求统计、不串行遍历账户。
+- **同一凭据来源**：凭据服务 `COMMANDCODE_API_KEY` → 启动环境 → `~/.commandcode/auth.json`（`cmd login` 写入，解析方式与提供方插件一致）。本插件**不保存** Command Code 凭据；Key、登录与多账户在 设置 → Command Code 管理。
+- **已知限制**：多账户轮换或固定 `activeAccount` 时显示默认（顶层 Key）账户的额度，可能与实际服务账户不同；提供方插件里自定义 `apiBase` 不会被跟随。
+- **五等宽导航**：设置页厂商导航改为五等宽单行，窄内容区（≤499px）切换为选择框。
+
+**两端必须同时更新**：旧 Host 会拒绝含 `commandcode` 的刷新请求。
 
 ## 0.3.0：按钮式凭据与 MiMo 自动登录
 
@@ -10,7 +31,7 @@
 
 ### 延续的设置与可靠性改进
 
-- **四等宽导航**：`Z.ai / Kimi / MiMo / OpenCode Go` 单行显示，窄内容区改成选择框，不出现 3+1 换行。
+- **五等宽导航**：`Z.ai / Kimi / MiMo / OpenCode Go / Command` 单行显示，窄内容区改成选择框，不出现换行。
 - **用量为主**：凭据与帮助折叠；顶部提供刷新当前/全部，保存按钮仅出现在编辑区。
 - **共享刷新**：按厂商缓存与合并在途请求，药丸和设置页共享结果，活跃厂商每分钟检查更新。
 - **两条状态轴**：数据获取成功不等于额度可用；额度不足、认证失效、缓存和部分数据均有独立说明。
@@ -31,7 +52,7 @@
 
 设置 → **订阅用量**：
 
-1. 选择厂商；正常宽度使用四等宽 tab，窄内容区使用选择框。
+1. 选择厂商；正常宽度使用五等宽 tab，窄内容区使用选择框。
 2. 查看百分比、额度明细、重置时间与套餐。
 3. 展开「连接与凭据」更改来源、替换或清除凭据；空输入不会清除原值。
 4. 保存先确认持久化，再独立刷新该厂商验证。验证失败不意味着保存失败。
@@ -46,8 +67,9 @@
 | Kimi | `KIMI_CODING_API_KEY` | 需要 Kimi Coding Key，不是 Moonshot 开平台 Key |
 | MiMo | 不使用 API Key | 通过控制台 Cookie 会话读取 |
 | OpenCode Go | `OPENCODE_API_KEY` | OpenCode Go Key |
+| Command Code | `COMMANDCODE_API_KEY` | 凭据由提供方插件管理，本页只读继承；也兜底读取 `~/.commandcode/auth.json`（`cmd login`） |
 
-继承模式按凭据服务 → 启动环境 → 旧手动配置兜底解析；自定义模式仅使用保存的手动 Key。界面区分凭据服务、启动环境和自定义来源。修改启动环境后是否需要重启取决于目标部署，不能把用户环境即时变化当作已经被运行进程读到。
+Z.ai / Kimi / OpenCode Go 的继承模式按凭据服务 → 启动环境 → 旧手动配置兜底解析；自定义模式仅使用保存的手动 Key。Command Code 仅沿用提供方凭据来源链，不接受本插件的手动 Key；MiMo 仅使用 Cookie。界面区分凭据服务、启动环境和自定义来源。修改启动环境后是否需要重启取决于目标部署，不能把用户环境即时变化当作已经被运行进程读到。
 
 ### MiMo 登录与 Cookie
 
@@ -63,7 +85,7 @@
 
 备用 **手动导入**：打开 <https://platform.xiaomimimo.com> 自行登录，从 DevTools → Application → Cookies 获取 Name/Value 或导出 JSON，再粘贴并保存。必须包含上述两个字段。导入错误会显示原因并保留原文，认证过期时重新登录。界面的「仅打开官网」链接不会自动导入日常浏览器的 Cookie。
 
-JSON 中有域名的条目按 `platform.xiaomimimo.com` 的 Cookie 域规则过滤，无关站点的 Cookie 不导入。TAB 清单只读取 Name/Value，不把 Domain/Path 混入值。
+JSON 中有域名的条目按 `platform.xiaomimimo.com` 的 Cookie 域规则过滤，无关站点的 Cookie 不导入。TAB 清单只读取 Name/Value，不把 Domain/Path 混入值；Netscape 导出支持注释和 `#HttpOnly_` 域前缀，并保留可选 Cookie 的空值（两个必需字段仍须非空）。
 
 **安全说明**：Key/Cookie 不再通过用量读取接口回传，界面不回填已保存的秘密；但本版仍兼容原本机 JSON 配置存储，**不是加密凭据库**。该配置位于 `~/.dsh/dsh-subusage.json`，新建目录/临时文件在 POSIX 上按 `0700`/`0600` 创建，替换前再次收紧文件权限；Windows 的实际访问权限仍取决于目录 ACL，`chmod` 不能替代 ACL 或加密库。请勿上传、分享或写入日志。隔离浏览器仅用于你主动发起的官方登录；它不是后台扫描或导入日常浏览器全部凭据的工具。加密凭据存储通道仍未实施。
 
@@ -75,6 +97,7 @@ JSON 中有域名的条目按 `platform.xiaomimimo.com` 的 Cookie 域规则过�
 | Kimi | 5 小时、7 天 | 已用百分比、套餐档 |
 | MiMo | 本周期额度池 | 用量明细、重置时间、套餐与余额 |
 | OpenCode Go | 滚动、每周、每月 | 已用百分比、重置时间 |
+| Command Code | 5 小时、每周、月额度池 | 已用/上限（月总额为套餐快照）、重置/账期、套餐（planId）、月剩余、已购 + 赠送余额 |
 
 非公开控制台接口可能变更；缺失或非法百分比不会当作零用量。部分数据、未知额度和暂时失败有明确状态，不能据此保证推理接口一定可用。
 
@@ -89,7 +112,7 @@ cd dsh-subusage
 
 通过目标部署支持的官方插件管理/CLI 流程将工作区 bundle 安装并启用。不要直接修改核心或 ASAR；本地链接的解析方式、profile 层覆盖与重载行为应按目标环境确认。
 
-**0.3.0 新增登录 RPC 和 `playwright-core` 依赖，必须让 Host/Client 及依赖一起更新。** 仅刷新页面不能升级正在运行的旧 Host。安装、重载或重启需要用户另行授权；仓库测试通过不代表运行中的插件已生效。
+**0.3.0 新增登录 RPC 和 `playwright-core` 依赖，必须让 Host/Client 及依赖一起更新。0.4.0 新增 Command Code 条目，同样要求两端一起更新（旧 Host 不识别 `commandcode`）。** 仅刷新页面不能升级正在运行的旧 Host。安装、重载或重启需要用户另行授权；仓库测试通过不代表运行中的插件已生效。
 
 ## 开发与测试
 
@@ -102,14 +125,14 @@ node --check lib/client.js
 
 Host 私有 Remote：
 
-- `read()`：初始化获取四家数据，使用每厂商缓存。
+- `read()`：初始化获取五家数据，使用每厂商缓存。
 - `refresh({ providerIds, force })`：按厂商刷新，结果条目由客户端合并。
 - `save(settings)`：按厂商 patch 保存；读取/保存结果只含公开配置和凭据存在性。
 - `startMimoLogin({ expectedRevision })`：立即返回任务状态，后台等待官方登录，不阻塞 RPC。
 - `getMimoLoginStatus()`：轮询状态，成功结果只含公开配置和用量；账号变更后旧成功结果失效。
 - `cancelMimoLogin({ jobId })`：只取消匹配的任务，阻止迟到验证保存。
 
-可选的本机 Chrome 验收：使用 [离线预览脚本](<scripts/render-ui-preview.mjs>) 生成深浅主题的 530/360px MiMo 凭据预览，然后运行 [浏览器验收脚本](<scripts/check-browser-runtime.mjs>)。仅使用本地页面与虚构 Cookie，不连接 DSH 或真正 MiMo，不等于真实账号登录已验证。
+可选的本机 Chrome 验收：使用 [离线预览脚本](<scripts/render-ui-preview.mjs>) 生成深浅主题的 530/500/499/360px MiMo 凭据预览（宽度指内部内容区），然后运行 [浏览器验收脚本](<scripts/check-browser-runtime.mjs>)。仅使用本地页面与虚构 Cookie，不连接 DSH 或真正 MiMo，不等于真实账号登录已验证。
 
 回归测试覆盖归一化、限额边界、Cookie、RPC 契约、缓存/异常隔离、设置状态与 slot 装配。核心依赖与网络使用桩；真实 Loader composition、在线 API 和浏览器视觉仍须部署后验收，不把桩测试当作已上线证明。
 

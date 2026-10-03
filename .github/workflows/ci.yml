@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: 22
 
-      # 插件零运行时依赖,测试与校验无需 npm install
+      # 逻辑测试与校验使用桩，无需安装运行时 playwright-core；不验证真实 Chrome 登录
       - name: Run tests
         run: node tests/run-all.mjs
 

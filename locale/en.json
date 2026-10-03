@@ -1,4 +1,4 @@
 {
   "name": "Subscription usage",
-  "description": "Shows subscription quota for Z.ai, Kimi, MiMo and OpenCode Go, with equal-width provider tabs, shared per-provider refresh, credential source selection and MiMo cookie validation."
+  "description": "Shows subscription quota for Z.ai, Kimi, MiMo, OpenCode Go and Command Code, with equal-width provider tabs, shared per-provider refresh, credential source selection and MiMo cookie validation."
 }

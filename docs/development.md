@@ -26,7 +26,7 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 
 - `read()` 保留无参初始化入口。
 - `refresh(request)`：`request = { providerIds: string[], force: boolean }`，只读取指定厂商；返回的 entries 由 Client 合并。
-- `save(settings)`：provider patch，包含 `providerId`、`expectedRevision`、来源模式、凭据保持/替换/清除动作与可选 Z.ai 参数。
+- `save(settings)`：provider patch，包含 `providerId`、`expectedRevision`、来源模式、凭据保持/替换/清除动作与可选 Z.ai 参数。凭据由提供方插件管理的厂商（`managedByPlugin`，现即 commandcode）拒绝一切凭据补丁，只接受裸 patch。
 - 公共 settings 只含 revision、非秘密参数、hasKeys、keyModes 与 xiaomi.hasCookie。
 - 保存与验证分离。保存失败和保存后在线验证失败必须有不同反馈。
 - revision 是配置版本令牌；刷新不得丢弃未保存编辑，过期表单不得覆盖新配置。
@@ -37,8 +37,10 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 
 - 是否耗尽按原始百分比/明确接口状态判断，不能按用于展示的四舍五入值判断。
 - 非法/缺失百分比不是 0%；部分数据不能默认绿色可用。
+- 重置日期解析成功后统一输出 ISO，不保留原串；`Date.parse` 可接受带括号注释的 RFC 日期，原样回传会携带不可信文本或秘密。
 - Z.ai 百分比为 0–100；MiMo `percent` 为 0–1；OpenCode Go 三窗通常包裹于 `usage`。
 - Kimi 新格式仅兼容有明确窗口含义和数值依据的字段；未知结构报错，不猜测额度。
+- Command Code 并行直连 `/alpha/billing/credits` 与 `/alpha/billing/subscriptions`（请求头对齐提供方插件的 accountHeaders：Bearer、accept-encoding: identity、x-command-code-version、x-cli-environment）。absent 窗口是未报告上限（不画额度行）；`cap: 0` 是报告过的无上限，按 0% 不受限展示；`exceeded` 或原始比例达 100% 即限流；已出现的窗口块缺 `used`/`cap` 或非数值一律报错，不当作零用量。月余额 `credits.monthlyCredits` 是剩余金额，使用已知套餐表快照计算 `max(0, total - remaining)`，不是接口直接报告的月cap；未知套餐或缺月余额时 coverage=partial，不猜测百分比。planId优先 subscriptions.data.planId、回退 credits.planId，重置取 subscriptions.data.currentPeriodEnd（ISO或毫秒），非法日期不输出。月池耗尽不参与短窗级联（额外购买/赠送池可能仍可用）；周/5小时保持现有级联。余额只显示真正报告过的月剩余/已购/赠送字段。多账户轮换或固定 activeAccount 时显示默认（顶层 Key）账户额度，自定义 apiBase 不跟随。
 - 单厂商凭据、网络、解析异常不影响其它厂商条目。
 - 按厂商共享 TTL 缓存与 in-flight 请求；配置/凭据变化使旧账号缓存失效。
 - 允许保留的临时错误返回 stale 标记、上次成功时间与结构化错误；认证失效不保留旧额度。
@@ -48,7 +50,11 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 
 当前仍兼容旧本机 JSON 存储，并非加密凭据库；不输出真实 Key/Cookie到日志、测试、截图或读取结果。新建目录 mode 为 0700、临时文件为 0600，重命名前再收紧临时文件权限；不 chmod 已有共享配置目录。Windows chmod 不等同于 ACL 管理，部署者仍需保证目录 ACL 仅授权合适用户。
 
-Client 不填回已保存秘密。Cookie 解析支持多行 KV、成对文本、JSON 与 TAB Name/Value；JSON 域规则按目标站点匹配。输入错误必须保留原文，Host 再做 header 安全及必需条目验证。
+Command Code 不提供本地凭据编辑：沿用提供方插件（@mars-sea/dsh-commandcode-provider）的凭据来源链——凭据服务 `COMMANDCODE_API_KEY` → 启动环境 → `~/.commandcode/auth.json` 兜底（解析对齐其 resolveAuthFileApiKey：`apiKey` / `commandcode` 字符串、`commandcode`/`command-code` 凭据记录的 key/access）。
+
+Client 不填回已保存秘密。Cookie 解析支持多行 KV、成对文本、JSON 与 TAB Name/Value；JSON 域规则按目标站点匹配。Netscape 格式先识别七列数据再跳过普通注释，`#HttpOnly_` 只作为域前缀处理；普通 TAB 中合法的 `#` 开头 Cookie 名不能误删。TAB 解析使用原始分行，不能用整串/整行 trim 丢失末列空值。输入错误必须保留原文，Host 再做 header 安全及必需条目验证。
+
+MiMo 接口字段是不可信输入：余额只接受有限十进制字符串，货币代码限三位大写字母；额度明细只输出有限非负数，不把对象及其键传入 RPC。未约束的套餐名在普通刷新与自动登录验证缓存/返回前进行字段级 Cookie 脱敏；不递归替换自建枚举、日期和数值余额，避免短 userId/可选 Cookie 破坏可信结构。提取 Cookie 值时先 trim 再计算等号位置，并移除外层引号，防止分号后空格使秘密被截断。回归覆盖普通刷新、缓存回放、登录提交、带引号单值回显及非法对象明细。
 
 原 webview 取数桥已移除；普通官网链接仍不自动同步外部浏览器 Cookie。自动登录由 Host 的隔离 Chrome 会话实现，延迟加载 `playwright-core`，不使用 persistent context，不读取日常浏览器配置，不下载浏览器。
 
@@ -69,4 +75,11 @@ node --check lib/client.js
 
 自动测试覆盖模块/slot装配、RPC 描述符、额度边界、凭据 patch、异常隔离、缓存、Cookie、React 状态路径。桩 React/ctx 不证明真实 Loader realm/fiber 或浏览器行为。
 
-部署后另行检查：Host/Client 版本一致、真实 Remote 往返、scope卸载、约530px和窄内容区导航、125%缩放、中文/英文、深浅主题、实际四家API。Host变更需要目标部署提供的重载或重启；Client热生效依赖对应watcher及重建链路，不能一概认为Ctrl+R一定读到新产物。
+### 2026-10-03 本轮检查
+
+- 12 个回归测试文件、清单校验、Host/Client 语法检查及 `npm pack --dry-run --ignore-scripts` 通过。
+- 独立 Chrome 离线验收通过：全虚构 HttpOnly Cookie 的域/路径隔离，以及深浅主题下 530/500/499/360px 内部内容区的五等宽导航/窄选择框、原生选项对比度和无横向溢出。
+- 新增回归涵盖普通刷新/缓存/登录提交的 Cookie 回显、短 Cookie 语义保留、非法对象明细、日期注释、完整 Netscape 导入及跨厂商登录按钮隔离。
+- 未安装或重载运行中的插件；真实 Loader composition、在线账号接口和实际登录仍未验收。
+
+部署后另行检查：Host/Client 版本一致、真实 Remote 往返、scope卸载、约530px和窄内容区导航、125%缩放、中文/英文、深浅主题、实际五家 API（含 Command Code）。Host变更需要目标部署提供的重载或重启；Client热生效依赖对应watcher及重建链路，不能一概认为Ctrl+R一定读到新产物。
