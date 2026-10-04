@@ -2,6 +2,18 @@
 
 在模型选择器旁显示当前模型商的订阅余量；点开药丸看用量、重置时间和套餐详情。支持 **Z.ai Coding（中国与国际）/ Kimi Coding / Xiaomi MiMo / OpenCode Go / Command Code / MiniMax（国际与中国）/ Synthetic / NanoGPT**。
 
+## 界面预览
+
+以下为 0.7.0 的离线组件测试截图，使用虚构用量数据，不包含真实账号信息，也不是运行中的 DSH 截图。市场截图由根目录的 `screenshots.json` 声明。
+
+深色设置页：查看订阅用量、管理凭据与提供商；新增三家默认关闭。
+
+![深色订阅设置页（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/settings-dark.png)
+
+浅色用量弹层：查看每日与每周额度、用量明细。
+
+![浅色 NanoGPT 用量弹层（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/usage-popover-light.png)
+
 ## 0.7.0：审查修复与新增订阅商
 
 - 新增 `zai-coding`（国际版）、`synthetic`、`nanogpt`：新安装与旧配置升级均默认关闭，即使有环境凭据也不请求用量。可在「提供商管理」手动开启；原有七项的默认值和用户已保存开关保持不变。
