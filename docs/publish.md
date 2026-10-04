@@ -1,83 +1,104 @@
-# 发布流程(基于 awesome-dsh-plugin / dsh-market 官方发布文档整理)
+# 发布与市场收录
 
-来源:[awesome-dsh-plugin contributing.md](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/contributing.md)
-与 [dshmarket README](https://github.com/dsh-market/dsh-market#readme)。
-dshmarket 本身不收插件条目——上架走 awesome-dsh-plugin 注册表,市场/站点自动收录。
+本项目有三个独立流程：GitHub Release 发布安装包、npm 发布版本、awesome-dsh-plugin 收录条目。发布安装包不等于已经被市场收录，也不自动安装或重启用户的 DSH。
 
-## 本仓库的发布管线
+## GitHub Release
 
-### npm 手动发布
+推送到 `main` 后，[CI](../.github/workflows/ci.yml) 运行回归、清单/语法检查和实际打包。PR 与 `master` 只检查，不发布。
 
-本包可发布到公共 npm registry，包名为 `dsh-subusage`。GitHub 的每提交构建仍只发布 Release，不会重复发布同一 npm 版本。
+检查通过后，发布 job 下载同一次构建验证过的安装包，使用 `build-<12位提交SHA>` 标签发布 Release，资产名固定为 `dsh-subusage.tgz`，并设为 latest。重跑同一提交复用对应 Release；发布前检查远端主分支，已被新提交取代的构建跳过发布。
+
+固定下载地址：[最新安装包](https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz)。资产名保持不带版本号，确保后续发布仍能通过该地址下载。
+
+自动构建的包版本来自 `package.json`，每次提交不会自动提升版本或发布 npm。GitHub 使用内置 `GITHUB_TOKEN`；仓库策略须允许发布 job 的 `contents: write`。测试不安装依赖，也不使用真实账号。
+
+可选的 [语义版本工作流](../.github/workflows/release.yml) 由 `v*` tag 触发。先更新包版本及相关说明并推送，再分别执行：
 
 ```console
-npm login --auth-type=web --registry=https://registry.npmjs.org/
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布版本 Release，并设置 `make_latest: false`，避免旧版本覆盖主分支 latest。
+
+## npm
+
+包名：[dsh-subusage](https://www.npmjs.com/package/dsh-subusage)。`0.7.0` 已于 2026-10-05 发布；后续发布必须使用未发布过的新版本。npm 包与 GitHub 提交快照可能包含不同的文档更新，请分别检查版本与来源。
+
+1. 更新 `package.json` 的版本、Host 请求的版本标识及更新记录。
+2. 运行基础检查和打包预检，检查文件清单中无凭据或调试数据。
+3. 登录拥有发布权限的 npm 账号，完成 npm 要求的二次验证，发布后核对版本与标签。
+
+```console
 node tests/run-all.mjs
 node scripts/check-manifest.mjs
+node --check lib/index.js
+node --check lib/client.js
+node --check lib/mimo-login.js
 npm publish --dry-run --ignore-scripts
+npm login --auth-type=web --registry=https://registry.npmjs.org/
 npm publish --access public --ignore-scripts
 npm view dsh-subusage version dist-tags
 ```
 
-发布前确认登录账号及版本未被发布。后续 npm 更新必须提升语义版本。认证和发布二次验证在 npm 官方页面完成，不把密码、验证码或 token 保存到仓库。`publishConfig` 固定公共 registry 和公开访问。
+`publishConfig` 固定公共 registry 和公开访问。认证在 npm 官方页面完成，不把密码、验证码或 token 写入仓库。截图与维护文档存放在 GitHub，当前 `files` 白名单只打包运行代码、locale、patch 与 README；README 的图片和文档链接使用 GitHub 地址，npm 页面也能访问。
 
-| 文件 | 作用 |
-|---|---|
-| [scripts/check-manifest.mjs](../scripts/check-manifest.mjs) | 本地清单校验(对齐收录 CI 的机械检查点) |
-| [CI 工作流](<../.github/workflows/ci.yml>) | push/PR：测试、清单/语法校验、实际打包；`main` 推送或合并后自动发布 GitHub Release |
-| [版本发布工作流](<../.github/workflows/release.yml>) | 可选的 `v*` tag 发布；要求 tag 与包版本一致，不改变自动构建的 latest |
-| [产物校验脚本](<../scripts/prepare-release.mjs>) | 检查 `npm pack --json` 的包名、版本、文件清单及唯一产物，生成固定资产名 |
+## 市场收录
 
-### 推送 / 合并后自动发布
+提交前以 [awesome-dsh-plugin 贡献指南](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/contributing.md) 为准。用户提供的 [fork 指南](https://github.com/KouzakiUmi/awesome-dsh-plugin/blob/main/contributing.md) 可用于准备条目；市场收录需要目标注册表接受并合并投稿。
 
-1. 推送到 `main`（包括 merge、squash merge、rebase merge PR）触发 CI；测试失败不发布。
-2. PR 和 `master` 分支只测试/打包；只有 `main` 的 push 才进入拥有 `contents: write` 的发布 job。
-3. CI 使用 `npm pack --ignore-scripts`，验证必需文件，上传已验证的产物；发布 job 直接下载同一产物，不重新打包。
-4. 每个提交使用 `build-<12位提交SHA>` 标签，标题包含当前包版本和 SHA；重跑同一提交复用同一 Release，不覆盖其他提交的历史标签。
-5. 自动构建作为普通 Release 并显式设为 latest；资产始终叫 `dsh-subusage.tgz`。发布前检查远端 `main`，跳过已被更新提交取代的慢构建，避免旧包回退 latest。
-6. 使用 GitHub 提供的 `GITHUB_TOKEN`，不需要新增 Secrets；仓库/组织策略须允许发布 job 的 `contents: write`。不自动改版本、不提交机器人版本 bump，也不发布到 npm。
-
-自动标签表示提交快照，不是新的语义版本；安装包内的版本仍来自 [包清单](<../package.json>)，正式升级仍需维护该版本。连续推送时发布 job 串行，GitHub concurrency 可能替换尚未开始的旧 pending job，最终发布最新通过检查的主分支构建。
-
-可选的正式版本发布：修改 [包清单](<../package.json>) 的 `version` 并推送后，再执行 `git tag vX.Y.Z && git push origin vX.Y.Z`。tag 必须与包版本相同；此流程不会让旧版本覆盖 latest。
-
-自动发布只上传安装包，**不自动安装插件或重启 DSH**。
-
-无版本资产名是刻意的:条目里的 `tarball:` 链接用 `releases/latest/download/dsh-subusage.tgz`,
-`latest/download/` 在请求时解析 latest 但**文件名照字面取**——资产名带版本号的话,下次发版链接就 404。
-
-## 收录到市场(一次性)
-
-向 awesome-dsh-plugin 提 PR,只加一个文件 `data/plugins/KouzakiUmi__dsh-subusage.yml`:
+本仓库的条目文件名为 `data/plugins/KouzakiUmi__dsh-subusage.yml`，分类为 `usage`。以下描述涵盖当前支持的服务，可作为投稿内容：
 
 ```yaml
 url: https://github.com/KouzakiUmi/dsh-subusage
 name: KouzakiUmi/dsh-subusage
 category: usage
 description:
-  en: 'Subscription usage pill beside the model selector for Z.ai, Kimi, Xiaomi MiMo, OpenCode Go and Command Code, with a per-provider settings page.'
-  zh: 在模型选择器旁显示 Z.ai / Kimi / 小米 / OpenCode Go / Command Code 订阅余量的状态药丸,附每家厂商的设置面板。
+  en: 'Subscription usage for Z.ai, Kimi, MiMo, OpenCode Go, Command Code, MiniMax, Synthetic and NanoGPT, with a model-selector pill and provider settings.'
+  zh: '显示 Z.ai、Kimi、MiMo、OpenCode Go、Command Code、MiniMax、Synthetic 和 NanoGPT 订阅用量，提供模型选择器旁的余量药丸与提供商设置。'
 tarball: https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz
 ```
 
-- `description` 必须属实——维护者会对着代码核对描述里的每个说法;含 `: ` 要加引号。
-- 分类选 `usage`(Usage & Billing)。
-- 一个 PR 最多 3 条;本仓库只占 1 条。
+提交只添加该条目，不修改其他插件条目或手工改写注册表的生成 README。npm 关联由本包的 `repository` 字段自动建立，条目不添加 `npm:` 字段。
 
-### 收录前置条件(收录 CI 会逐项机器检查)
+### 本仓库核对结果
 
-- [x] `package.json` 声明 `dsh.bundle`(只声明 `dsh.client` 会被直接拒)
-- [x] 真实可用代码、可 `dsh plugin add` 安装
-- [x] `@deepseek-ai/*` 走 `peerDependencies`(本仓库精确钉 `0.2.0-rc.2`;升级核心后同步改)
-- [ ] **仓库创建满 1 天**(CI 自动查)
-- [ ] **给仓库加 `dsh-plugin` topic**(GitHub 仓库页 About → 齿轮 → Topics)
+截至 2026-10-05：
 
-### 可选增强
+| 项目 | 状态 |
+|---|---|
+| `dsh.bundle.patch` 与真实 Host/Client 代码 | 已具备，清单检查通过 |
+| 核心依赖 | 位于 peerDependencies，范围 `>=0.2.0-rc.1 <0.3.0-0` |
+| 仓库年龄 | 2026-09-30 创建，已满一天 |
+| `dsh-plugin` topic | 已设置 |
+| npm repository 与仓库一致 | 已设置，0.7.0 已发布 |
+| 两张截图与根目录声明 | 已添加 |
+| 真实 DSH 安装与在线账号验收 | 尚未确认 |
+| 注册表投稿与收录 | 本轮尚未提交；是否合并由维护者决定 |
 
-- **发 npm 包**:市场能显示并按下载量排序;`repository` 字段已指回本仓库,映射由 registry 自动采集,无需通知注册表。已启用手动 npm 发布，自动工作流仍只发布 GitHub Release；不能把每提交快照直接当作同版本 npm 发布。
-- **市场截图**:仓库根放 `screenshots.json`(1–8 张图片相对路径,不得越出仓库);不声明则市场从 README 自动抽取。
+本地 [清单检查](../scripts/check-manifest.mjs) 只覆盖部分静态要求，不查询仓库年龄、topic、条目重复或市场审核结果。自动检查通过也不能替代维护者对功能、安全与重复性的审核。
 
-## 注意
+## 截图维护
 
-- `peerDependencies` 精确钉死核心版本是本仓库的既定策略(加载器兼容性检查按此比对);
-  但也意味着 **DSH 核心每次升级都必须同步改版本声明并发版**,否则新环境拒绝加载。
+根目录 [screenshots.json](../screenshots.json) 与 `package.json` 相邻，声明两张仓库内图片，顺序即展示顺序：
+
+```json
+[
+  "assets/screenshots/settings-dark.png",
+  "assets/screenshots/usage-popover-light.png"
+]
+```
+
+第一张展示深色设置页、MiMo 凭据入口及新增三项默认关闭；第二张展示浅色 NanoGPT 用量弹层。两张均为 0.7.0 离线组件测试截图，包含虚构数据及预览标记。
+
+更新截图时，用当前组件生成预览并检查布局，复制所选 PNG 到 `assets/screenshots/`，再同步声明和 README。具体生成方法见 [开发说明](development.md#离线浏览器与截图)。不要将 `debug/` 路径写入声明，该目录被 Git 忽略；不要放入真实 Key、Cookie 或账户数据。
+
+声明支持 1–8 张图片，相对路径不能以 `/` 开头或包含 `..`。推送图片与声明到本仓库后，已收录条目的后续市场构建可获取更新，无需另交截图 PR。
+
+## 发布检查
+
+- 检查版本、peer 范围、README 支持表与更新记录一致。
+- 按 [开发说明](development.md) 完成检查；[prepare-release.mjs](../scripts/prepare-release.mjs) 验证实际打包文件与固定资产名。
+- 确认 GitHub Release 工作流成功，下载地址能解析到所需提交。
+- npm 发布单独核对目标版本，不能用重复发布同版本来同步文档。
+- 明确记录真实安装、账号与界面验证的实际范围，离线预览不代替实机验收。

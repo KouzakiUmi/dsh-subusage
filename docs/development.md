@@ -2,9 +2,24 @@
 
 ## 1. 目标与授权边界
 
-目标 API 为 DeepSeek Harness `0.2.0-rc.2`。本项目是树外 Host/Client bundle，`cordis.patch.yml` 插入 `subusage`，不修改核心、安装树或 ASAR。
+目标 API 为 DeepSeek Harness `0.2.0-rc.2`，peer 范围为 `>=0.2.0-rc.1 <0.3.0-0`，允许范围内的预发布版本。范围声明与真实运行验证分别记录。本项目是树外 Host/Client bundle，`cordis.patch.yml` 插入 `subusage`，不修改核心、安装树或 ASAR。
 
 工作区开发、安装启用、依赖安装/构建授权与重启是不同操作。修改并通过测试不代表运行环境已经生效。
+
+### 文件入口
+
+| 文件 | 职责 |
+|---|---|
+| `lib/index.js` | 提供商适配、凭据解析、持久化、缓存与 Host RPC |
+| `lib/client.js` | Client 模块、共享 store、设置页与模型药丸；内含界面中英文文案 |
+| `lib/mimo-login.js` | 隔离 Chrome 登录、Cookie 提取与任务生命周期 |
+| `locale/zh.json`、`locale/en.json` | 插件元数据与配置文案 |
+| `cordis.patch.yml`、`package.json` | bundle 注册、入口、依赖与打包白名单 |
+| `tests/` | 桩网络/隔离文件系统回归 |
+| `scripts/` | 清单、打包、离线预览与浏览器检查 |
+| `screenshots.json`、`assets/screenshots/` | 市场截图声明与受版本控制的图片 |
+
+当前没有源码转译步骤，直接维护 `lib/*.js`；修改 Host/Client 后按部署方式重新加载相应入口。
 
 ## 2. 依赖与生命周期
 
@@ -27,6 +42,7 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 - `read()` 保留无参初始化入口。
 - `refresh(request)`：`request = { providerIds: string[], force: boolean }`，只读取指定厂商；返回的 entries 由 Client 合并。
 - `save(settings)`：provider patch，包含 `providerId`、`expectedRevision`、来源模式、凭据保持/替换/清除动作与可选 Z.ai 参数。凭据由提供方插件管理的厂商（`managedByPlugin`，现即 commandcode）拒绝一切凭据补丁，只接受裸 patch。
+- 检测开关使用独立补丁 `{ expectedRevision, visibility: { providers?, hideWithoutApi? } }`，不得混入凭据字段；provider 开关增量合并，不重置未提交条目。
 - 公共 settings 只含 revision、非秘密参数、hasKeys、keyModes 与 xiaomi.hasCookie。
 - 保存与验证分离。保存失败和保存后在线验证失败必须有不同反馈。
 - revision 是配置版本令牌；刷新不得丢弃未保存编辑，过期表单不得覆盖新配置。
@@ -43,8 +59,11 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 - Command Code 并行直连 `/alpha/billing/credits` 与 `/alpha/billing/subscriptions`（请求头对齐提供方插件的 accountHeaders：Bearer、accept-encoding: identity、x-command-code-version、x-cli-environment）。absent 窗口是未报告上限（不画额度行）；`cap: 0` 是报告过的无上限，按 0% 不受限展示；`exceeded` 或原始比例达 100% 即限流；已出现的窗口块缺 `used`/`cap` 或非数值一律报错，不当作零用量。月余额 `credits.monthlyCredits` 是剩余金额，使用已知套餐表快照计算 `max(0, total - remaining)`，不是接口直接报告的月cap；未知套餐或缺月余额时 coverage=partial，不猜测百分比。planId优先 subscriptions.data.planId、回退 credits.planId，重置取 subscriptions.data.currentPeriodEnd（ISO或毫秒），非法日期不输出。月池耗尽不参与短窗级联（额外购买/赠送池可能仍可用）；周/5小时保持现有级联。余额只显示真正报告过的月剩余/已购/赠送字段。多账户轮换或固定 activeAccount 时显示默认（顶层 Key）账户额度，自定义 apiBase 不跟随。
 - 单厂商凭据、网络、解析异常不影响其它厂商条目。
 - 按厂商共享 TTL 缓存与 in-flight 请求；配置/凭据变化使旧账号缓存失效。
+- TTL 为 60 秒。Client 仅订阅活跃、开启的提供商，隐藏页面暂停定时读取，回到可见状态再检查；不要把所有厂商做成独立全局轮询。
+- 新增厂商须同步 Host 的 PROVIDERS、Client 的 PROVIDER_META / PROVIDER_ORDER、帮助文案、README 和默认值测试。未获明确需求的新订阅商保持 `defaultEnabled: false`；原有偏好通过存储合并保留。
 - 允许保留的临时错误返回 stale 标记、上次成功时间与结构化错误；认证失效不保留旧额度。
 - 429/临时错误使用退避，倒计时本地更新，重置后有界刷新而不制造请求循环。
+- Retry-After / retryAt 优先于强制刷新和重置到期。已知本地配置修改只失效受影响厂商；未知外部 revision 修改保守失效所有条目。
 
 ## 5. 凭据与 MiMo
 
@@ -71,11 +90,47 @@ node tests/run-all.mjs
 node scripts/check-manifest.mjs
 node --check lib/index.js
 node --check lib/client.js
+node --check lib/mimo-login.js
 ```
 
 测试用虚构凭据、桩网络和隔离文件系统。新增 service 测试不能访问 `~/.dsh` 的真实配置。
 
 自动测试覆盖模块/slot装配、RPC 描述符、额度边界、凭据 patch、异常隔离、缓存、Cookie、React 状态路径。桩 React/ctx 不证明真实 Loader realm/fiber 或浏览器行为。
+
+### 离线浏览器与截图
+
+`render-ui-preview.mjs` 执行当前 Client 组件，使用虚构用量、Hook 桩和固定测试时间；不执行 effect，不连接 DSH，也不读取真实凭据。它生成 HTML，不直接生成 PNG。参数依次为内容区宽度、provider ID、主题与模式（`credentials` 或 `pill`）。
+
+在仓库根目录运行。以下 PowerShell 示例生成浏览器验收需要的八个设置页面：
+
+```powershell
+foreach ($theme in @('dark', 'light')) {
+  foreach ($width in @(530, 500, 499, 360)) {
+    node scripts/render-ui-preview.mjs $width xiaomi-token-plan-cn $theme credentials
+  }
+}
+node scripts/check-browser-runtime.mjs
+```
+
+浏览器检查需要工作区可解析 `playwright-core` 且已安装 Google Chrome；不会下载浏览器。它检查 Cookie 域/路径隔离、十个提供商开关加一个默认隐藏开关、三项默认关闭、七个可见标签、无下拉列表和横向溢出，并将 PNG 写到 `debug/ui-preview/`。
+
+单独生成浅色药丸弹层 HTML：
+
+```console
+node scripts/render-ui-preview.mjs 530 nanogpt light pill
+```
+
+可用以下独立 Chrome 命令将该 HTML 截成 PNG（先生成 HTML；所有 HTTP 请求会被阻止）：
+
+```console
+node --input-type=module -e "import {chromium} from 'playwright-core'; import {resolve} from 'node:path'; import {pathToFileURL} from 'node:url'; const b=await chromium.launch({channel:'chrome',headless:true}); try { const p=await b.newPage({viewport:{width:554,height:560},colorScheme:'light'}); await p.route(/^https?:/,r=>r.abort()); await p.goto(pathToFileURL(resolve('debug/ui-preview/settings-530-nanogpt-light-pill.html')).href); await p.screenshot({path:'debug/ui-preview/settings-530-nanogpt-light-pill.png',fullPage:true}); } finally { await b.close(); }"
+```
+
+预览页面包括布局示意，不完全复刻 DSH 外壳。市场所用设置截图来自 `settings-530-xiaomi-token-plan-cn-dark-credentials.png`，弹层来自 `settings-530-nanogpt-light-pill.png`。人工检查后将 PNG 复制到 `assets/screenshots/` 的相应文件，保留离线标记并同步 [截图声明](../screenshots.json) 与 README。市场只需 GitHub 仓库图片，当前 npm 白名单不包含这些 PNG。
+
+### 0.7.0 验证记录
+
+16 个回归文件通过，清单、Host/Client 语法与 npm 打包预检通过。八组设置页检查包含十个提供商开关和三个默认关闭项；另有深浅主题 × 280/360/530px 的六组药丸边界与颜色检查。具体修复和在线验收限制见 [审查记录](code-review.md)。
 
 ### 2026-10-04 提供商管理检查
 
@@ -91,4 +146,4 @@ node --check lib/client.js
 - 新增回归涵盖普通刷新/缓存/登录提交的 Cookie 回显、短 Cookie 语义保留、非法对象明细、日期注释、完整 Netscape 导入及跨厂商登录按钮隔离。
 - 未安装或重载运行中的插件；真实 Loader composition、在线账号接口和实际登录仍未验收。
 
-部署后另行检查：Host/Client 版本一致、真实 Remote 往返、scope卸载、约530px和窄内容区导航、125%缩放、中文/英文、深浅主题、实际五家 API（含 Command Code）。Host变更需要目标部署提供的重载或重启；Client热生效依赖对应watcher及重建链路，不能一概认为Ctrl+R一定读到新产物。
+部署后另行检查：Host/Client 版本一致、真实 Remote 往返、scope 卸载、约 530px 和窄内容区导航、125% 缩放、中文/英文、深浅主题，以及实际启用的各提供商 API。新增三家先确认默认关闭不请求，再主动开启并验证实际账号。Host 变更需要目标部署提供的重载或重启；Client 热生效依赖对应 watcher 及加载链路，不能一概认为 Ctrl+R 一定读到新产物。

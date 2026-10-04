@@ -1,6 +1,6 @@
-# 订阅用量插件方案（dsh-subusage，暂名）
+# 初期方案归档（2026-09-30）
 
-> 状态：**调研完成，尚未写代码**。2026-09-30 记录。
+> 本文保留初期调研与未实施候选方案，不作为当前安装、接口或登录方式的指引。项目现已实现并发布 0.7.0；当前行为见 [README](../README.md)、[开发说明](development.md) 与 [UX 设计](design-ux.md)。尤其是 webview / OAuth 登录候选、三家提供商范围与早期 RPC 均已被后续实现替代。
 > 目标环境：DeepSeek Harness 0.2.0-rc.2 / 桌面 profile（desktop）。
 
 ---

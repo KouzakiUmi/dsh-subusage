@@ -1,86 +1,29 @@
 # dsh-subusage —— DeepSeek Harness 订阅用量显示
 
-在模型选择器旁显示当前模型商的订阅余量；点开药丸看用量、重置时间和套餐详情。支持 **Z.ai Coding（中国与国际）/ Kimi Coding / Xiaomi MiMo / OpenCode Go / Command Code / MiniMax（国际与中国）/ Synthetic / NanoGPT**。
+在模型选择器旁显示当前提供商的订阅余量，点击查看各周期用量、重置时间和套餐信息。设置页集中管理十个提供商/区域的检测开关与凭据。
 
-## 界面预览
+支持 **Z.ai Coding（中国与国际）/ Kimi Coding / Xiaomi MiMo / OpenCode Go / Command Code / MiniMax（国际与中国）/ Synthetic / NanoGPT**。
 
-以下为 0.7.0 的离线组件测试截图，使用虚构用量数据，不包含真实账号信息，也不是运行中的 DSH 截图。市场截图由根目录的 `screenshots.json` 声明。
+## 安装与快速开始
 
-深色设置页：查看订阅用量、管理凭据与提供商；新增三家默认关闭。
+当前版本 **0.7.0**，已发布到 [npm](https://www.npmjs.com/package/dsh-subusage)。安装时使用目标 DSH 部署提供的插件管理器或 CLI，并启用本 bundle：
 
-![深色订阅设置页（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/settings-dark.png)
+| 来源 | 安装标识或下载地址 |
+|---|---|
+| npm | `dsh-subusage`；支持 npm 源的插件管理器可使用该包名 |
+| GitHub | `https://github.com/KouzakiUmi/dsh-subusage` |
+| 安装包 | [最新 GitHub Release 安装包](https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz) |
 
-浅色用量弹层：查看每日与每周额度、用量明细。
+只需取得 npm 压缩包时可运行 `npm pack dsh-subusage@0.7.0`。普通 `npm install` 或下载压缩包并不等于已经在 DSH 中启用插件；具体安装参数以目标部署的帮助信息为准。
 
-![浅色 NanoGPT 用量弹层（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/usage-popover-light.png)
+开发目标是 **DeepSeek Harness 0.2.0-rc.2**。核心 peer 范围为 `>=0.2.0-rc.1 <0.3.0-0`，允许该范围内的预发布版本；声明范围不代表所有版本均已实机验证。
 
-## 0.7.0：审查修复与新增订阅商
+1. 安装并启用 bundle，按部署方式重载或重启，使 Host、Client 与依赖一起生效。
+2. 打开 **设置 → 订阅用量 → 提供商管理**，为需要的订阅配置凭据。
+3. **Z.ai 国际、Synthetic、NanoGPT 默认关闭**，必须手动开启。原有七项默认开启；升级保留已保存的开关。
+4. 点击「刷新当前」检查结果；选中对应提供商的模型后，输入区显示余量药丸。
 
-- 新增 `zai-coding`（国际版）、`synthetic`、`nanogpt`：新安装与旧配置升级均默认关闭，即使有环境凭据也不请求用量。可在「提供商管理」手动开启；原有七项的默认值和用户已保存开关保持不变。
-- Z.ai 国际版依据[官方查询脚本](https://github.com/zai-org/zai-coding-plugins/blob/main/plugins/glm-plan-usage/skills/usage-query-skill/scripts/query-usage.mjs)直连监控接口，区域凭据独立；补齐 `TOKENS_LIMIT` 格式。Synthetic 使用[官方 quotas API](https://dev.synthetic.new/docs/synthetic/quotas)，只读取模型订阅请求池。
-- NanoGPT 使用[官方订阅用量 API](https://docs.nano-gpt.com/api-reference/endpoint/subscription-usage)，显示每日/每周输入 Token 及试用 Token 池；支持手动填写 `sk-nano-mgmt-…` [Usage only 管理令牌](https://docs.nano-gpt.com/api-reference/management-api)，自动选择只读管理接口。忽略图像池，未开通、缺数据、降级响应不会显示虚假剩余额度。
-- 修复额度重置时绕过 `Retry-After`、保存一家凭据导致其他用量消失，以及首次读取失败后无法重新初始化的问题。
-- 空状态自动展开提供商管理；刷新错误始终在工具栏下可见；药丸弹层适应窄屏和深浅主题。
-- Host/Client 必须一起更新。已做离线回归与浏览器布局检查，未使用真实账号在线验证。详见[审查记录](docs/code-review.md)。
-
-## 0.6.0：提供商管理与默认隐藏
-
-- 设置 → 订阅用量底部新增默认折叠的「提供商管理」：七个提供商/区域独立开启或关闭，立即持久化；关闭后隐藏用量标签与药丸，停止订阅用量请求，不删除凭据、不修改模型路由。
-- 新增「没有检测到API的默认隐藏」开关，默认开启。按实际 Key / MiMo Cookie 是否存在判断，不以模型路由是否注册或接口是否成功判断；认证失败、网络错误仍展示异常。
-- 管理区始终列出全部提供商：每家开关与「连接与凭据」在同一卡片，就地展开编辑；MiMo 为「登录与凭据」，Command Code 为只读凭据来源。移除跨区域「配置」跳转，隐藏/关闭条目仍可就地编辑。
-- 上方只显示用量，查看用量与正在编辑的提供商独立，切换用量不丢失草稿；保存结果和错误在管理区就地反馈。关闭自动隐藏后，无凭据条目恢复指引，手工关闭的提供商不会被自动重新开启。
-- 开关保存与凭据保存互相隔离，脏草稿期间锁定开关，多窗口使用 revision 防止覆盖；仅改变默认隐藏不清除 Host 用量缓存。
-- 所有导航与套餐选择改为按钮，窄屏自然换行，整个设置页不使用下拉列表。
-- **Host 与 Client 必须一起加载新版**。本地 link 安装直接指向工作区；磁盘更新不代表正在运行的 Host/Client 已重载，必要时重启 DSH。在线账号与真实应用界面仍需验收。
-
-## 0.5.0：MiniMax 订阅检测
-
-- 新增 `minimax` / `minimax-cn`，分别继承 `MINIMAX_API_KEY` / `MINIMAX_CN_API_KEY`，也可在设置中保存独立的订阅 Key。区域之间不自动尝试或转发 Key。
-- 直连对应区域的 `/v1/token_plan/remains`，只显示 `general` 或旧版 `MiniMax-M*` 编程池，忽略视频/图像池，不累加共享额度。
-- 显示短周期和周已用百分比及重置时间；优先采用 `remaining_percent`，计数明细按[官方 CLI 消歧规则](https://github.com/MiniMax-AI/cli/blob/main/src/utils/quota.ts)校准，无法匹配时只显示百分比。旧版无百分比响应按剩余计数解释。
-- 无上限、未报告或零总计且无百分比的窗口不绘制，标记部分数据；没有可绘制窗口时额度未知。不推断套餐名称，周加量不折算额外百分比。
-- 设置导航扩展为七个区域条目，内部宽度 ≤699px 时切换选择框。
-- **Host 与 Client 必须一起更新**；未执行在线账号验收或安装。接口参考：[官方 Token Plan FAQ](https://platform.minimax.io/docs/token-plan/faq)、[官方 CLI 端点](https://github.com/MiniMax-AI/cli/blob/main/src/client/endpoints.ts)。
-
-## 0.4.1：补齐 Command Code 月额度
-
-- 显示月额度剩余，并按已知套餐总额计算月已用百分比和已用/上限；例如 GOAT 总额 70、剩余 55.86，显示已用 14.14 / 70（20.2%）。
-- 套餐及账期来自 `/alpha/billing/subscriptions`，失败时可回退 credits 内的 planId；没有账期时不编造重置日期。
-- 月总额是[提供方插件套餐表](https://github.com/Mars-Sea/dsh-commandcode-provider/blob/main/src/capabilities.ts)的快照，不是计费接口直接报告的硬上限；未知套餐只显示剩余金额并标记部分数据。套餐变更后需核对更新。
-- 月余额不包含已购/赠送余额；月池耗尽不据此连坐周/5小时窗口。
-- 修复非法重置日期导致整包失败，以及旧配置中的 Command Code 手动 Key 绕过托管凭据来源的问题。
-- 修复 MiMo 普通刷新/缓存中的接口 Cookie 回显；脱敏正确处理分号后空格和带引号的值。
-- 修复 Netscape Cookie 导入：兼容注释、`#HttpOnly_` 域前缀及 TAB 末列空值，仍严格过滤外域。
-- MiMo 登录只锁定本厂商的手动导入/清除，不再阻止其他厂商更换 Key，也不产生实际未执行的待清除提示。
-
-## 0.4.0：Command Code 用量显示
-
-- **支持 Command Code**：该路由由另一个插件 [`@mars-sea/dsh-commandcode-provider`](https://github.com/Mars-Sea/dsh-commandcode-provider) 注册；本插件显示其 5 小时 / 每周 / 月额度池、重置时间、套餐（planId）、月剩余与已购 + 赠送余额，周窗用尽会连坐 5 小时窗口。
-- **快速直连刷新**：不消费提供方插件的用量服务（它按账户逐个串行多端点、超时预算长，作为药丸来源太慢），改为自读同一凭据后并行直连 `/alpha/billing/credits` 和 `/alpha/billing/subscriptions`（各 10 秒超时）；不读取请求统计、不串行遍历账户。
-- **同一凭据来源**：凭据服务 `COMMANDCODE_API_KEY` → 启动环境 → `~/.commandcode/auth.json`（`cmd login` 写入，解析方式与提供方插件一致）。本插件**不保存** Command Code 凭据；Key、登录与多账户在 设置 → Command Code 管理。
-- **已知限制**：多账户轮换或固定 `activeAccount` 时显示默认（顶层 Key）账户的额度，可能与实际服务账户不同；提供方插件里自定义 `apiBase` 不会被跟随。
-- **五等宽导航**：设置页厂商导航改为五等宽单行，窄内容区（≤499px）切换为选择框。
-
-**两端必须同时更新**：旧 Host 会拒绝含 `commandcode` 的刷新请求。
-
-## 0.3.0：按钮式凭据与 MiMo 自动登录
-
-- **凭据按钮**：默认只展示当前来源；通过「更换 / 清除」进入编辑，再保存或取消，不再使用「保持 / 替换 / 清除」下拉菜单。
-- **自动登录导入**：点击「登录并自动导入」，使用隔离的临时 Chrome 窗口完成官方登录，由 Host 验证并保存必需 Cookie。
-- **原生菜单对比度**：剩余套餐/provider 选项显式配对系统前景和背景，避免深色界面出现白底白字。
-
-### 延续的设置与可靠性改进
-
-- **五等宽导航**：`Z.ai / Kimi / MiMo / OpenCode Go / Command` 单行显示，窄内容区改成选择框，不出现换行。
-- **用量为主**：凭据与帮助折叠；顶部提供刷新当前/全部，保存按钮仅出现在编辑区。
-- **共享刷新**：按厂商缓存与合并在途请求，药丸和设置页共享结果，活跃厂商每分钟检查更新。
-- **两条状态轴**：数据获取成功不等于额度可用；额度不足、认证失效、缓存和部分数据均有独立说明。
-- **准确限额**：原始比例决定是否限流，不把 99.5% 提前当作 100%；较长周期限额才向内层窗口连坐。
-- **凭据来源**：可选择继承或自定义；读取结果不再回传完整 Key/Cookie。
-- **编辑保护**：按厂商增量保存，未保存编辑不被刷新覆盖；配置版本检查防止多窗口旧表单覆盖新配置。
-- **MiMo Cookie 验证**：支持标准串、多行 KV、成对 name/value、TAB 清单和 JSON 导出；解析失败保留原文，不再失焦自动破坏输入。
-
-详细界面约定见 [设计说明](docs/design-ux.md)，维护注意事项见 [开发说明](docs/development.md)。
+「没有检测到API的默认隐藏」默认开启。首次没有可见条目时，管理区自动展开；关闭的提供商仍可配置凭据，但不会请求用量。插件不注册模型路由，药丸按提供商 ID 匹配，配置表见下文。
 
 ## 使用
 
@@ -115,11 +58,11 @@
 | MiniMax 中国 | `MINIMAX_CN_API_KEY` | `minimax-cn` 路由；中国站订阅 Key |
 | Command Code | `COMMANDCODE_API_KEY` | 凭据由提供方插件管理，本页只读继承；也兜底读取 `~/.commandcode/auth.json`（`cmd login`） |
 
-Z.ai / Kimi / OpenCode Go / MiniMax 的继承模式按凭据服务 → 启动环境 → 旧手动配置兜底解析；自定义模式仅使用保存的手动 Key。Command Code 仅沿用提供方凭据来源链，不接受本插件的手动 Key；MiMo 仅使用 Cookie。界面区分凭据服务、启动环境和自定义来源。修改启动环境后是否需要重启取决于目标部署，不能把用户环境即时变化当作已经被运行进程读到。
+Z.ai（中国与国际）/ Kimi / OpenCode Go / MiniMax / Synthetic / NanoGPT 的继承模式按凭据服务 → 启动环境 → 旧手动配置兜底解析；自定义模式仅使用保存的手动 Key。Command Code 仅沿用提供方凭据来源链，不接受本插件的手动 Key；MiMo 仅使用 Cookie。界面区分凭据服务、启动环境和自定义来源。修改启动环境后是否需要重启取决于目标部署，不能把用户环境即时变化当作已经被运行进程读到。
 
 ### MiMo 登录与 Cookie
 
-推荐使用 MiMo「连接与凭据」中的 **登录并自动导入**：
+推荐使用 MiMo「登录与凭据」中的 **登录并自动导入**：
 
 1. 先保存或取消当前编辑，再开始登录。
 2. 插件调用 `playwright-core`，打开**独立临时 Chrome 会话**的官方平台；密码、验证码由你在官方页面自行输入，插件不读取这些字段，也不读取日常 Chrome 配置。
@@ -139,7 +82,7 @@ JSON 中有域名的条目按 `platform.xiaomimimo.com` 的 Cookie 域规则过�
 
 | 模型商 | 窗口 | 明细 |
 |---|---|---|
-| Z.ai | 5 小时、每周 | 已用/总计 Credits、套餐档 |
+| Z.ai 中国 | 5 小时、每周（按响应） | Token / Credits 配额、套餐档 |
 | Z.ai 国际 | 5 小时、每周（按响应） | Token / Credits 配额，区域凭据独立 |
 | Synthetic | 滚动订阅池 | 已用/总请求次数、重置时间 |
 | NanoGPT | 每日、每周、试用周期（按响应） | 输入 Token 数、重置时间；不包含图像额度 |
@@ -151,49 +94,74 @@ JSON 中有域名的条目按 `platform.xiaomimimo.com` 的 Cookie 域规则过�
 
 非公开控制台接口可能变更；缺失或非法百分比不会当作零用量。部分数据、未知额度和暂时失败有明确状态，不能据此保证推理接口一定可用。
 
-## 安装与生效
 
-本插件的 npm 包名为 `dsh-subusage`；支持 npm 源的 DSH 插件管理器可使用该包名安装。获取安装包也可使用 `npm pack dsh-subusage`。这与运行中的 Host/Client 重载是独立步骤。
+## 常见问题
 
-目标核心版本：**DeepSeek Harness `0.2.0-rc.2`**。插件声明精确 peer 版本；其它版本需重新核验 API 与兼容性。
+| 现象 | 排查方法 |
+|---|---|
+| 设置页没有提供商标签 | 展开提供商管理，确认开关和凭据；无凭据的条目默认隐藏，可临时关闭自动隐藏查看指引 |
+| 已配置凭据却没有药丸 | 确认当前模型的提供商 ID 与支持表一致、检测已开启；自定义 ID 可在设置页查看，但不会自动映射 |
+| 显示认证失效 | 检查是否用了对应产品/区域的订阅 Key；MiMo 重新登录或导入 Cookie；旧额度不会当作有效数据保留 |
+| 显示缓存、部分数据或额度未知 | 查看更新时间和错误说明；缓存来自之前的成功读取，部分数据不保证有可用额度，余额也不等于订阅余量 |
+| 刷新后数字暂未变化 | 成功结果按提供商缓存 60 秒；手动刷新可跳过普通 TTL，但仍遵守限流退避和 Retry-After |
+| MiMo 自动登录无法启动 | Host 所在机器需安装 Google Chrome 并有桌面环境；远程或无桌面部署使用手动导入 |
+| 保存成功但验证失败 | 凭据已保存，检查网络、区域或账号后重试；保存与在线验证分别反馈 |
+| 保存提示配置已改变 | 另一窗口或实例更新了设置；重新读取配置后再编辑，避免旧表单覆盖新值 |
+| 升级后仍是旧界面或 RPC 不匹配 | 确认运行中的 Host 和 Client 都已重载；仅刷新页面不能保证 Host 升级 |
+| Command Code 额度与实际账户不同 | 本插件读取默认顶层账户，尚未跟随 activeAccount、多账户轮换或提供方自定义 apiBase |
 
-```console
-git clone https://github.com/KouzakiUmi/dsh-subusage.git
-cd dsh-subusage
-```
+## 提供商 ID 与默认开关
 
-通过目标部署支持的官方插件管理/CLI 流程将工作区 bundle 安装并启用。不要直接修改核心或 ASAR；本地链接的解析方式、profile 层覆盖与重载行为应按目标环境确认。
+| 提供商 | ID | 新安装默认值 |
+|---|---|---|
+| Z.ai 中国 | `zai-coding-cn` | 开启 |
+| Kimi Coding | `kimi-coding` | 开启 |
+| MiMo | `xiaomi-token-plan-cn` | 开启 |
+| OpenCode Go | `opencode-go` | 开启 |
+| Command Code | `commandcode` | 开启 |
+| MiniMax 国际 | `minimax` | 开启 |
+| MiniMax 中国 | `minimax-cn` | 开启 |
+| Z.ai 国际 | `zai-coding` | **关闭** |
+| Synthetic | `synthetic` | **关闭** |
+| NanoGPT | `nanogpt` | **关闭** |
 
-**0.3.0 新增登录 RPC 和 `playwright-core` 依赖，必须让 Host/Client 及依赖一起更新。0.4.0 新增 Command Code 条目，同样要求两端一起更新（旧 Host 不识别 `commandcode`）。** 仅刷新页面不能升级正在运行的旧 Host。安装、重载或重启需要用户另行授权；仓库测试通过不代表运行中的插件已生效。
+开关只控制本插件的订阅检测与显示，关闭后保留凭据。默认隐藏只影响显示，不自动开启被关闭的提供商。新增三项在旧配置升级时也保持关闭。
 
-## 自动发布
+## 界面预览
 
-推送或合并到 `main` 后，GitHub Actions 自动运行回归、清单/语法及打包检查，通过后发布当前提交的 GitHub Release。PR 只测试，不发布；不用手动打 tag，也不发布到 npm。
+以下为 0.7.0 的离线组件测试截图，使用虚构用量数据，不包含真实账号信息，也不是运行中的 DSH 截图。市场截图由根目录的 `screenshots.json` 声明。
 
-每个提交使用独立的 `build-<SHA>` 标签，安装包内仍保留当前项目版本。固定下载：[最新安装包](<https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz>)。发布不会自动安装或重启插件，详见 [发布说明](<docs/publish.md>)。
+深色设置页：查看订阅用量、管理凭据与提供商；新增三家默认关闭。
 
-## 开发与测试
+![深色订阅设置页（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/settings-dark.png)
+
+浅色用量弹层：查看每日与每周额度、用量明细。
+
+![浅色 NanoGPT 用量弹层（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/usage-popover-light.png)
+
+
+## 开发、发布与文档
+
+基础检查无需安装 DSH 或连接账号：
 
 ```console
 node tests/run-all.mjs
 node scripts/check-manifest.mjs
 node --check lib/index.js
 node --check lib/client.js
+node --check lib/mimo-login.js
 ```
 
-Host 私有 Remote：
+推送到 `main` 后，GitHub Actions 检查并发布提交对应的 GitHub Release；npm 使用手动发布流程。发布产物不会自动安装或重启 DSH。
 
-- `read()`：初始化获取十个厂商/区域条目，使用每条目缓存；新增三项默认关闭。
-- `refresh({ providerIds, force })`：按厂商刷新，结果条目由客户端合并。
-- `save(settings)`：按厂商 patch 保存；读取/保存结果只含公开配置和凭据存在性。
-- `startMimoLogin({ expectedRevision })`：立即返回任务状态，后台等待官方登录，不阻塞 RPC。
-- `getMimoLoginStatus()`：轮询状态，成功结果只含公开配置和用量；账号变更后旧成功结果失效。
-- `cancelMimoLogin({ jobId })`：只取消匹配的任务，阻止迟到验证保存。
+- [开发与验证](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md)：RPC、缓存、凭据、离线预览与实机验收。
+- [UX 设计](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/design-ux.md)：导航、状态、编辑保护与弹层行为。
+- [发布与市场收录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/publish.md)：GitHub Release、npm、条目与截图维护。
+- [更新记录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/changelog.md)：各版本功能变化。
+- [0.7.0 审查记录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/code-review.md)：修复、接口来源和验证边界。
 
-可选的本机 Chrome 验收：使用 [离线预览脚本](<scripts/render-ui-preview.mjs>) 生成深浅主题的 530/500/499/360px MiMo 凭据预览（宽度指内部内容区），然后运行 [浏览器验收脚本](<scripts/check-browser-runtime.mjs>)。仅使用本地页面与虚构 Cookie，不连接 DSH 或真正 MiMo，不等于真实账号登录已验证。
-
-回归测试覆盖归一化、限额边界、Cookie、RPC 契约、缓存/异常隔离、设置状态与 slot 装配。核心依赖与网络使用桩；真实 Loader composition、在线 API 和浏览器视觉仍须部署后验收，不把桩测试当作已上线证明。
+测试使用虚构凭据、桩网络和离线组件。真实 DSH Loader、实际账号在线接口与多账户映射尚未验收；截图不代表已通过这些检查。
 
 ## 许可
 
-MIT。与 DeepSeek Harness 及各服务商无官方关联；请遵守各服务商的使用条款。
+MIT。与 DeepSeek Harness 及各服务商无官方关联。
