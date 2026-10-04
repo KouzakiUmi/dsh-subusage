@@ -6,6 +6,21 @@ dshmarket 本身不收插件条目——上架走 awesome-dsh-plugin 注册表,�
 
 ## 本仓库的发布管线
 
+### npm 手动发布
+
+本包可发布到公共 npm registry，包名为 `dsh-subusage`。GitHub 的每提交构建仍只发布 Release，不会重复发布同一 npm 版本。
+
+```console
+npm login --auth-type=web --registry=https://registry.npmjs.org/
+node tests/run-all.mjs
+node scripts/check-manifest.mjs
+npm publish --dry-run --ignore-scripts
+npm publish --access public --ignore-scripts
+npm view dsh-subusage version dist-tags
+```
+
+发布前确认登录账号及版本未被发布。后续 npm 更新必须提升语义版本。认证和发布二次验证在 npm 官方页面完成，不把密码、验证码或 token 保存到仓库。`publishConfig` 固定公共 registry 和公开访问。
+
 | 文件 | 作用 |
 |---|---|
 | [scripts/check-manifest.mjs](../scripts/check-manifest.mjs) | 本地清单校验(对齐收录 CI 的机械检查点) |
@@ -59,7 +74,7 @@ tarball: https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh
 
 ### 可选增强
 
-- **发 npm 包**:市场能显示并按下载量排序;`repository` 字段已指回本仓库,映射由 registry 自动采集,无需通知注册表。当前工作流未启用 npm 发布；若另行授权启用，需去掉 [包清单](<../package.json>) 的 `"private": true`、配置 npm 认证，并单独设计按唯一语义版本发布的 job，不能把每提交快照直接当作同版本 npm 发布。
+- **发 npm 包**:市场能显示并按下载量排序;`repository` 字段已指回本仓库,映射由 registry 自动采集,无需通知注册表。已启用手动 npm 发布，自动工作流仍只发布 GitHub Release；不能把每提交快照直接当作同版本 npm 发布。
 - **市场截图**:仓库根放 `screenshots.json`(1–8 张图片相对路径,不得越出仓库);不声明则市场从 README 自动抽取。
 
 ## 注意

@@ -141,6 +141,8 @@ JSON 中有域名的条目按 `platform.xiaomimimo.com` 的 Cookie 域规则过�
 
 ## 安装与生效
 
+本插件的 npm 包名为 `dsh-subusage`；支持 npm 源的 DSH 插件管理器可使用该包名安装。获取安装包也可使用 `npm pack dsh-subusage`。这与运行中的 Host/Client 重载是独立步骤。
+
 目标核心版本：**DeepSeek Harness `0.2.0-rc.2`**。插件声明精确 peer 版本；其它版本需重新核验 API 与兼容性。
 
 ```console
