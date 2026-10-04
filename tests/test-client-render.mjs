@@ -123,7 +123,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode"])
   const section = plugin.__test.SubusageSection({ usageStore, t: (key) => key, getLocale: () => "zh" });
   const all = flattenNodes(section), selects = all.filter((n) => n.type === "select");
   assert.equal(selects.length, 0, "设置页不使用任何下拉列表");
-  assert.equal(all.filter(n => n.props?.role === "switch").length, 8, "提供商与默认隐藏开关均可见");
+  assert.equal(all.filter(n => n.props?.role === "switch").length, 11, "提供商与默认隐藏开关均可见");
   if (provider === "xiaomi-token-plan-cn") {
     assert.ok(visibleText(section).includes("登录并自动导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));

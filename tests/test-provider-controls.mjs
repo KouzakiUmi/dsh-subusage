@@ -12,7 +12,7 @@ const ctx = { effect() {}, llm: { listProviders: () => [{ id: Z }] } };
 let service = new SubUsageService(ctx, options);
 let result = await service.read();
 assert.equal(result.settings.visibility.hideWithoutApi, true);
-assert(Object.values(result.settings.visibility.providers).every(Boolean), "旧配置全部开关默认开启");
+assert(Object.entries(result.settings.visibility.providers).every(([id, on]) => ["zai-coding", "synthetic", "nanogpt"].includes(id) ? !on : on), "旧厂商保持默认值，新增厂商默认关闭");
 assert.equal(result.configured[Z], true); assert.equal(result.entries.find(e => e.providerId === Z).apiDetected, false, "有路由不代表有 Key");
 assert.equal(result.configured[M], false); assert.equal(result.entries.find(e => e.providerId === M).apiDetected, true, "有手动 Key 即可检测，不依赖路由注册");
 assert.equal(calls, 1); assert(!JSON.stringify(result).includes("fixture-key"));

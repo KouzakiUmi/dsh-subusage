@@ -48,8 +48,9 @@ try {
     assert.equal(info.tabsVisible, true, '窄屏仍使用按钮导航');
     assert(info.tabWidths.every(width => width > 0), '所有标签均有可点击区域');
     assert.equal(info.selectCount, 0, '整个设置页不使用下拉列表');
-    assert.equal(info.switches.length, 8, '七个提供商开关与默认隐藏开关');
-    assert(info.switches.every(item => item.state === 'true' && item.label), '开关有正确的状态与无障碍名称');
+    assert.equal(info.switches.length, 11, '十个提供商开关与默认隐藏开关');
+    assert(info.switches.every(item => item.label), '开关有无障碍名称');
+    assert.equal(info.switches.filter(item => item.state === 'false').length, 3, '新增三家默认关闭');
     await page.screenshot({ path: file.replace(/\.html$/, '.png'), fullPage: true });
     await context.close();
     console.log(`PASS ${theme}/${width} 提供商开关、可换行按钮、无下拉、无溢出`);

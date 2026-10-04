@@ -85,6 +85,7 @@ assert.equal(saveCalls, 1); assert.equal(seen.state, "loading"); assert.equal(se
 oldGate.resolve(result([entry(ids[0], 99)])); await oldRequest;
 assert.equal(saveStore.getSnapshot().settings.revision, "2");
 assert.equal(saveStore.getSnapshot().entries.find((e) => e.providerId === ids[0]).windows.length, 0);
+assert.equal(saveStore.getSnapshot().entries.find((e) => e.providerId === ids[1]).windows[0].percent, 25, "保存单家凭据保留其他厂商额度");
 unsub(); saveStore.dispose();
 // 传输失败不擅自显示旧成功缓存；只有 Host retainPrevious + stale 能显示。
 const failedStore = api.createUsageStore((method) => method === "read" ? result([entry(ids[0])]) : Promise.reject(new Error("network down")));
@@ -125,7 +126,7 @@ let tabs = nodes(tree).filter((n) => n.props.role === "tab");
 assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "MiniMax", "MiniMax CN"]);
 assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
 assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + 1); assert.ok(!textOf(tree).includes("保存设置"));
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + 4); assert.ok(!textOf(tree).includes("保存设置"));
 let focused; tabs[0].props.onKeyDown({ key: "End", preventDefault() {}, currentTarget: { parentElement: { querySelectorAll: () => tabs.map((_, i) => ({ focus() { focused = i; } })) } } });
 assert.equal(focused, ids.length - 1); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids.at(-1));
 assert.ok(textOf(tree).includes("MINIMAX_CN_API_KEY"));
@@ -324,7 +325,7 @@ const management = tree.children.at(-1);
 assert.equal(management.type, "details", "管理区为设置页末尾的折叠菜单");
 assert.equal(management.props.id, "subusage-provider-management"); assert.notEqual(management.props.open, true, "默认折叠");
 assert.equal(management.children[0].type, "summary"); assert.equal(management.children[0].children[0], "提供商管理");
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + 1, "所有关闭/隐藏提供商保留管理开关");
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + 4, "所有关闭/隐藏提供商保留管理开关");
 assert.deepEqual(nodes(tree).filter(n => n.props.role === "tab").map(n => n.props.id), ids.filter(id => ![ids[1], ids[3]].includes(id)).map(id => `subusage-tab-${id}`));
 assert(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick({ preventDefault() {} }); tree = ch.render(api.SubusageSection, cp);
@@ -355,7 +356,8 @@ const beforeToggle = controlPatches.length; await nodes(tree).find(n => n.props[
 ch.unmount();
 controlSnapshot = withPrefs(result(controlSnapshot.entries), preferences(Object.fromEntries(ids.map(id => [id, false]))));
 const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSection, cp);
-assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 8);
+assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 11);
+assert.equal(nodes(tree).find(n => n.props.id === "subusage-provider-management").props.open, true, "空状态展开配置入口");
 assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.role === "tabpanel"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick({ preventDefault() {} }); tree = emptyControls.render(api.SubusageSection, cp);
 assert.equal(nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[0]}`).props.open, true, "全部关闭仍能行内配置");
@@ -379,4 +381,19 @@ oldControlGate.resolve(withPrefs(result([entry(ids[0], 99)], "old-controls"))); 
 assert.equal(managedStore.getSnapshot().settings.visibility.providers[ids[0]], false); assert.equal(managedStore.getSnapshot().settings.revision, "controls-2");
 blockRefresh = false; assert.equal((await managedStore.reader(ids[1])()).visible, true, "关闭默认隐藏后缺 API 的配置指引恢复");
 offObserve(); managedStore.dispose();
+// First read fails: the visible toolbar retries initialization, rather than leaving switches locked.
+let initCalls = 0, retryAllowed = false, retrySnapshot = { settings: null, configured: {}, entries: [] };
+const retryStore = { subscribe: () => () => {}, getSnapshot: () => retrySnapshot, activate: () => () => {}, refresh: async () => retrySnapshot, readAll: async () => { initCalls++; if (!retryAllowed) throw new Error("fixture initial read failed"); return retrySnapshot = result([entry(ids[0])]); } };
+const retryHooks = new Hooks();
+tree = retryHooks.render(api.SubusageSection, { ...props, usageStore: retryStore }); await flush();
+tree = retryHooks.render(api.SubusageSection, { ...props, usageStore: retryStore });
+assert(nodes(tree).some(n => n.props.role === "alert" && n.children.includes("fixture initial read failed")));
+retryAllowed = true; const beforeRetry = initCalls;
+await nodes(tree).find(n => n.type === "button" && n.children.includes("刷新全部")).props.onClick();
+tree = retryHooks.render(api.SubusageSection, { ...props, usageStore: retryStore }, false);
+assert.equal(retrySnapshot.settings.revision, "1");
+assert.equal(initCalls, beforeRetry + 1);
+assert(!nodes(tree).some(n => n.props.role === "alert")); retryHooks.unmount();
+// New providers stay off even with missing visibility fields from an older settings snapshot.
+for (const id of ["zai-coding", "synthetic", "nanogpt"]) assert.equal(api.providerVisible(publicSettings(), id, entry(id)), false);
 console.log("PASS provider management switches/no-dropdown/filtering/persistence payloads/dirty guard/pill subscription/race + existing client behavior");

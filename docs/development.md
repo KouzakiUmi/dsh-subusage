@@ -64,6 +64,8 @@ MiMo 接口字段是不可信输入：余额只接受有限十进制字符串，
 
 ## 6. 测试与生效
 
+0.7.0 新增 `zai-coding` / `synthetic` / `nanogpt`，两端默认关闭；旧配置升级不自动启用。NanoGPT 接口的比例为 0–1、重置为毫秒，日/周仅统计输入 Token；`sk-nano-mgmt-` 前缀选择管理用量接口，其他 Key 使用推理凭据的用量接口。相关来源、修复与测试结果见 [审查记录](code-review.md)。
+
 ```console
 node tests/run-all.mjs
 node scripts/check-manifest.mjs

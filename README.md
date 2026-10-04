@@ -1,6 +1,15 @@
 # dsh-subusage —— DeepSeek Harness 订阅用量显示
 
-在模型选择器旁显示当前模型商的订阅余量；点开药丸看用量、重置时间和套餐详情。支持 **Z.ai Coding CN / Kimi Coding / Xiaomi MiMo / OpenCode Go / Command Code / MiniMax（国际与中国）**。
+在模型选择器旁显示当前模型商的订阅余量；点开药丸看用量、重置时间和套餐详情。支持 **Z.ai Coding（中国与国际）/ Kimi Coding / Xiaomi MiMo / OpenCode Go / Command Code / MiniMax（国际与中国）/ Synthetic / NanoGPT**。
+
+## 0.7.0：审查修复与新增订阅商
+
+- 新增 `zai-coding`（国际版）、`synthetic`、`nanogpt`：新安装与旧配置升级均默认关闭，即使有环境凭据也不请求用量。可在「提供商管理」手动开启；原有七项的默认值和用户已保存开关保持不变。
+- Z.ai 国际版依据[官方查询脚本](https://github.com/zai-org/zai-coding-plugins/blob/main/plugins/glm-plan-usage/skills/usage-query-skill/scripts/query-usage.mjs)直连监控接口，区域凭据独立；补齐 `TOKENS_LIMIT` 格式。Synthetic 使用[官方 quotas API](https://dev.synthetic.new/docs/synthetic/quotas)，只读取模型订阅请求池。
+- NanoGPT 使用[官方订阅用量 API](https://docs.nano-gpt.com/api-reference/endpoint/subscription-usage)，显示每日/每周输入 Token 及试用 Token 池；支持手动填写 `sk-nano-mgmt-…` [Usage only 管理令牌](https://docs.nano-gpt.com/api-reference/management-api)，自动选择只读管理接口。忽略图像池，未开通、缺数据、降级响应不会显示虚假剩余额度。
+- 修复额度重置时绕过 `Retry-After`、保存一家凭据导致其他用量消失，以及首次读取失败后无法重新初始化的问题。
+- 空状态自动展开提供商管理；刷新错误始终在工具栏下可见；药丸弹层适应窄屏和深浅主题。
+- Host/Client 必须一起更新。已做离线回归与浏览器布局检查，未使用真实账号在线验证。详见[审查记录](docs/code-review.md)。
 
 ## 0.6.0：提供商管理与默认隐藏
 
@@ -84,6 +93,9 @@
 | 模型商 | 默认继承变量 | 说明 |
 |---|---|---|
 | Z.ai | `ZAI_CODING_CN_API_KEY` | 团队套餐另填组织、项目 ID |
+| Z.ai 国际 | `ZAI_CODING_API_KEY` | `zai-coding`，默认关闭，独立国际 Coding Plan Key |
+| Synthetic | `SYNTHETIC_API_KEY` | `synthetic`，默认关闭，模型订阅请求额度 |
+| NanoGPT | `NANOGPT_API_KEY` | `nanogpt`，默认关闭；也可手动填写 Usage only 管理令牌 |
 | Kimi | `KIMI_CODING_API_KEY` | 需要 Kimi Coding Key，不是 Moonshot 开平台 Key |
 | MiMo | 不使用 API Key | 通过控制台 Cookie 会话读取 |
 | OpenCode Go | `OPENCODE_API_KEY` | OpenCode Go Key |
@@ -116,6 +128,9 @@ JSON 中有域名的条目按 `platform.xiaomimimo.com` 的 Cookie 域规则过�
 | 模型商 | 窗口 | 明细 |
 |---|---|---|
 | Z.ai | 5 小时、每周 | 已用/总计 Credits、套餐档 |
+| Z.ai 国际 | 5 小时、每周（按响应） | Token / Credits 配额，区域凭据独立 |
+| Synthetic | 滚动订阅池 | 已用/总请求次数、重置时间 |
+| NanoGPT | 每日、每周、试用周期（按响应） | 输入 Token 数、重置时间；不包含图像额度 |
 | Kimi | 5 小时、7 天 | 已用百分比、套餐档 |
 | MiMo | 本周期额度池 | 用量明细、重置时间、套餐与余额 |
 | OpenCode Go | 滚动、每周、每月 | 已用百分比、重置时间 |
@@ -154,7 +169,7 @@ node --check lib/client.js
 
 Host 私有 Remote：
 
-- `read()`：初始化获取七个厂商/区域条目，使用每条目缓存。
+- `read()`：初始化获取十个厂商/区域条目，使用每条目缓存；新增三项默认关闭。
 - `refresh({ providerIds, force })`：按厂商刷新，结果条目由客户端合并。
 - `save(settings)`：按厂商 patch 保存；读取/保存结果只含公开配置和凭据存在性。
 - `startMimoLogin({ expectedRevision })`：立即返回任务状态，后台等待官方登录，不阻塞 RPC。

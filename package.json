@@ -1,13 +1,13 @@
 {
   "name": "dsh-subusage",
   "displayName": "订阅用量显示",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": true,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/KouzakiUmi/dsh-subusage.git"
   },
-  "description": "显示 Z.ai / Kimi / MiMo / OpenCode Go / Command Code / MiniMax 订阅余量；共享刷新、按钮式凭据编辑与隔离 Chrome 的 MiMo 登录自动导入。",
+  "description": "显示 Z.ai（中国与国际）/ Kimi / MiMo / OpenCode Go / Command Code / MiniMax / Synthetic / NanoGPT 订阅余量；新增提供商默认关闭，共享刷新与凭据管理。",
   "keywords": [
     "dsh",
     "dsh-plugin",
