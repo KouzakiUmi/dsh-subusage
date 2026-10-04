@@ -7,3 +7,11 @@ pnpm-lock.yaml
 debug/
 dist/
 pack.json
+
+# 工具缓存与本地诊断产物，不进版本库
+.graphflow/
+.graphflow-cache/
+graphflow-out/
+acl-report-*.jsonl
+acl-backup-*.json
+acl-backup-*.ps1

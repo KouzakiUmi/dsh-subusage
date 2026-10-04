@@ -1,0 +1,63 @@
+// MiniMax：官方 Token Plan 响应语义、区域隔离、缓存及凭据契约（仅虚构 Key）。
+import assert from "node:assert/strict";
+import { loadHostModule } from "./helpers.mjs";
+const { normalizeMinimax, SubUsageService, subUsageRemote } = await loadHostModule();
+const make = (row = {}) => ({ base_resp: { status_code: 0 }, model_remains: [{ model_name: "general", current_interval_remaining_percent: 80, current_interval_status: 1, current_weekly_remaining_percent: 60, current_weekly_status: 1, end_time: 1791090000000, weekly_end_time: 1791600000000, ...row }] });
+let out = normalizeMinimax(make());
+assert.deepEqual(out.windows.map(w => w.percent), [20, 40]);
+assert.equal(out.coverage, "complete");
+assert.equal(out.windows[0].resetsAt, new Date(1791090000000).toISOString());
+assert.equal(out.windows[0].detail, undefined);
+// 新旧 usage_count 两种解释，均须与权威 remaining_percent 一致。
+for (const reported of [20, 80]) {
+ const w = normalizeMinimax(make({ current_interval_total_count: 100, current_interval_usage_count: reported })).windows[0];
+ assert.deepEqual(w.detail, { used: 20, remaining: 80, limit: 100, unit: "quota" });
+}
+assert.equal(normalizeMinimax(make({ current_interval_total_count: 100, current_interval_usage_count: 50 })).windows[0].detail, undefined);
+assert.equal(normalizeMinimax(make({ current_interval_total_count: 0, current_interval_usage_count: 0 })).windows[0].percent, 20);
+const legacy = normalizeMinimax(make({ model_name: "MiniMax-M*", current_interval_remaining_percent: undefined, current_interval_total_count: 1500, current_interval_usage_count: 1497, current_weekly_remaining_percent: undefined, current_weekly_total_count: 0, current_weekly_usage_count: 0 }));
+assert.equal(legacy.windows[0].percent, 0.2);
+assert.equal(legacy.windows[0].detail.used, 3);
+assert.equal(legacy.windows.length, 1); assert.equal(legacy.coverage, "partial");
+const mixed = make(); mixed.model_remains.unshift({ model_name: "video", current_interval_remaining_percent: 0 });
+assert.deepEqual(normalizeMinimax(mixed).windows.map(w => w.percent), [20, 40], "忽略视频池且不加总共享模型池");
+assert.equal(normalizeMinimax(make({ current_weekly_status: 3 })).windows.length, 1);
+const unknown = normalizeMinimax(make({ current_interval_status: 3, current_weekly_status: 3, current_interval_total_count: 0, current_weekly_total_count: 0 }));
+assert.deepEqual(unknown.windows, []); assert.equal(unknown.coverage, "partial");
+const exhausted = normalizeMinimax(make({ current_weekly_status: 2 }));
+assert.equal(exhausted.windows[1].percent, 100); assert.equal(exhausted.windows[0].cascade, true);
+assert.equal(normalizeMinimax(make({ current_interval_remaining_percent: 0.01 })).windows[0].status, "ok");
+assert.equal(normalizeMinimax(make({ current_interval_remaining_percent: 0 })).windows[0].status, "rate-limited");
+assert.equal(normalizeMinimax(make({ current_interval_remaining_percent: 150 })).windows[0].percent, 0);
+assert.equal(normalizeMinimax(make({ end_time: 1e99 })).windows[0].resetsAt, undefined);
+for (const bad of [null, {}, { model_remains: [] }, { base_resp: { status_code: 0 }, model_remains: [] }, make({ current_interval_remaining_percent: -1 }), make({ current_interval_remaining_percent: "80" }), make({ current_interval_status: 7 }), make({ current_interval_remaining_percent: undefined, current_interval_total_count: 100, current_interval_usage_count: 101 })]) assert.throws(() => normalizeMinimax(bad));
+assert.throws(() => normalizeMinimax({ ...make(), base_resp: { status_code: 1004, status_msg: "secret" } }), e => e.code === "subusage/auth" && !e.message.includes("secret"));
+assert.throws(() => normalizeMinimax({ ...make(), base_resp: { status_code: 1002 } }), e => e.details.retryable);
+const duplicate = make(); duplicate.model_remains.push(duplicate.model_remains[0]); assert.throws(() => normalizeMinimax(duplicate));
+
+const files = new Map(), calls = [], credentials = {}, environment = {};
+let now = Date.parse("2026-10-04T00:00:00Z"), response = () => make();
+const io = { readFileSync(path) { if (!files.has(path)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); return files.get(path); }, mkdirSync() {}, writeFileSync(path, value) { files.set(path, value); }, chmodSync() {}, renameSync(from, to) { files.set(to, files.get(from)); files.delete(from); } };
+const service = new SubUsageService({ effect() {}, llm: { listProviders: () => [{ id: "minimax" }, { id: "minimax-cn" }] } }, { io, configPath: "memory/config", now: () => now, resolveCredentials: async id => credentials[id], resolveEnvironment: id => environment[id], fetch: async (url, options) => { calls.push({ url, options }); const value = response(url); if (value instanceof Error) throw value; return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(value) }; } });
+const refresh = (ids = ["minimax", "minimax-cn"], force = false) => service.refresh({ providerIds: ids, force });
+let result = await refresh(); assert(result.entries.every(e => e.state === "no-key")); assert.equal(calls.length, 0);
+credentials.minimax = { value: "dummy-global" }; environment["minimax-cn"] = { value: "dummy-cn" };
+result = await refresh(); assert(result.entries.every(e => e.state === "ok"));
+assert.equal(result.configured.minimax, true); assert.equal(result.configured["minimax-cn"], true);
+assert.equal(calls[0].url, "https://api.minimax.io/v1/token_plan/remains"); assert.equal(calls[0].options.headers.authorization, "Bearer dummy-global");
+assert.equal(calls[1].url, "https://api.minimaxi.com/v1/token_plan/remains"); assert.equal(calls[1].options.headers.authorization, "Bearer dummy-cn");
+assert.equal(calls[0].options.redirect, "manual"); assert.equal(result.entries[1].keySource, "env");
+assert(!JSON.stringify(result).includes("dummy-"));
+await refresh(); assert.equal(calls.length, 2, "共享缓存");
+const queryCodec = subUsageRemote.descriptors.find(d => d.method === "refresh").parameters[0].codec;
+assert.deepEqual(queryCodec.schema.parse({ providerIds: ["minimax", "minimax-cn"], force: true }).providerIds, ["minimax", "minimax-cn"]);
+await service.save({ providerId: "minimax-cn", keyMode: "manual", keyUpdate: { action: "replace", value: "dummy-manual" } });
+result = await refresh(["minimax-cn"]); assert.equal(result.entries[0].keySource, "manual"); assert.equal(calls.at(-1).options.headers.authorization, "Bearer dummy-manual");
+assert(!JSON.stringify(result).includes("dummy-manual"));
+now += 61000; response = () => new Error("dummy-manual");
+result = await refresh(["minimax-cn"]); assert.equal(result.entries[0].freshness, "stale"); assert.equal(result.entries[0].retainPrevious, true); assert(!JSON.stringify(result).includes("dummy-manual"));
+now += 61000; response = () => ({ base_resp: { status_code: 1004, status_msg: "dummy-manual" } });
+result = await refresh(["minimax-cn"], true); assert.equal(result.entries[0].errorCode, "subusage/auth"); assert.equal(result.entries[0].windows, undefined);
+await service.save({ providerId: "minimax-cn", keyUpdate: { action: "clear" } }); result = await refresh(["minimax-cn"]); assert.equal(result.entries[0].state, "no-key");
+service.dispose();
+console.log("PASS MiniMax normalization, region isolation, credentials, cache and RPC");

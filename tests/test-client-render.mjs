@@ -61,7 +61,7 @@ const first = renderWrapper("xiaomi-token-plan-cn");
 const second = renderWrapper("xiaomi-token-plan-cn");
 assert.equal(first.props.readEntry, second.props.readEntry);
 assert.equal(readerCalls, 1, "相同 provider 不得重建 reader");
-for (const provider of ["openai-codex", null, "kimi-coding", "zai-coding-cn", "opencode-go", "commandcode", null, "xiaomi-token-plan-cn"]) {
+for (const provider of ["openai-codex", null, "kimi-coding", "zai-coding-cn", "opencode-go", "commandcode", "minimax", "minimax-cn", null, "xiaomi-token-plan-cn"]) {
   const before = readerCalls;
   const element = renderWrapper(provider);
   assert.deepEqual(hooks, ["useSyncExternalStore", "useMemo"], `Hook 顺序必须稳定: ${provider}`);
@@ -84,6 +84,8 @@ for (const open of [false, true]) {
 }
 const normal = { state: "ok", windows: [{ kind: "sub", percent: 25, status: "ok" }], extras: [] };
 assert.ok(JSON.stringify(renderPill(normal)).includes("pillRemaining"));
+assert.equal(renderPill({ ...normal, visible: false }), null, "隐藏药丸不渲染额度或提示");
+assert.equal(renderPill({ ...normal, state: "disabled" }), null, "关闭提供商后药丸隐藏");
 const limited = { ...normal, windows: [{ kind: "sub", percent: 100, status: "rate-limited" }] };
 assert.ok(JSON.stringify(renderPill(limited)).includes("pillLimited"));
 assert.ok(JSON.stringify(renderPill(null)).includes("loading"));
@@ -112,7 +114,7 @@ const monthlyRow = plugin.__test.UsageWindowRow({ w: monthlyEntry.windows[0], t:
 assert.ok(visibleText(monthlyRow).includes("wmonth"));
 assert.ok(visibleText(monthlyRow).includes("14.14/70 credits"));
 assert.ok(visibleText(monthlyRow).includes("planSnapshotLimit"));
-// 原生菜单保留键盘导航，所有option随系统主题成对着色；敏感动作不再使用select。
+// 按钮导航、提供商开关、套餐单选按钮；整个设置页不使用 select/option。
 const flattenNodes = (node) => Array.isArray(node) ? node.flatMap(flattenNodes) : node && typeof node === "object" ? [node, ...flattenNodes(node.children || [])] : [];
 const settings = { revision: "public-1", zai: { type: 1 }, hasKeys: { "zai-coding-cn": true }, keyModes: {}, xiaomi: { hasCookie: true } };
 const usageStore = { subscribe: () => () => {}, getSnapshot: () => ({ settings, configured: {}, entries: [] }) };
@@ -120,11 +122,8 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode"])
   stateValues = [provider]; stateIndex = 0;
   const section = plugin.__test.SubusageSection({ usageStore, t: (key) => key, getLocale: () => "zh" });
   const all = flattenNodes(section), selects = all.filter((n) => n.type === "select");
-  assert.ok(selects.every((n) => !["keep", "replace", "clear", "inherit", "manual"].includes(n.props.value)));
-  assert.ok(selects.every((n) => n.props.style.colorScheme === "light dark"));
-  for (const option of all.filter((n) => n.type === "option")) {
-    assert.equal(option.props.style.color, "CanvasText"); assert.equal(option.props.style.backgroundColor, "Canvas");
-  }
+  assert.equal(selects.length, 0, "设置页不使用任何下拉列表");
+  assert.equal(all.filter(n => n.props?.role === "switch").length, 8, "提供商与默认隐藏开关均可见");
   if (provider === "xiaomi-token-plan-cn") {
     assert.ok(visibleText(section).includes("登录并自动导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));
@@ -133,4 +132,4 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode"])
     assert.equal(all.filter((n) => typeof n.props?.["aria-pressed"] === "boolean").length, 0, "Command Code 无凭据编辑按钮");
   } else assert.equal(all.filter((n) => typeof n.props?.["aria-pressed"] === "boolean").length, 2);
 }
-console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮与主题原生option");
+console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/提供商开关/无下拉布局");

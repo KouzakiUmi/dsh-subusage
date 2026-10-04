@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import assert from "node:assert/strict";
-const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go", "commandcode"];
+const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go", "commandcode", "minimax", "minimax-cn"];
 const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
 let spec, clock = Date.parse("2026-10-01T10:00:00Z"), nextTimer = 0;
 const intervals = new Map(), timeouts = new Map(), events = new Map();
@@ -23,7 +23,7 @@ const react = {
   useMemo: (fn, deps) => harness.memo(fn, deps),
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot()
 };
-vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, canShowUsage, validateCookieText, settingsPatch, draftFor, SubusageSection, UsagePill, UsageWindowRow, providerIcon, zh }; exports.apply = apply;"), {
+vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, canShowUsage, validateCookieText, settingsPatch, draftFor, SubusageSection, UsagePill, UsageWindowRow, providerIcon, providerVisible, zh }; exports.apply = apply;"), {
   window: { localStorage: { getItem: (key) => memory.get(key), setItem: (key, value) => memory.set(key, value) }, __ModuleLoader__: { load: (value) => { spec = value; } } },
   document, console, Date: FakeDate,
   setInterval: (fn, ms) => { const id = ++nextTimer; intervals.set(id, { fn, ms }); return id; }, clearInterval: (id) => intervals.delete(id),
@@ -60,7 +60,7 @@ await flush();
 assert.equal(calls.filter((c) => c.method === "refresh").length, 1);
 assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1).query)), { providerIds: [ids[0]], force: false });
 gate.resolve(result([entry(ids[0], 88)])); await Promise.all([r1, r2]);
-assert.equal(store.getSnapshot().entries.length, 5, "partial merge 保留其它家");
+assert.equal(store.getSnapshot().entries.length, ids.length, "partial merge 保留其它家");
 assert.equal(store.getSnapshot().entries.find((e) => e.providerId === ids[1]).windows[0].percent, 25);
 store.dispose();
 // 后到 readAll 不能覆盖新 force refresh（相同 revision 也必须挡）。
@@ -71,7 +71,7 @@ const force = raceStore.refresh([ids[0]], true);
 forceGate.resolve(result([entry(ids[0], 90)])); await force;
 readGate.resolve(result(ids.map((id) => entry(id, 10)))); await slowRead;
 assert.equal(raceStore.getSnapshot().entries.find((e) => e.providerId === ids[0]).windows[0].percent, 90);
-assert.equal(raceStore.getSnapshot().entries.length, 5, "read 的未冲突 provider 仍合并");
+assert.equal(raceStore.getSnapshot().entries.length, ids.length, "read 的未冲突 provider 仍合并");
 raceStore.dispose();
 // 保存立即失效旧quota、更新revision；旧在途结果不能恢复quota或回退revision。
 const oldGate = deferred(); let saveCalls = 0;
@@ -116,17 +116,21 @@ assert.ok(textOf(tree).includes("拉取失败")); assert.ok(!textOf(tree).includ
 const sharedPill = api.createUsageStore(() => result([entry(ids[0])]));
 const sh = new Hooks(); sh.render(api.UsagePill, { ...pillProps, readEntry: sharedPill.reader(ids[0]) }); await flush();
 assert.equal(intervals.size, 1); sh.unmount(); assert.equal(intervals.size, 0); assert.equal(events.get("visibilitychange").size, 0); sharedPill.dispose();
-// 设置：5col短label、公共凭据不回填、dirty保存/取消、键盘与持久化、MiMo无Key/桥。
+// 设置：7col短label、公共凭据不回填、dirty保存/取消、键盘与持久化、MiMo无Key/桥。
 const uiGate = deferred(); let uiSnapshot = result(ids.map((id) => entry(id))); let savedPatch;
 const uiStore = { getSnapshot: () => uiSnapshot, subscribe: () => () => {}, readAll: async () => uiSnapshot, activate: () => () => {}, save: async (patch) => { savedPatch = patch; uiSnapshot = result([], "2"); return uiSnapshot; }, refresh: async () => uiGate.promise };
 const uh = new Hooks(), props = { usageStore: uiStore, t, getLocale: () => "zh" };
 tree = uh.render(api.SubusageSection, props);
 let tabs = nodes(tree).filter((n) => n.props.role === "tab");
-assert.equal(tabs.length, 5); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command"]);
-assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.gridTemplateColumns, "repeat(5, minmax(0, 1fr))");
-assert.ok(textOf(tree).includes("max-width:499px")); assert.ok(!textOf(tree).includes("保存设置"));
+assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "MiniMax", "MiniMax CN"]);
+assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
+assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + 1); assert.ok(!textOf(tree).includes("保存设置"));
 let focused; tabs[0].props.onKeyDown({ key: "End", preventDefault() {}, currentTarget: { parentElement: { querySelectorAll: () => tabs.map((_, i) => ({ focus() { focused = i; } })) } } });
-assert.equal(focused, 4); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids[4]);
+assert.equal(focused, ids.length - 1); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids.at(-1));
+assert.ok(textOf(tree).includes("MINIMAX_CN_API_KEY"));
+assert.ok(textOf(tree).includes("订阅 Key"));
+tabs = nodes(tree).filter((n) => n.props.role === "tab"); tabs[4].props.onClick(); tree = uh.render(api.SubusageSection, props);
 assert.ok(textOf(tree).includes("直接拉取"), "Command Code 标签展示只读说明");
 assert.ok(!nodes(tree).some((n) => n.type === "input" && n.props.type === "password"), "Command Code 不提供本地 Key 输入");
 tabs = nodes(tree).filter((n) => n.props.role === "tab"); tabs[3].props.onClick(); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids[3]);
@@ -298,4 +302,81 @@ const mismatch = await scopedStore.refresh([ids[0]]).then(() => null, (error) =>
 assert.ok(mismatch.message.includes("契约版本不匹配")); assert.ok(mismatch.message.includes("重新加载或重启"));
 for (const fn of disposers) fn();
 assert.equal(intervals.size, 0); assert.equal(timeouts.size, 0);
-console.log("PASS partial store/读写race/生命周期/5col导航/凭据按钮dirty保存取消/主题option/自动登录状态轮询清理/旧job竞态/成功公共revision与草稿保护");
+// 提供商开关/默认隐藏/隐藏项配置入口/无下拉；只按凭据存在性过滤，不按 API 成功过滤。
+const preferences = (providers = {}, hideWithoutApi = true) => ({ hideWithoutApi, providers: { ...Object.fromEntries(ids.map(id => [id, true])), ...providers } });
+const withPrefs = (data, prefs = preferences()) => ({ ...data, settings: { ...data.settings, visibility: prefs } });
+assert.equal(api.providerVisible({ visibility: preferences() }, ids[0], entry(ids[0], 0, { state: "no-key", apiDetected: false })), false);
+assert.equal(api.providerVisible({ visibility: preferences({}, false) }, ids[0], entry(ids[0], 0, { state: "no-key", apiDetected: false })), true);
+assert.equal(api.providerVisible({ visibility: preferences({ [ids[0]]: false }, false) }, ids[0], entry(ids[0])), false);
+assert.equal(api.providerVisible({ visibility: preferences() }, ids[0], entry(ids[0], 0, { state: "error", apiDetected: true, errorCode: "subusage/auth" })), true);
+assert.equal(api.providerVisible({ visibility: preferences() }, ids[0], entry(ids[0], 0, { state: "error", apiDetected: null, errorCode: "subusage/credentials" })), true);
+let controlSnapshot = withPrefs(result(ids.map(id => entry(id, 20, { apiDetected: id !== ids[1], ...(id === ids[1] ? { state: "no-key" } : {}) }))), preferences({ [ids[3]]: false }));
+const controlPatches = [], controlRefreshes = [];
+const controlStore = { ...uiStore, getSnapshot: () => controlSnapshot, readAll: async () => controlSnapshot, refresh: async (ids) => { controlRefreshes.push(ids); return controlSnapshot; }, save: async patch => {
+ controlPatches.push(patch); const old = controlSnapshot.settings.visibility, v = patch.visibility;
+ controlSnapshot = withPrefs(result(controlSnapshot.entries, String(controlPatches.length + 1)), { hideWithoutApi: v.hideWithoutApi ?? old.hideWithoutApi, providers: { ...old.providers, ...v.providers } });
+ return controlSnapshot;
+} };
+memory.set("dsh-subusage:last-provider", ids[0]);
+const ch = new Hooks(), cp = { ...props, usageStore: controlStore };
+tree = ch.render(api.SubusageSection, cp); tree = ch.render(api.SubusageSection, cp);
+const management = tree.children.at(-1);
+assert.equal(management.type, "details", "管理区为设置页末尾的折叠菜单");
+assert.equal(management.props.id, "subusage-provider-management"); assert.notEqual(management.props.open, true, "默认折叠");
+assert.equal(management.children[0].type, "summary"); assert.equal(management.children[0].children[0], "提供商管理");
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + 1, "所有关闭/隐藏提供商保留管理开关");
+assert.deepEqual(nodes(tree).filter(n => n.props.role === "tab").map(n => n.props.id), ids.filter(id => ![ids[1], ids[3]].includes(id)).map(id => `subusage-tab-${id}`));
+assert(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
+nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick({ preventDefault() {} }); tree = ch.render(api.SubusageSection, cp);
+const kimiEditor = nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[1]}`);
+assert.equal(kimiEditor.props.open, true); assert(nodes(kimiEditor).some(n => n.props.role === "group"), "自动隐藏项可在本行编辑凭据");
+assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"] === "Z.ai Coding (CN)"), "展开隐藏厂商不会切换上方用量");
+assert(!nodes(nodes(tree).find(n => n.props.role === "tabpanel")).some(n => n.type === "fieldset" || n.type === "input"), "上方详情只展示用量");
+assert(!nodes(tree).some(n => n.type === "button" && n.children.includes("配置")), "移除跨区域配置跳转按钮");
+await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax CN").props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert.equal(controlPatches.at(-1).visibility.providers[ids[6]], false); assert.equal(controlPatches.at(-1).expectedRevision, "1");
+assert(!nodes(tree).some(n => n.props.role === "tab" && n.props.id === `subusage-tab-${ids[6]}`));
+await nodes(tree).find(n => n.props["aria-label"] === "没有检测到API的默认隐藏").props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert.equal(controlPatches.at(-1).visibility.hideWithoutApi, false); assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === `subusage-tab-${ids[1]}`));
+await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax CN").props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert.equal(controlPatches.at(-1).visibility.providers[ids[6]], true); assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), [ids[6]], "手工重新开启立即刷新");
+assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === `subusage-tab-${ids[6]}`));
+nodes(tree).find(n => n.type === "button" && n.children.includes("更换")).props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert(nodes(tree).filter(n => n.props.role === "switch").every(n => n.props.disabled), "凭据脏草稿期间只锁定即时开关");
+assert.equal(nodes(kimiEditor).find(n => n.type === "fieldset").props.disabled, false, "行内凭据不能被开关锁定误禁用");
+const editedKey = nodes(tree).find(n => n.type === "input" && n.props.type === "password"); editedKey.props.onChange({ target: { value: "fixture-inline-draft" } }); tree = ch.render(api.SubusageSection, cp);
+nodes(tree).find(n => n.props.id === `subusage-tab-${ids[5]}`).props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"] === "MiniMax (International)"), "用量切换与编辑厂商独立");
+assert.equal(nodes(tree).find(n => n.type === "input" && n.props.type === "password").props.value, "fixture-inline-draft", "切换用量不丢失行内草稿");
+assert.equal(nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[1]}`).props.open, true);
+nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 MiniMax").props.onClick({ preventDefault() {} }); tree = ch.render(api.SubusageSection, cp);
+assert.equal(nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[1]}`).props.open, true, "切换其他编辑器必须先保存或取消草稿");
+const beforeToggle = controlPatches.length; await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax").props.onClick(); assert.equal(controlPatches.length, beforeToggle);
+ch.unmount();
+controlSnapshot = withPrefs(result(controlSnapshot.entries), preferences(Object.fromEntries(ids.map(id => [id, false]))));
+const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSection, cp);
+assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 8);
+assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.role === "tabpanel"));
+nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick({ preventDefault() {} }); tree = emptyControls.render(api.SubusageSection, cp);
+assert.equal(nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[0]}`).props.open, true, "全部关闭仍能行内配置");
+assert(!nodes(tree).some(n => n.props.role === "tabpanel"), "关闭项不会被配置操作强制带回用量区"); emptyControls.unmount();
+// 共享 store：关闭时暂停轮询请求和药丸；隐藏开关立即影响现有订阅，不能让迟到旧响应回滚。
+let sharedControl = withPrefs(result(ids.map(id => entry(id, 20, { apiDetected: id !== ids[1], ...(id === ids[1] ? { state: "no-key" } : {}) }))));
+const storeCalls = [], oldControlGate = deferred(); let blockRefresh = false;
+const managedStore = api.createUsageStore((method, patch) => {
+ storeCalls.push({ method, patch });
+ if (method === "save") { const old = sharedControl.settings.visibility; sharedControl = withPrefs(result(sharedControl.entries, "controls-2"), { hideWithoutApi: patch.visibility.hideWithoutApi ?? old.hideWithoutApi, providers: { ...old.providers, ...patch.visibility.providers } }); return { ...sharedControl, entries: [] }; }
+ return method === "refresh" && blockRefresh ? oldControlGate.promise : sharedControl;
+});
+await managedStore.readAll(); assert.equal((await managedStore.reader(ids[1])()).visible, false);
+let observed; const offObserve = managedStore.reader(ids[0]).subscribe(e => observed = e);
+blockRefresh = true; const lateControl = managedStore.refresh([ids[0]], true); await flush();
+await managedStore.save({ expectedRevision: "1", visibility: { providers: { [ids[0]]: false }, hideWithoutApi: false } });
+assert.equal(observed.visible, false); assert.equal(managedStore.getSnapshot().entries.find(e => e.providerId === ids[2]).windows[0].percent, 20, "全局可见性保存保留其他厂商用量");
+const closedCalls = storeCalls.length; await managedStore.refresh([ids[0]], true); assert.equal(storeCalls.length, closedCalls, "关闭后客户端不发用量 RPC");
+assert.equal((await managedStore.reader(ids[0])()).visible, false);
+oldControlGate.resolve(withPrefs(result([entry(ids[0], 99)], "old-controls"))); await lateControl;
+assert.equal(managedStore.getSnapshot().settings.visibility.providers[ids[0]], false); assert.equal(managedStore.getSnapshot().settings.revision, "controls-2");
+blockRefresh = false; assert.equal((await managedStore.reader(ids[1])()).visible, true, "关闭默认隐藏后缺 API 的配置指引恢复");
+offObserve(); managedStore.dispose();
+console.log("PASS provider management switches/no-dropdown/filtering/persistence payloads/dirty guard/pill subscription/race + existing client behavior");

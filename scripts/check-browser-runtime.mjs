@@ -30,37 +30,28 @@ try {
     const page = await context.newPage();
     await page.goto(pathToFileURL(file).href);
     const info = await page.evaluate(() => {
-      const select = document.querySelector('.subusage-provider-select');
       const tabs = document.querySelector('.subusage-provider-tabs');
-      const tabRects = [...tabs.children].map(el => el.getBoundingClientRect());
       return {
         overflow: document.documentElement.scrollWidth > innerWidth,
-        nativeVisible: getComputedStyle(select).display !== 'none', selectedProvider: select.value, providerCount: select.options.length,
+        overflowNodes: [...document.querySelectorAll('main, article, details, fieldset, div, button')].filter(el => el.getBoundingClientRect().right > innerWidth + 1).slice(0, 12).map(el => ({ tag: el.tagName, id: el.id, width: el.getBoundingClientRect().width, right: el.getBoundingClientRect().right, text: el.textContent.slice(0, 50) })),
+        providerCount: tabs.children.length,
         tabsVisible: getComputedStyle(tabs).display !== 'none',
-        tabY: tabRects.map(rect => rect.y), tabWidth: tabRects.map(rect => rect.width),
-        options: [...document.querySelectorAll('option')].map(el => ({ color: getComputedStyle(el).color, background: getComputedStyle(el).backgroundColor })),
-        credentialSelects: document.querySelector('fieldset').querySelectorAll('select').length
+        selectedProvider: tabs.querySelector('[aria-selected="true"]')?.id,
+        tabWidths: [...tabs.children].map(el => el.getBoundingClientRect().width),
+        selectCount: document.querySelectorAll('select, option').length,
+        switches: [...document.querySelectorAll('[role="switch"]')].map(el => ({ state: el.getAttribute('aria-checked'), label: el.getAttribute('aria-label') }))
       };
     });
-    assert.equal(info.overflow, false, `${theme}/${width} 不得横向溢出`);
-    assert.equal(info.providerCount, 5, '五家 provider 均可选择');
-    assert.equal(info.nativeVisible, width <= 499);
-    assert.equal(info.selectedProvider, 'xiaomi-token-plan-cn', '离线选择框必须匹配当前详情');
-    assert.equal(info.tabsVisible, width > 499);
-    if (width > 499) {
-      assert.equal(info.tabWidth.length, 5, '五个 provider 必须全部展示');
-      assert.equal(new Set(info.tabY).size, 1, '五个 provider 必须单行');
-      assert.ok(Math.max(...info.tabWidth) - Math.min(...info.tabWidth) < 1, '五个 provider 必须等宽');
-    }
-    assert.equal(info.credentialSelects, 0, 'MiMo 凭据不使用下拉动作');
-    for (const option of info.options) {
-      const channel = value => value.match(/[\d.]+/g).slice(0, 3).map(Number).map(n => { const v = n / 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; });
-      const luminance = value => channel(value).reduce((sum, n, i) => sum + n * [.2126, .7152, .0722][i], 0);
-      const a = luminance(option.color), b = luminance(option.background);
-      assert.ok((Math.max(a, b) + .05) / (Math.min(a, b) + .05) >= 4.5, 'native option 文本对比度必须足够');
-    }
+    assert.equal(info.overflow, false, `${theme}/${width} 不得横向溢出：${JSON.stringify(info.overflowNodes)}`);
+    assert.equal(info.providerCount, 7, '七家 provider 均可通过按钮选择');
+    assert.equal(info.selectedProvider, 'subusage-tab-xiaomi-token-plan-cn', '标签选中态必须匹配当前详情');
+    assert.equal(info.tabsVisible, true, '窄屏仍使用按钮导航');
+    assert(info.tabWidths.every(width => width > 0), '所有标签均有可点击区域');
+    assert.equal(info.selectCount, 0, '整个设置页不使用下拉列表');
+    assert.equal(info.switches.length, 8, '七个提供商开关与默认隐藏开关');
+    assert(info.switches.every(item => item.state === 'true' && item.label), '开关有正确的状态与无障碍名称');
     await page.screenshot({ path: file.replace(/\.html$/, '.png'), fullPage: true });
     await context.close();
-    console.log(`PASS ${theme}/${width} 五列或窄选择框、凭据按钮、option 对比度、无溢出`);
+    console.log(`PASS ${theme}/${width} 提供商开关、可换行按钮、无下拉、无溢出`);
   }
 } finally { await browser.close(); }

@@ -26,22 +26,24 @@ const context = {
 };
 let code = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 code = code.replace('exports.apply = apply;', 'exports.__preview = { SubusageSection, zh, en }; exports.apply = apply;');
+if (openCredentials) code = code.replace('const [editorOpen, setEditorOpen] = react.useState(false);', 'const [editorOpen, setEditorOpen] = react.useState(true);');
 vm.runInNewContext(code, context);
 const { SubusageSection, zh } = moduleSpec.factory(name => {
   if (name !== 'react') throw new Error('Unexpected module'); return react;
 }).__preview;
-const ids = ['zai-coding-cn', 'kimi-coding', 'xiaomi-token-plan-cn', 'opencode-go', 'commandcode'];
-const entry = (providerId, percent, kind = 'sub') => ({ providerId, state: 'ok', keySource: providerId === 'xiaomi-token-plan-cn' ? 'cookie' : 'env', freshness: 'fresh', coverage: 'complete', lastSuccessAt: new PreviewDate(clock).toISOString(), lastAttemptAt: new PreviewDate(clock).toISOString(), windows: [{ kind, percent, status: percent >= 100 ? 'rate-limited' : 'ok' }], extras: [] });
+const ids = ['zai-coding-cn', 'kimi-coding', 'xiaomi-token-plan-cn', 'opencode-go', 'commandcode', 'minimax', 'minimax-cn'];
+const entry = (providerId, percent, kind = 'sub') => ({ providerId, state: 'ok', apiDetected: true, keySource: providerId === 'xiaomi-token-plan-cn' ? 'cookie' : 'env', freshness: 'fresh', coverage: 'complete', lastSuccessAt: new PreviewDate(clock).toISOString(), lastAttemptAt: new PreviewDate(clock).toISOString(), windows: [{ kind, percent, status: percent >= 100 ? 'rate-limited' : 'ok' }], extras: [] });
 const result = {
   updatedAt: new PreviewDate(clock).toISOString(), configured: Object.fromEntries(ids.map(id => [id, true])),
-  settings: { revision: 'offline-preview', zai: { type: 1, organization: '', project: '' }, xiaomi: { hasCookie: true }, hasKeys: {}, keyModes: Object.fromEntries(ids.map(id => [id, 'inherit'])) },
+  settings: { revision: 'offline-preview', visibility: { hideWithoutApi: true, providers: Object.fromEntries(ids.map(id => [id, true])) }, zai: { type: 1, organization: '', project: '' }, xiaomi: { hasCookie: true }, hasKeys: {}, keyModes: Object.fromEntries(ids.map(id => [id, 'inherit'])) },
   entries: [
     { ...entry(ids[0], 37), extras: [{ kind: 'plan', value: 'Lite' }], windows: [
       { kind: '5h', percent: 37, status: 'ok', resetsAt: new PreviewDate(clock + 390000).toISOString(), detail: { used: 743, limit: 2000, unit: 'credits' } },
       { kind: 'week', percent: 40, status: 'ok', resetsAt: new PreviewDate(clock + 23 * 3600000).toISOString(), detail: { used: 4100, limit: 10000, unit: 'credits' } }
     ] },
     entry(ids[1], 100, '7d'), entry(ids[2], 47.4), entry(ids[3], 80, 'week'),
-    { ...entry(ids[4], 20.2, 'month'), windows: [{ kind: 'month', percent: 20.2, status: 'ok', detail: { used: 14.14, limit: 70, remaining: 55.86, unit: 'credits', limitSource: 'plan-snapshot' } }], extras: [{ kind: 'plan', value: 'individual-goat' }, { kind: 'monthly-balance', value: '55.86 credits' }] }
+    { ...entry(ids[4], 20.2, 'month'), windows: [{ kind: 'month', percent: 20.2, status: 'ok', detail: { used: 14.14, limit: 70, remaining: 55.86, unit: 'credits', limitSource: 'plan-snapshot' } }], extras: [{ kind: 'plan', value: 'individual-goat' }, { kind: 'monthly-balance', value: '55.86 credits' }] },
+    entry(ids[5], 20, '5h'), entry(ids[6], 40, 'week')
   ]
 };
 const tree = SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => result }, t: key => zh[key] || key, getLocale: () => 'zh-CN' });
@@ -56,11 +58,11 @@ function render(node) {
   if (node.type === 'select' && node.props.value !== undefined) {
     for (const option of node.children.flat(Infinity)) if (option?.type === 'option') option.props.selected = String(option.props.value) === String(node.props.value);
   }
-  if (openCredentials && node.type === 'details' && node.children[0]?.children?.includes('连接与凭据')) node.props.open = true;
-  const attrs = Object.entries(node.props).filter(([key, value]) => !['key', 'ref', 'children'].includes(key) && !key.startsWith('on') && value !== undefined && value !== false).map(([key, value]) => {
-    if (key === 'style') value = Object.entries(value).map(([name, val]) => `${name.replace(/[A-Z]/g, c => '-' + c.toLowerCase())}:${typeof val === 'number' && val !== 0 && !unitless.has(name) ? val + 'px' : val}`).join(';');
+  if (openCredentials && node.type === 'details' && node.props.id === 'subusage-provider-management') node.props.open = true;
+  const attrs = Object.entries(node.props).filter(([key, value]) => !['key', 'ref', 'children'].includes(key) && !key.startsWith('on') && value !== undefined && (value !== false || key.startsWith('aria-'))).map(([key, value]) => {
+    if (key === 'style') value = Object.entries(value).filter(([, val]) => val !== undefined && val !== null).map(([name, val]) => `${name.replace(/[A-Z]/g, c => '-' + c.toLowerCase())}:${typeof val === 'number' && val !== 0 && !unitless.has(name) ? val + 'px' : val}`).join(';');
     const name = key === 'className' ? 'class' : key === 'tabIndex' ? 'tabindex' : key.toLowerCase();
-    return value === true ? name : `${name}="${escape(value)}"`;
+    return value === true && !key.startsWith('aria-') ? name : `${name}="${escape(value)}"`;
   }).join(' ');
   const start = `<${node.type}${attrs ? ' ' + attrs : ''}>`;
   return ['input', 'br', 'hr', 'img', 'meta', 'link'].includes(node.type) ? start : start + node.children.map(render).join('') + `</${node.type}>`;
