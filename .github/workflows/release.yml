@@ -61,8 +61,8 @@ jobs:
           # latest 由 main 的自动发布维护，旧 tag 不得使它回退。
           make_latest: false
 
-      # npm 发布与 ci.yml 的 main 自动发布共用同一幂等守卫：registry 已有该版本时
-      # 跳过，因此先推 main 再打 tag（或只打 tag）都不会重复发布。
+      # npm 信任绑定 release.yml：仅版本标签触发此处的 OIDC 发布。
+      # registry 已有该版本时跳过，重复运行不会再次发布。
       - uses: actions/setup-node@v4
         with:
           node-version: 24

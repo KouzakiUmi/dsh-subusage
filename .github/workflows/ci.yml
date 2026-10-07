@@ -54,7 +54,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
-      id-token: write
     concurrency:
       group: release-dsh-subusage
       cancel-in-progress: false
@@ -103,14 +102,3 @@ jobs:
           generate_release_notes: true
           make_latest: true
           prerelease: false
-
-      # npm 自动发布：发布 test job 打包并验证过的同一 tarball。
-      # registry 已有该版本时跳过（npm 不允许重复发布同版本；文档同步不走重复发布）。
-      - uses: actions/setup-node@v4
-        if: steps.metadata.outputs.current == 'true'
-        with:
-          node-version: 24
-
-      - name: Publish to npm (new versions only)
-        if: steps.metadata.outputs.current == 'true'
-        run: node scripts/publish-npm.mjs

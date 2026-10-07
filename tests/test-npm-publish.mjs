@@ -32,10 +32,11 @@ assert.throws(s.invoke, /Missing verified artifact/);
 assert.equal(s.calls.length, 0);
 const workflows = ['ci.yml', 'release.yml'].map(f => readFileSync(new URL(`../.github/workflows/${f}`, import.meta.url), 'utf8'));
 for (const workflow of workflows) {
-  assert(workflow.includes('run: node scripts/publish-npm.mjs'));
   assert(workflow.includes('group: release-dsh-subusage'), 'main 和 tag 发布必须共用串行组');
-  assert(workflow.includes('id-token: write'));
-  assert(workflow.includes('node-version: 24'));
   assert(!/NODE_AUTH_TOKEN|NPM_TOKEN|registry-url/.test(workflow), '发布流程不能依赖 npm secret 或生成空令牌认证配置');
 }
+assert(!workflows[0].includes('run: node scripts/publish-npm.mjs'), '未受信任的 ci.yml 只构建 GitHub Release');
+assert(workflows[1].includes('run: node scripts/publish-npm.mjs'));
+assert(workflows[1].includes('id-token: write'));
+assert(workflows[1].includes('node-version: 24'));
 console.log('PASS npm 发布：跳过已发布版本、认证/网络隔离、本地 tarball 路径、发布结果核对及工作流串行');

@@ -168,7 +168,7 @@ node --check lib/client.js
 node --check lib/mimo-login.js
 ```
 
-推送到 `main` 后，GitHub Actions 检查并发布提交对应的 GitHub Release；registry 尚无该版本时通过 Trusted Publishing 自动发布 npm。发布产物不会自动安装或重启 DSH。
+推送到 `main` 后，GitHub Actions 检查并发布提交对应的 GitHub Release。推送与包版本一致的 `vX.Y.Z` 标签后，受 npm 信任的 `release.yml` 通过 Trusted Publishing 自动发布新 npm 版本；已有版本跳过。发布产物不会自动安装或重启 DSH。
 
 - [开发与验证](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md)：RPC、缓存、凭据、离线预览与实机验收。
 - [UX 设计](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/design-ux.md)：导航、状态、编辑保护与弹层行为。
