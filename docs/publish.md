@@ -8,6 +8,8 @@
 
 检查通过后，发布 job 下载同一次构建验证过的安装包，使用 `build-<12位提交SHA>` 标签发布 Release，资产名固定为 `dsh-subusage.tgz`，并设为 latest。重跑同一提交复用对应 Release；发布前检查远端主分支，已被新提交取代的构建跳过发布。
 
+同一发布 job 在 Release 之后自动发布 npm：使用仓库 Secret `NPM_TOKEN`（`actions/setup-node` 的 `registry-url` 写入认证），发布 test job 打包并验证过的同一 `dist/dsh-subusage.tgz`。发布前先查询 registry，该版本已存在则跳过——npm 不允许重复发布同版本，文档同步不能靠重复发布。Secret 缺失或失效时该步骤失败，GitHub Release 不受影响。
+
 固定下载地址：[最新安装包](https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz)。资产名保持不带版本号，确保后续发布仍能通过该地址下载。
 
 自动构建的包版本来自 `package.json`，每次提交不会自动提升版本或发布 npm。GitHub 使用内置 `GITHUB_TOKEN`；仓库策略须允许发布 job 的 `contents: write`。测试不安装依赖，也不使用真实账号。
@@ -24,6 +26,10 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 ## npm
 
 包名：[dsh-subusage](https://www.npmjs.com/package/dsh-subusage)。`0.7.0` 已于 2026-10-05 发布；后续发布必须使用未发布过的新版本。npm 包与 GitHub 提交快照可能包含不同的文档更新，请分别检查版本与来源。
+
+**自动发布（默认路径）**：推送新版本号到 `main` 后，CI 在 GitHub Release 之后自动发布 npm（见上节）。前提是仓库 Secret `NPM_TOKEN` 有效；发布结果在 CI 日志的「Publish to npm (new versions only)」步骤核对。
+
+**手动发布（兜底）**：Secret 失效或需要绕过 CI 时，按以下步骤本地发布：
 
 1. 更新 `package.json` 的版本、Host 请求的版本标识及更新记录。
 2. 运行基础检查和打包预检，检查文件清单中无凭据或调试数据。
