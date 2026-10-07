@@ -5,11 +5,11 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const registry = 'https://registry.npmjs.org/';
-export function publishNpm({ pkg, hasArtifact, oidcAvailable, run, log = console.log }) {
+export function publishNpm({ pkg, hasArtifact, oidcAvailable, run, log = console.log, wait = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) }) {
   if (pkg.name !== 'dsh-subusage' || !/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(pkg.version)) throw new Error('Unexpected package name/version');
   if (!hasArtifact) throw new Error('Missing verified artifact: ./dist/dsh-subusage.tgz');
   const spec = `${pkg.name}@${pkg.version}`;
-  const lookup = () => run(['view', spec, 'version', '--json', `--registry=${registry}`]);
+  const lookup = () => run(['view', spec, 'version', '--json', '--prefer-online', `--registry=${registry}`]);
   const found = lookup();
   let data;
   try { data = JSON.parse(found.stdout); } catch { /* 非 JSON 错误不得视为版本不存在。 */ }
@@ -21,17 +21,26 @@ export function publishNpm({ pkg, hasArtifact, oidcAvailable, run, log = console
   if (data?.error?.code !== 'E404') throw new Error(`npm version lookup failed (${data?.error?.code || 'unknown error'}); refusing to publish.`);
   if (!oidcAvailable) throw new Error('GitHub OIDC is unavailable; publishing job needs id-token: write and an npm Trusted Publisher matching this workflow.');
   const published = run(['publish', './dist/dsh-subusage.tgz', '--access', 'public', '--ignore-scripts', '--json', `--registry=${registry}`]);
+  // npm 的标准发布结果包含包信息/状态，不输出环境或身份令牌。
+  if (published.stdout?.trim()) log(published.stdout.trim());
   if (published.status !== 0) {
     let errorCode;
     try { errorCode = JSON.parse(published.stdout)?.error?.code; } catch {}
     throw new Error(`npm publish failed (${errorCode || `exit ${published.status ?? 'unknown'}`}); check npm Trusted Publisher workflow, environment and direct publish permission.`);
   }
-  const verified = lookup();
-  let version;
-  try { version = JSON.parse(verified.stdout); } catch { /* 核对失败不能报告发布成功。 */ }
-  if (verified.status !== 0 || version !== pkg.version) throw new Error(`Publication verification failed for ${spec}; check registry before retrying.`);
-  log(`Published and verified ${spec}.`);
-  return 'published';
+  for (let attempt = 0; attempt < 6; attempt++) {
+    if (attempt) wait(10000);
+    const verified = lookup();
+    let version;
+    try { version = JSON.parse(verified.stdout); } catch { /* 核对失败不能报告发布成功。 */ }
+    if (verified.status === 0 && version === pkg.version) {
+      log(`Published and verified ${spec}.`);
+      return 'published';
+    }
+    if (version?.error?.code !== 'E404') break;
+    log(`Waiting for registry visibility (${attempt + 1}/6).`);
+  }
+  throw new Error(`Publication verification failed for ${spec}; check registry before retrying.`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -6,7 +6,7 @@ const ok = { status: 0, stdout: '"0.8.1"' };
 const missing = { status: 1, stdout: '{"error":{"code":"E404"}}' };
 function scenario(results, overrides = {}) {
   const calls = [];
-  const opts = { pkg: { name: 'dsh-subusage', version: '0.8.1' }, hasArtifact: true, oidcAvailable: true, log() {}, run: args => { calls.push(args); assert(results.length); return results.shift(); }, ...overrides };
+  const opts = { pkg: { name: 'dsh-subusage', version: '0.8.1' }, hasArtifact: true, oidcAvailable: true, log() {}, wait() {}, run: args => { calls.push(args); assert(results.length); return results.shift(); }, ...overrides };
   return { calls, invoke: () => publishNpm(opts) };
 }
 let s = scenario([ok], { oidcAvailable: false });
@@ -23,6 +23,11 @@ for (const failure of [{ status: 1, stdout: '{"error":{"code":"E401"}}' }, { sta
 s = scenario([missing, { status: 0, stdout: '' }, ok]);
 assert.equal(s.invoke(), 'published');
 assert.equal(s.calls[1][1], './dist/dsh-subusage.tgz', '显式本地路径，不能误解析成 GitHub shorthand');
+s = scenario([missing, { status: 0, stdout: '' }, missing, ok]);
+assert.equal(s.invoke(), 'published', '允许发布后短暂 E404，查询绕过本地缓存');
+assert(s.calls[0].includes('--prefer-online'));
+s = scenario([missing, { status: 0, stdout: '' }, ...Array(6).fill(missing)]);
+assert.throws(s.invoke, /verification failed/, '不可把 npm 返回 0 当作已发布证明');
 s = scenario([missing, { status: 1, stdout: '' }]);
 assert.throws(s.invoke, /publish failed/);
 s = scenario([missing, { status: 0, stdout: '' }, { status: 0, stdout: '"0.7.0"' }]);

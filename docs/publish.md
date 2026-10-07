@@ -41,6 +41,8 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 发布 job 使用 GitHub 托管 runner、`id-token: write` 与 Node 24（包含支持 OIDC 的 npm CLI）。要求 npm CLI 至少 11.5.1、Node 至少 22.14.0。`setup-node` 不设置 `registry-url`，脚本显式指定公共 registry，不生成空的令牌认证项。身份令牌由 GitHub 自动提供，不写入日志或仓库。
 
+发布后使用 `--prefer-online` 查询具体版本，对短暂 E404 最多重试六次，等待间隔十秒；npm 命令返回成功但版本始终不可见仍判失败。`release.yml` 也支持手动运行：选择包含修复的代码分支，输入与包版本一致的 `version_tag`。这可以恢复尚未发布的版本，不移动旧 tag；应核对分支代码确实是要发布的内容。
+
 信任配置须允许直接 `npm publish`；若仅允许 staged publishing，此流程不能直接发布。发布失败时核对工作流文件名、environment、允许的动作和信任有效性，而不是添加发布 Secret。修复后推送新提交或运行新工作流；重跑旧提交仍使用旧工作流文件，不会自动应用修复。
 
 **手动发布（可选兜底）**：仅在 npm 包权限允许交互式发布时使用。GitHub OIDC 身份不能在本机复用；自动发布优先通过上述 Trusted Publisher 流程执行。
