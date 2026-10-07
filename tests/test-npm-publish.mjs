@@ -28,6 +28,10 @@ assert.equal(s.invoke(), 'published', '允许发布后短暂 E404，查询绕过
 assert(s.calls[0].includes('--prefer-online'));
 s = scenario([missing, { status: 0, stdout: '' }, ...Array(6).fill(missing)]);
 assert.throws(s.invoke, /verification failed/, '不可把 npm 返回 0 当作已发布证明');
+s = scenario([missing, { status: 1, stdout: JSON.stringify({error:{code:'E403',summary:'You cannot publish over the previously published versions: 0.8.1.'}}) }, missing, ok]);
+assert.equal(s.invoke(), 'skipped', 'registry 读缓存落后时，明确的重复版本拒绝仍须核对版本');
+s = scenario([missing, { status: 1, stdout: '{"error":{"code":"E403","summary":"Forbidden"}}' }]);
+assert.throws(s.invoke, /publish failed/, '不能将任意权限拒绝视为版本已发布');
 s = scenario([missing, { status: 1, stdout: '' }]);
 assert.throws(s.invoke, /publish failed/);
 s = scenario([missing, { status: 0, stdout: '' }, { status: 0, stdout: '"0.7.0"' }]);

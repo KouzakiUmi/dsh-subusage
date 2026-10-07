@@ -23,10 +23,13 @@ export function publishNpm({ pkg, hasArtifact, oidcAvailable, run, log = console
   const published = run(['publish', './dist/dsh-subusage.tgz', '--access', 'public', '--ignore-scripts', '--json', `--registry=${registry}`]);
   // npm 的标准发布结果包含包信息/状态，不输出环境或身份令牌。
   if (published.stdout?.trim()) log(published.stdout.trim());
+  let duplicate = false;
   if (published.status !== 0) {
-    let errorCode;
-    try { errorCode = JSON.parse(published.stdout)?.error?.code; } catch {}
-    throw new Error(`npm publish failed (${errorCode || `exit ${published.status ?? 'unknown'}`}); check npm Trusted Publisher workflow, environment and direct publish permission.`);
+    let error;
+    try { error = JSON.parse(published.stdout)?.error; } catch {}
+    duplicate = error?.code === 'E403' && error.summary?.includes(`You cannot publish over the previously published versions: ${pkg.version}.`);
+    if (!duplicate) throw new Error(`npm publish failed (${error?.code || `exit ${published.status ?? 'unknown'}`}); check npm Trusted Publisher workflow, environment and direct publish permission.`);
+    log('Registry reports this version already published; verifying visibility instead of republishing.');
   }
   for (let attempt = 0; attempt < 6; attempt++) {
     if (attempt) wait(10000);
@@ -35,7 +38,7 @@ export function publishNpm({ pkg, hasArtifact, oidcAvailable, run, log = console
     try { version = JSON.parse(verified.stdout); } catch { /* 核对失败不能报告发布成功。 */ }
     if (verified.status === 0 && version === pkg.version) {
       log(`Published and verified ${spec}.`);
-      return 'published';
+      return duplicate ? 'skipped' : 'published';
     }
     if (version?.error?.code !== 'E404') break;
     log(`Waiting for registry visibility (${attempt + 1}/6).`);
