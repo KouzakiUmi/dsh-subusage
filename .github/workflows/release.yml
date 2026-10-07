@@ -59,3 +59,22 @@ jobs:
           generate_release_notes: true
           # latest 由 main 的自动发布维护，旧 tag 不得使它回退。
           make_latest: false
+
+      # npm 发布与 ci.yml 的 main 自动发布共用同一幂等守卫：registry 已有该版本时
+      # 跳过，因此先推 main 再打 tag（或只打 tag）都不会重复发布。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm (new versions only)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          version=$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version")
+          if npm view "dsh-subusage@$version" version >/dev/null 2>&1; then
+            echo "npm already has dsh-subusage@$version; skipping publish."
+          else
+            npm publish dist/dsh-subusage.tgz --access public --ignore-scripts
+            npm view dsh-subusage version dist-tags
+          fi

@@ -6,7 +6,7 @@
 
 ## 安装与快速开始
 
-当前版本 **0.8.0**，已发布到 [npm](https://www.npmjs.com/package/dsh-subusage)。安装时使用目标 DSH 部署提供的插件管理器或 CLI，并启用本 bundle：
+当前版本 **0.8.1**，已发布到 [npm](https://www.npmjs.com/package/dsh-subusage)。安装时使用目标 DSH 部署提供的插件管理器或 CLI，并启用本 bundle：
 
 | 来源 | 安装标识或下载地址 |
 |---|---|
@@ -14,7 +14,7 @@
 | GitHub | `https://github.com/KouzakiUmi/dsh-subusage` |
 | 安装包 | [最新 GitHub Release 安装包](https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz) |
 
-只需取得 npm 压缩包时可运行 `npm pack dsh-subusage@0.8.0`。普通 `npm install` 或下载压缩包并不等于已经在 DSH 中启用插件；具体安装参数以目标部署的帮助信息为准。
+只需取得 npm 压缩包时可运行 `npm pack dsh-subusage@0.8.1`。普通 `npm install` 或下载压缩包并不等于已经在 DSH 中启用插件；具体安装参数以目标部署的帮助信息为准。
 
 开发目标是 **DeepSeek Harness 0.2.0-rc.2**。核心 peer 范围为 `>=0.2.0-rc.1 <0.3.0-0`，允许该范围内的预发布版本；声明范围不代表所有版本均已实机验证。
 
@@ -168,7 +168,7 @@ node --check lib/client.js
 node --check lib/mimo-login.js
 ```
 
-推送到 `main` 后，GitHub Actions 检查并发布提交对应的 GitHub Release；npm 使用手动发布流程。发布产物不会自动安装或重启 DSH。
+推送到 `main` 后，GitHub Actions 检查并发布提交对应的 GitHub Release，并在版本号新于 registry 时自动发布 npm（使用仓库 Secret `NPM_TOKEN`）。发布产物不会自动安装或重启 DSH。
 
 - [开发与验证](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md)：RPC、缓存、凭据、离线预览与实机验收。
 - [UX 设计](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/design-ux.md)：导航、状态、编辑保护与弹层行为。

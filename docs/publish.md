@@ -21,7 +21,7 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布版本 Release，并设置 `make_latest: false`，避免旧版本覆盖主分支 latest。
+tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布版本 Release（`make_latest: false`，避免旧版本覆盖主分支 latest），并按与 CI 相同的幂等守卫发布 npm——registry 已有该版本时跳过，因此先推 `main` 再打 tag 不会重复发布。
 
 ## npm
 

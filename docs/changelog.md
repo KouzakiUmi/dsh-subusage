@@ -2,6 +2,11 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.8.1：发布渠道修复
+
+- 与 0.8.0 同一功能集（MiMo Cookie 有效期监控、Command Code 药丸账户切换）；0.8.0 已发布 GitHub Release（build-3e929375bf14）但未到达 npm。
+- CI 新增 npm 自动发布：GitHub Release 之后用仓库 Secret `NPM_TOKEN` 发布同一构建验证过的 tarball，registry 已有该版本时跳过；手动发布流程保留为兜底。详见 [发布说明](publish.md)。
+
 ## 0.8.0：MiMo Cookie 有效期监控与 Command Code 药丸账户切换
 
 ### Command Code 药丸账户切换
