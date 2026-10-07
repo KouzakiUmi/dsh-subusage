@@ -2,6 +2,26 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.8.0：MiMo Cookie 有效期监控与 Command Code 药丸账户切换
+
+### Command Code 药丸账户切换
+
+- Command Code 用量药丸弹层新增「Command Code 账户」区：列出自动轮换、默认账户与各额外账户（label 与 id 规则对齐提供方插件 `slots()`），点击即切换 `activeAccount`，当前项高亮。
+- 读写走 DSH settings remote 的 `llm-commandcode` namespace，与 Command Code 提供方插件设置页完全同一通道与 op 形式（固定账户 set；回自动按组合层 base 决定写空串或 unset）。切换即时生效于提供方插件的后续请求，无需重启。
+- 账户列表来自 settings describe，不发起任何计费请求；提供方插件未运行或 namespace 不可用时区块降级为「账户列表不可用」，不影响用量显示。
+- 药丸与弹层的额度数字仍为默认账户（顶层 Key）的用量，不随切换改变，弹层文案明确说明。切换失败（含 revision 冲突）保留失败原因并回读 Host 实际状态。
+- 新增 `tests/test-commandcode-accounts.mjs` 覆盖账户列表解析、activeAccount 判定、mutate 通道、并发拒绝、失败回读与弹层渲染。
+
+### MiMo Cookie 有效期监控
+
+- 官方 MiMo 会话 Cookie 自签发起 **24 小时**有效。自动登录与手动导入都在凭据写入的同一刻开始计时，落盘 `xiaomi.loginAt` / `xiaomi.expiresAt`；自动登录额外参考浏览器观测到的 Cookie 过期时间，取更早者。
+- 用量药丸新增凭据时效提示：剩余 2 小时内 ⚠ 黄、30 分钟内 ⚠ 橙、已过期 ✕ 红，文案「Cookie N 后到期 / 已过期，请重新登录」。额度已用尽时仍优先显示额度告警；药丸弹层常驻显示剩余时间与到期时刻。
+- 设置页「MiMo 登录与凭据」显示登录时间与剩余生效时间，并说明 24 小时有效期。旧版本保存的 Cookie 没有计时记录，界面明确写「未记录登录时间」，不编造倒计时。
+- 倒计时只用于展示：归零不改变凭据可用性，真实失效仍以官方接口返回为准；接口已判定凭据失效时，药丸主文案仍是失败原因，不被倒计时覆盖。计时字段是本地元数据，不是秘密，Cookie 本身不经 RPC 回传，计时则作为非敏感信息随 `settings.xiaomi` 与 entry 的 `cookieExpiresAt` 下发。
+- 新增 `tests/test-mimo-cookie-expiry.mjs` 覆盖 Host 计时/落盘/下发/清除/损坏字段与 Client 四档提醒、药丸优先级、弹层与设置页文案；离线布局预览的 MiMo 假数据改为「临近到期」档位。
+
+两项功能均通过离线回归、清单校验与组件预览核对；真实 DSH 实机验收与真实账号在线验证仍待完成。
+
 ## 0.7.0：审查修复与新增订阅商
 
 - 新增 `zai-coding`（国际版）、`synthetic`、`nanogpt`：新安装与旧配置升级均默认关闭，即使有环境凭据也不请求用量。可在「提供商管理」手动开启；原有七项的默认值和用户已保存开关保持不变。

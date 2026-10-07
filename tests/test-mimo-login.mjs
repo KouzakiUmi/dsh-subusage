@@ -1,6 +1,6 @@
 // 所有 browser/cookie/IO/fetch 都是 dummy；绝不启动真实 Chrome。
 import assert from "node:assert/strict";
-import { MimoLogin, extractMimoCookie, MIMO_API_URLS } from "../lib/mimo-login.js";
+import { MimoLogin, extractMimoCookie, extractMimoSession, MIMO_API_URLS } from "../lib/mimo-login.js";
 import { loadHostModule } from "./helpers.mjs";
 const { SubUsageService } = await loadHostModule();
 const M = "xiaomi-token-plan-cn", Z = "zai-coding-cn";
@@ -15,6 +15,17 @@ assert.equal(extractMimoCookie(cookies), cookie);
 assert.equal(extractMimoCookie([...cookies, { ...cookies[0], domain: "evil.example" }]), cookie);
 for (const changes of [{ domain: "evilxiaomimimo.com" }, { domain: ".com" }, { domain: ".xiaomimimo.com.evil" }, { path: "/api/v1/balance" }, { path: "/api/v10" }, { expires: 1 }]) assert.equal(extractMimoCookie([{ ...cookies[0], ...changes }, cookies[1]]), null);
 assert.equal(extractMimoCookie([...cookies, cookies[0]]), null);
+
+// extractMimoSession 额外给出平台声明的过期时刻（毫秒），供 Host 取 min(24h 上限, 观测值)。
+// 两个都是会话 Cookie（expires:-1）时返回 0，由 24 小时上限兜底。
+assert.equal(extractMimoSession(cookies).cookie, cookie);
+assert.equal(extractMimoSession(cookies).expiresAt, 0, "会话 Cookie 没有可用的过期时间");
+const withExpiry = (a, b) => [{ ...cookies[0], expires: a }, { ...cookies[1], expires: b }];
+const future = Math.floor((Date.now() + 8 * 3600 * 1000) / 1000);
+assert.equal(extractMimoSession(withExpiry(future, future)).expiresAt, future * 1000);
+assert.equal(extractMimoSession(withExpiry(future, future + 3600)).expiresAt, future * 1000, "取两个必需 Cookie 中更早的过期时刻");
+assert.equal(extractMimoSession(withExpiry(future, -1)).expiresAt, future * 1000, "其中一个为会话 Cookie 时仍采用另一个的过期时刻");
+assert.equal(extractMimoSession(withExpiry(1, future)), null, "已过期的必需 Cookie 不得进入会话");
 function harness(options = {}) {
  let content = null, writes = 0, launches = 0, closes = 0, calls = 0;
  let suppliedCookies = options.cookies ?? cookies;

@@ -27,17 +27,20 @@ const context = {
   document: {}, console, Date: PreviewDate
 };
 let code = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
-code = code.replace('exports.apply = apply;', 'exports.__preview = { SubusageSection, UsagePill, zh, en }; exports.apply = apply;');
+code = code.replace('exports.apply = apply;', 'exports.__preview = { SubusageSection, UsagePill, createCommandCodeAccounts, zh, en }; exports.apply = apply;');
 if (openCredentials) code = code.replace('const [editorOpen, setEditorOpen] = react.useState(false);', 'const [editorOpen, setEditorOpen] = react.useState(true);');
 vm.runInNewContext(code, context);
-const { SubusageSection, UsagePill, zh } = moduleSpec.factory(name => {
+const { SubusageSection, UsagePill, createCommandCodeAccounts, zh } = moduleSpec.factory(name => {
   if (name !== 'react') throw new Error('Unexpected module'); return react;
 }).__preview;
 const ids = ['zai-coding-cn', 'kimi-coding', 'xiaomi-token-plan-cn', 'opencode-go', 'commandcode', 'minimax', 'minimax-cn'];
-const entry = (providerId, percent, kind = 'sub') => ({ providerId, state: 'ok', apiDetected: true, keySource: providerId === 'xiaomi-token-plan-cn' ? 'cookie' : 'env', freshness: 'fresh', coverage: 'complete', lastSuccessAt: new PreviewDate(clock).toISOString(), lastAttemptAt: new PreviewDate(clock).toISOString(), windows: [{ kind, percent, status: percent >= 100 ? 'rate-limited' : 'ok' }], extras: [] });
+// MiMo 会话 Cookie 24 小时有效期：预览用固定时钟，落在“临近到期”档位以展示提醒样式。
+const mimoLoggedInAt = clock - 22.3 * 3600000;
+const mimoExpiresAt = clock + 95 * 60000;
+const entry = (providerId, percent, kind = 'sub') => ({ providerId, state: 'ok', apiDetected: true, keySource: providerId === 'xiaomi-token-plan-cn' ? 'cookie' : 'env', freshness: 'fresh', coverage: 'complete', lastSuccessAt: new PreviewDate(clock).toISOString(), lastAttemptAt: new PreviewDate(clock).toISOString(), ...(providerId === 'xiaomi-token-plan-cn' ? { cookieExpiresAt: new PreviewDate(mimoExpiresAt).toISOString() } : {}), windows: [{ kind, percent, status: percent >= 100 ? 'rate-limited' : 'ok' }], extras: [] });
 const result = {
   updatedAt: new PreviewDate(clock).toISOString(), configured: Object.fromEntries(ids.map(id => [id, true])),
-  settings: { revision: 'offline-preview', visibility: { hideWithoutApi: true, providers: Object.fromEntries(ids.map(id => [id, true])) }, zai: { type: 1, organization: '', project: '' }, xiaomi: { hasCookie: true }, hasKeys: {}, keyModes: Object.fromEntries(ids.map(id => [id, 'inherit'])) },
+  settings: { revision: 'offline-preview', visibility: { hideWithoutApi: true, providers: Object.fromEntries(ids.map(id => [id, true])) }, zai: { type: 1, organization: '', project: '' }, xiaomi: { hasCookie: true, loginAt: new PreviewDate(mimoLoggedInAt).toISOString(), expiresAt: new PreviewDate(mimoExpiresAt).toISOString() }, hasKeys: {}, keyModes: Object.fromEntries(ids.map(id => [id, 'inherit'])) },
   entries: [
     { ...entry(ids[0], 37), extras: [{ kind: 'plan', value: 'Lite' }], windows: [
       { kind: '5h', percent: 37, status: 'ok', resetsAt: new PreviewDate(clock + 390000).toISOString(), detail: { used: 743, limit: 2000, unit: 'credits' } },
@@ -50,7 +53,18 @@ const result = {
 };
 const previewQuota = { ...entry(providerId, 25, 'day'), windows: [{ kind: 'day', percent: 25, status: 'ok', detail: { used: 250000, limit: 1000000, unit: 'tokens' } }, { kind: 'week', percent: 40, status: 'ok' }] };
 if (pillPreview) previewStates = [{ entry: previewQuota, updatedAt: clock }, null, undefined, false, true];
-const tree = pillPreview ? UsagePill({ providerId, label: 'NanoGPT', readEntry: () => {}, t: key => zh[key] || key, getLocale: () => 'zh-CN' }) : SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => result }, t: key => zh[key] || key, getLocale: () => 'zh-CN' });
+// Command Code 药丸弹层的账户切换区：虚构两个额外账户，固定项高亮；不发起任何网络请求。
+let cc;
+if (pillPreview && providerId === 'commandcode') {
+  const row = { ns: 'llm-commandcode', revision: 3, value: { accounts: [{ label: '工作号', apiKeyEnv: 'COMMANDCODE_ACCOUNT_WORK' }, { label: '备用号', apiKeyEnv: 'COMMANDCODE_ACCOUNT_SPARE' }], activeAccount: 'COMMANDCODE_ACCOUNT_WORK' } };
+  cc = createCommandCodeAccounts({
+    describe: async () => ({ ok: true, value: { writable: true, namespaces: [row] } }),
+    mutate: async () => ({ ok: false, error: { message: 'offline preview' } })
+  });
+  await cc.load();
+}
+const pillLabel = providerId === 'commandcode' ? 'Command Code' : 'NanoGPT';
+const tree = pillPreview ? UsagePill({ providerId, label: pillLabel, readEntry: () => {}, t: key => zh[key] || key, getLocale: () => 'zh-CN', cc }) : SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => result }, t: key => zh[key] || key, getLocale: () => 'zh-CN' });
 const escape = value => String(value).replace(/[&<>\"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const unitless = new Set(['opacity', 'zIndex', 'fontWeight', 'lineHeight', 'flex', 'flexGrow', 'flexShrink', 'order', 'gridColumn']);
 function render(node) {

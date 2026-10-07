@@ -43,7 +43,7 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 - `refresh(request)`：`request = { providerIds: string[], force: boolean }`，只读取指定厂商；返回的 entries 由 Client 合并。
 - `save(settings)`：provider patch，包含 `providerId`、`expectedRevision`、来源模式、凭据保持/替换/清除动作与可选 Z.ai 参数。凭据由提供方插件管理的厂商（`managedByPlugin`，现即 commandcode）拒绝一切凭据补丁，只接受裸 patch。
 - 检测开关使用独立补丁 `{ expectedRevision, visibility: { providers?, hideWithoutApi? } }`，不得混入凭据字段；provider 开关增量合并，不重置未提交条目。
-- 公共 settings 只含 revision、非秘密参数、hasKeys、keyModes 与 xiaomi.hasCookie。
+- 公共 settings 只含 revision、非秘密参数、hasKeys、keyModes 与 xiaomi 的 `hasCookie`、`loginAt`、`expiresAt`。后两项是本地计时元数据（ISO 串或 null），不是秘密，也不参与凭据有效性判断。
 - 保存与验证分离。保存失败和保存后在线验证失败必须有不同反馈。
 - revision 是配置版本令牌；刷新不得丢弃未保存编辑，过期表单不得覆盖新配置。
 
@@ -64,6 +64,7 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 - 允许保留的临时错误返回 stale 标记、上次成功时间与结构化错误；认证失效不保留旧额度。
 - 429/临时错误使用退避，倒计时本地更新，重置后有界刷新而不制造请求循环。
 - Retry-After / retryAt 优先于强制刷新和重置到期。已知本地配置修改只失效受影响厂商；未知外部 revision 修改保守失效所有条目。
+- MiMo 会话 Cookie 自签发起 24 小时有效。Host 在凭据写入的同一刻记录 `xiaomi.loginAt` / `xiaomi.expiresAt`（毫秒，清除凭据时归零），并把 `cookieExpiresAt` 挂到该厂商的每条 entry 上；自动登录经 `MimoLogin` 回调传入浏览器观测到的 Cookie 过期时刻，取 `min(24h 上限, 观测值)`——该回调必须透传第 4 个实参，少声明形参会静默退化成 24 小时上限。计时只在真正写入凭据（`cookieUpdate` 为 `replace`）时重置，`keep` 不得续满倒计时。解析存储只接受安全整数正数，损坏字段按未记录处理。Client 侧到期档位由 `cookieExpiry()` 单点判定：>2h 正常、≤2h 提醒、≤30min 紧急、已过期。**倒计时只用于展示**：归零不改凭据可用性，真实失效仍由官方接口返回决定；接口已判定凭据失效（`state: "error"`）时倒计时不得抢占主文案，但「已过期」本身仍优先，因为它就是重新登录的行动项。Client 合并/失效条目时保留 `cookieExpiresAt`，否则保存或登录后倒计时会短暂消失；但凭据被 `clear` / `replace` 时必须丢弃旧值，否则已删除的 Cookie 仍显示过期倒计时。
 
 ## 5. 凭据与 MiMo
 
@@ -127,6 +128,23 @@ node --input-type=module -e "import {chromium} from 'playwright-core'; import {r
 ```
 
 预览页面包括布局示意，不完全复刻 DSH 外壳。市场所用设置截图来自 `settings-530-xiaomi-token-plan-cn-dark-credentials.png`，弹层来自 `settings-530-nanogpt-light-pill.png`。人工检查后将 PNG 复制到 `assets/screenshots/` 的相应文件，保留离线标记并同步 [截图声明](../screenshots.json) 与 README。市场只需 GitHub 仓库图片，当前 npm 白名单不包含这些 PNG。
+
+### Command Code 药丸账户切换验证记录（未发布）
+
+- `node tests/run-all.mjs` 全部通过（新增 `test-commandcode-accounts.mjs`），`node scripts/check-manifest.mjs` 与 `node --check lib/client.js` 通过。
+- 新增覆盖：账户列表解析（默认账户、额外账户 id 取 `apiKeyEnv`、label 空白回退 `Account N`、无引用与登记中账户过滤、`naming` 阶段保留）、activeAccount 判定（空串/`auto`/悬空引用按自动轮换）、控制器 describe→ready、固定账户 set 与回自动 unset/写空串（按组合层 base 分支）、mutate 失败保留原因并回读 Host 状态、非 ready 拒绝切换、switching 并发拒绝、弹层三选项渲染与不可用降级。
+- 实现约束：账户列表只读 settings describe（`llm-commandcode` ns），不发起任何计费请求；`remote.settings` 未挂载或提供方插件未运行时降级为不可用；不修改 Host、凭据与 manifest。写入与 Command Code 提供方插件设置页同一 wire 通道（`settings.mutate("llm-commandcode", ops, revision)`），op 形式与其 client 的 active intent 一致。
+- **未做**：真实 DSH 中与 `@mars-sea/dsh-commandcode-provider` 一同加载的实机验收、真实多账户切换的在线验证、浏览器截图。
+
+### MiMo Cookie 有效期监控验证记录（未发布）
+
+- `node tests/run-all.mjs` 全部通过（新增 `test-mimo-cookie-expiry.mjs`），`node scripts/check-manifest.mjs` 与三个 `node --check` 通过。
+- 回归覆盖：旧配置无计时字段仍可读取、登录/导入从写入时刻计 24 小时并落盘、重新登录重新计时、平台观测到的更早过期时间优先且不放大上限、非法观测时间退回 24 小时、清除凭据同时清除计时、被手改坏的计时字段按未记录处理且不影响凭据读取、entry 与 settings 均下发且不回显 Cookie。
+- 审查修复四项，各带回归断言并逐项单独还原验证过断言确实会失败：①`persist` 的 `keep` 曾续满倒计时；②`MimoLogin` 以 4 实参调用而 Host 回调只声明 3 个形参，`observedExpiresAt` 被静默丢弃，「取更早者」规则在线上从未生效（原测试直调 `commitMimoLogin` 绕过装配，故给出假阳性）；③倒计时文案抢占认证失败的主文案；④`invalidate` 在凭据被 `clear`/`replace` 后仍沿用旧 `cookieExpiresAt`。
+- `extractMimoSession` 此前零覆盖，已补：会话 Cookie 返回 0、两个必需 Cookie 取更早的过期时刻、混合会话 Cookie 采用另一个、已过期的必需 Cookie 不进入会话。
+- 客户端回归覆盖四档判定、药丸图标/文案/底色、额度用尽优先于到期提醒、认证失败优先于倒计时（已过期除外）、弹层常驻有效期、设置页登录时间与剩余时间、无记录时不编造倒计时，以及 store 的 `save` → `invalidate` 在 `clear`/`replace` 丢弃旧计时、`keep` 保留计时。
+- 离线布局预览已按「临近到期」档位重新渲染并逐项核对 HTML（设置页 `color:#eab308">登录于 … · Cookie 2 小时后到期`、24 小时说明、药丸 aria-label 含到期提示）。
+- **未做**：真实 DSH 中 Host/Client 一同加载后的实机验收、真实 MiMo 账号登录与倒计时到期后的接口行为、浏览器截图（本次沙箱禁止 Chrome 命名管道，`playwright-core` 无法启动）。药丸与设置页的视觉回归需在可启动浏览器的环境重跑。
 
 ### 0.7.0 验证记录
 
