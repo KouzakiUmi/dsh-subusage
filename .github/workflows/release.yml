@@ -14,8 +14,9 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      id-token: write
     concurrency:
-      group: versioned-release-${{ github.ref }}
+      group: release-dsh-subusage
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
@@ -64,17 +65,7 @@ jobs:
       # 跳过，因此先推 main 再打 tag（或只打 tag）都不会重复发布。
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          registry-url: 'https://registry.npmjs.org'
+          node-version: 24
 
       - name: Publish to npm (new versions only)
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          version=$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version")
-          if npm view "dsh-subusage@$version" version >/dev/null 2>&1; then
-            echo "npm already has dsh-subusage@$version; skipping publish."
-          else
-            npm publish dist/dsh-subusage.tgz --access public --ignore-scripts
-            npm view dsh-subusage version dist-tags
-          fi
+        run: node scripts/publish-npm.mjs

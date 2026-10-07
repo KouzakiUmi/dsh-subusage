@@ -8,11 +8,11 @@
 
 检查通过后，发布 job 下载同一次构建验证过的安装包，使用 `build-<12位提交SHA>` 标签发布 Release，资产名固定为 `dsh-subusage.tgz`，并设为 latest。重跑同一提交复用对应 Release；发布前检查远端主分支，已被新提交取代的构建跳过发布。
 
-同一发布 job 在 Release 之后自动发布 npm：使用仓库 Secret `NPM_TOKEN`（`actions/setup-node` 的 `registry-url` 写入认证），发布 test job 打包并验证过的同一 `dist/dsh-subusage.tgz`。发布前先查询 registry，该版本已存在则跳过——npm 不允许重复发布同版本，文档同步不能靠重复发布。Secret 缺失或失效时该步骤失败，GitHub Release 不受影响。
+同一发布 job 在 Release 之后通过 npm Trusted Publishing（GitHub OIDC）自动发布 npm，发布 test job 打包并验证过的同一 `dist/dsh-subusage.tgz`。发布前先查询 registry，该版本已存在则跳过——npm 不允许重复发布同版本，文档同步不能靠重复发布。npm 发布失败时，已成功生成的 GitHub Release 保留。
 
 固定下载地址：[最新安装包](https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz)。资产名保持不带版本号，确保后续发布仍能通过该地址下载。
 
-自动构建的包版本来自 `package.json`，每次提交不会自动提升版本或发布 npm。GitHub 使用内置 `GITHUB_TOKEN`；仓库策略须允许发布 job 的 `contents: write`。测试不安装依赖，也不使用真实账号。
+自动构建的包版本来自 `package.json`，每次提交不会自动提升版本；registry 尚无该版本时才尝试发布 npm。GitHub 使用内置 `GITHUB_TOKEN`；仓库策略须允许发布 job 的 `contents: write`。测试不安装依赖，也不使用真实账号。
 
 可选的 [语义版本工作流](../.github/workflows/release.yml) 由 `v*` tag 触发。先更新包版本及相关说明并推送，再分别执行：
 
@@ -27,9 +27,23 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 包名：[dsh-subusage](https://www.npmjs.com/package/dsh-subusage)。`0.7.0` 已于 2026-10-05 发布；后续发布必须使用未发布过的新版本。npm 包与 GitHub 提交快照可能包含不同的文档更新，请分别检查版本与来源。
 
-**自动发布（默认路径）**：推送新版本号到 `main` 后，CI 在 GitHub Release 之后自动发布 npm（见上节）。前提是仓库 Secret `NPM_TOKEN` 有效；发布结果在 CI 日志的「Publish to npm (new versions only)」步骤核对。
+**自动发布（默认路径）**：推送新版本号到 `main` 后，CI 在 GitHub Release 之后自动发布 npm（见上节）。认证使用已配置的 npm Trusted Publisher，不要求仓库发布令牌；结果在「Publish to npm (new versions only)」步骤核对。
 
-**手动发布（兜底）**：Secret 失效或需要绕过 CI 时，按以下步骤本地发布：
+### 2026-10-08 流程检查
+
+检查时仓库版本为 0.8.1，registry 只有 0.7.0。最近两次自动发布失败的直接原因是 tarball 参数缺少 `./`，被 npm 解析为 GitHub 仓库简写。用户已配置 Trusted Publisher，但旧工作流仍使用令牌模板，未赋予 OIDC 权限。没有 npm Secret 在 Trusted Publishing 模式下属于正常情况。
+
+工作流现共用 [publish-npm.mjs](../scripts/publish-npm.mjs)：使用显式本地路径 `./dist/dsh-subusage.tgz`，只有 registry 明确返回 E404 才进入发布；网络或认证查询错误立即终止。已发布版本直接跳过；未发布版本检查 GitHub OIDC 环境后由 npm CLI 完成认证。发布后核对具体版本。main 与 tag 发布共用串行组，避免同时查询到版本缺失后抢发。
+
+### Trusted Publisher 配置
+
+按 [npm 官方指南](https://docs.npmjs.com/trusted-publishers/) 在包设置中配置 GitHub Actions：owner 为 `KouzakiUmi`，repository 为 `dsh-subusage`，workflow filename 与实际执行发布的工作流一致。主分支为 `ci.yml`，tag 为 `release.yml`；需要两个入口都发布时分别建立信任。当前工作流不声明 deployment environment；若 npm 信任绑定了 environment，须同步工作流设置。
+
+发布 job 使用 GitHub 托管 runner、`id-token: write` 与 Node 24（包含支持 OIDC 的 npm CLI）。要求 npm CLI 至少 11.5.1、Node 至少 22.14.0。`setup-node` 不设置 `registry-url`，脚本显式指定公共 registry，不生成空的令牌认证项。身份令牌由 GitHub 自动提供，不写入日志或仓库。
+
+信任配置须允许直接 `npm publish`；若仅允许 staged publishing，此流程不能直接发布。发布失败时核对工作流文件名、environment、允许的动作和信任有效性，而不是添加发布 Secret。修复后推送新提交或运行新工作流；重跑旧提交仍使用旧工作流文件，不会自动应用修复。
+
+**手动发布（可选兜底）**：仅在 npm 包权限允许交互式发布时使用。GitHub OIDC 身份不能在本机复用；自动发布优先通过上述 Trusted Publisher 流程执行。
 
 1. 更新 `package.json` 的版本、Host 请求的版本标识及更新记录。
 2. 运行基础检查和打包预检，检查文件清单中无凭据或调试数据。

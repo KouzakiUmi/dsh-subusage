@@ -1,0 +1,46 @@
+// main 与 tag 工作流共用：只对明确缺失的版本发布已验证 tarball。
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const registry = 'https://registry.npmjs.org/';
+export function publishNpm({ pkg, hasArtifact, oidcAvailable, run, log = console.log }) {
+  if (pkg.name !== 'dsh-subusage' || !/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(pkg.version)) throw new Error('Unexpected package name/version');
+  if (!hasArtifact) throw new Error('Missing verified artifact: ./dist/dsh-subusage.tgz');
+  const spec = `${pkg.name}@${pkg.version}`;
+  const lookup = () => run(['view', spec, 'version', '--json', `--registry=${registry}`]);
+  const found = lookup();
+  let data;
+  try { data = JSON.parse(found.stdout); } catch { /* 非 JSON 错误不得视为版本不存在。 */ }
+  if (found.status === 0) {
+    if (data !== pkg.version) throw new Error('Registry returned an unexpected version');
+    log(`npm already has ${spec}; skipping publish.`);
+    return 'skipped';
+  }
+  if (data?.error?.code !== 'E404') throw new Error(`npm version lookup failed (${data?.error?.code || 'unknown error'}); refusing to publish.`);
+  if (!oidcAvailable) throw new Error('GitHub OIDC is unavailable; publishing job needs id-token: write and an npm Trusted Publisher matching this workflow.');
+  const published = run(['publish', './dist/dsh-subusage.tgz', '--access', 'public', '--ignore-scripts', '--json', `--registry=${registry}`]);
+  if (published.status !== 0) {
+    let errorCode;
+    try { errorCode = JSON.parse(published.stdout)?.error?.code; } catch {}
+    throw new Error(`npm publish failed (${errorCode || `exit ${published.status ?? 'unknown'}`}); check npm Trusted Publisher workflow, environment and direct publish permission.`);
+  }
+  const verified = lookup();
+  let version;
+  try { version = JSON.parse(verified.stdout); } catch { /* 核对失败不能报告发布成功。 */ }
+  if (verified.status !== 0 || version !== pkg.version) throw new Error(`Publication verification failed for ${spec}; check registry before retrying.`);
+  log(`Published and verified ${spec}.`);
+  return 'published';
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    publishNpm({
+      pkg: JSON.parse(readFileSync('package.json', 'utf8')),
+      hasArtifact: existsSync('dist/dsh-subusage.tgz'),
+      oidcAvailable: Boolean(process.env.ACTIONS_ID_TOKEN_REQUEST_URL && process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN),
+      run: args => spawnSync('npm', args, { encoding: 'utf8', shell: process.platform === 'win32', timeout: 120000 })
+    });
+  } catch (error) { console.error(error.message); process.exitCode = 1; }
+}
