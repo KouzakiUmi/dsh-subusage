@@ -6,7 +6,7 @@
 
 ## 安装与快速开始
 
-当前仓库版本 **0.8.1**，可从 GitHub Release 获取。npm 自动发布采用 Trusted Publishing（GitHub OIDC）；可用版本见 [npm](https://www.npmjs.com/package/dsh-subusage)。安装时使用目标 DSH 部署提供的插件管理器或 CLI，并启用本 bundle：
+当前仓库版本 **0.8.2**，可从 GitHub Release 获取。npm 自动发布采用 Trusted Publishing（GitHub OIDC）；可用版本见 [npm](https://www.npmjs.com/package/dsh-subusage)。安装时使用目标 DSH 部署提供的插件管理器或 CLI，并启用本 bundle：
 
 | 来源 | 安装标识或下载地址 |
 |---|---|

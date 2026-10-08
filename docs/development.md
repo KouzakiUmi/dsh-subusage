@@ -129,21 +129,22 @@ node --input-type=module -e "import {chromium} from 'playwright-core'; import {r
 
 预览页面包括布局示意，不完全复刻 DSH 外壳。市场所用设置截图来自 `settings-530-xiaomi-token-plan-cn-dark-credentials.png`，弹层来自 `settings-530-nanogpt-light-pill.png`。人工检查后将 PNG 复制到 `assets/screenshots/` 的相应文件，保留离线标记并同步 [截图声明](../screenshots.json) 与 README。市场只需 GitHub 仓库图片，当前 npm 白名单不包含这些 PNG。
 
-### Command Code 账户切换同步控制用量显示验证记录（未发布）
+### 0.8.2 验证记录：Command Code 账户切换同步控制用量显示
 
 - `node tests/run-all.mjs` 全部通过，`node scripts/check-manifest.mjs` 与相关 `node --check` 通过。
 - 新增覆盖：Host 按账户引用名解析 Key（凭据服务命中、环境回落、缺失 no-key 且文案指明账户、非法引用名不抛错）、`default`/缺省同走默认链、账户切换不复用旧账户缓存而同账户 TTL 内命中、query 校验拒绝非 string 账户；Client store 显示账户状态（readAll/refresh 携带 `commandCodeAccount`、相同账户去重、切换强制重拉）、UsagePill 挂载即读账户配置并在账户区 ready 后同步 activeId、弹层「上方用量」标注（固定账户显示 label、自动轮换显示默认账户并附不跟随说明）。
 - 契约同步：Host/Client 两端 `read` descriptor 均接受与 `refresh` 相同的可选查询；`commitMimoLogin` 的缓存指纹补齐第五段与 `provider` 一致（否则 MiMo 登录后首次刷新会重复拉取）。
+- 审查修复（MiMo 两路拆分审查，无 blocker/major，各带回归断言）：provider 内 config-changed 回退补传账户（错误条目不再错标 `default`）；切账户在 invalidate 后补 emit，消除强制刷新返回前「标注已切换、数字仍旧账户」的瞬态错标（新增在途竞态回归断言）。兼容性加固：read 的 `request` 参数在两端描述符声明 `acceptsUndefined` 且 query 解析容忍缺参/undefined——旧 client bundle（无参 read）与新 Host 共存的窗口期内初始读取降级为默认账户全量查询，而不是整体失败。另补 readAll 携带显示账户、账户 id trim、账户区不可用不显示标注等回归。
 - **未做**：真实 DSH 中与 `@mars-sea/dsh-commandcode-provider` 一同加载的实机验收、真实多账户切换的在线验证、浏览器截图。
 
-### Command Code 药丸账户切换验证记录（未发布）
+### Command Code 药丸账户切换验证记录（0.8.0）
 
 - `node tests/run-all.mjs` 全部通过（新增 `test-commandcode-accounts.mjs`），`node scripts/check-manifest.mjs` 与 `node --check lib/client.js` 通过。
 - 新增覆盖：账户列表解析（默认账户、额外账户 id 取 `apiKeyEnv`、label 空白回退 `Account N`、无引用与登记中账户过滤、`naming` 阶段保留）、activeAccount 判定（空串/`auto`/悬空引用按自动轮换）、控制器 describe→ready、固定账户 set 与回自动 unset/写空串（按组合层 base 分支）、mutate 失败保留原因并回读 Host 状态、非 ready 拒绝切换、switching 并发拒绝、弹层三选项渲染与不可用降级。
 - 实现约束：账户列表只读 settings describe（`llm-commandcode` ns），不发起任何计费请求；`remote.settings` 未挂载或提供方插件未运行时降级为不可用；不修改 Host、凭据与 manifest。写入与 Command Code 提供方插件设置页同一 wire 通道（`settings.mutate("llm-commandcode", ops, revision)`），op 形式与其 client 的 active intent 一致。
 - **未做**：真实 DSH 中与 `@mars-sea/dsh-commandcode-provider` 一同加载的实机验收、真实多账户切换的在线验证、浏览器截图。
 
-### MiMo Cookie 有效期监控验证记录（未发布）
+### MiMo Cookie 有效期监控验证记录（0.8.0）
 
 - `node tests/run-all.mjs` 全部通过（新增 `test-mimo-cookie-expiry.mjs`），`node scripts/check-manifest.mjs` 与三个 `node --check` 通过。
 - 回归覆盖：旧配置无计时字段仍可读取、登录/导入从写入时刻计 24 小时并落盘、重新登录重新计时、平台观测到的更早过期时间优先且不放大上限、非法观测时间退回 24 小时、清除凭据同时清除计时、被手改坏的计时字段按未记录处理且不影响凭据读取、entry 与 settings 均下发且不回显 Cookie。
