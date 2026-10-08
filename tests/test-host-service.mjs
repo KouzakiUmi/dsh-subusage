@@ -15,7 +15,13 @@ function harness(initial) {
  return { service, calls, files, credential, environment, tick: ms => now += ms, respond: fn => response = fn };
 }
 const descriptors = subUsageRemote.descriptors;
-assert.equal(descriptors.find(d => d.method === "read").parameters.length, 0);
+assert.deepEqual(descriptors.find(d => d.method === "read").parameters.map(p => [p.wire, p.codec.typeSymbol]), [["request", "dsh-subusage#SubUsageQuery"]], "read 接受与 refresh 相同的可选查询（携带 commandCodeAccount）");
+assert.equal(descriptors.find(d => d.method === "read").parameters[0].acceptsUndefined, true, "read 的 request 在 wire 层可选（兼容旧 client 无参调用）");
+assert.equal(descriptors.find(d => d.method === "refresh").parameters[0].acceptsUndefined, undefined, "refresh 的 request 仍为必填");
+const missingQuery = descriptors.find(d => d.method === "read").parameters[0].codec.schema.parse(undefined);
+assert.equal(missingQuery.force, false);
+assert.equal(missingQuery.commandCodeAccount, "");
+assert.ok(Array.isArray(missingQuery.providerIds) && missingQuery.providerIds.length > 0, "缺参 query 解析为全量默认账户查询");
 for (const [method, param, type] of [["refresh", "request", "SubUsageQuery"], ["save", "settings", "SubUsageSettings"]]) {
  const d = descriptors.find(d => d.method === method); assert.equal(d.parameters[0].wire, param); assert.equal(d.parameters[0].codec.typeSymbol, `dsh-subusage#${type}`);
 }

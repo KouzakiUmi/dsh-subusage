@@ -5,6 +5,7 @@ import vm from "node:vm";
 import assert from "node:assert/strict";
 const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
 let spec;
+let harness = null;
 const trees = [];
 const react = {
 	createElement: (type, props, ...children) => {
@@ -13,13 +14,13 @@ const react = {
 		return tree;
 	},
 	Fragment: "fragment",
-	useState: (v) => [typeof v === "function" ? v() : v, () => {}],
-	useRef: (v) => ({ current: v }),
-	useEffect: () => {},
+	useState: (v) => harness ? harness.state(v) : [typeof v === "function" ? v() : v, () => {}],
+	useRef: (v) => harness ? harness.ref(v) : ({ current: v }),
+	useEffect: (fn, deps) => { if (harness) harness.effect(fn, deps); },
 	useMemo: (f) => f(),
 	useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot()
 };
-vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createCommandCodeAccounts, commandCodeAccountList, commandCodeActiveId, CommandCodeAccountSwitch, zh }; exports.apply = apply;"), {
+vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createCommandCodeAccounts, commandCodeAccountList, commandCodeActiveId, CommandCodeAccountSwitch, createUsageStore, UsagePill, zh }; exports.apply = apply;"), {
 	window: { __ModuleLoader__: { load: (value) => { spec = value; } } },
 	document: { visibilityState: "visible", addEventListener() {}, removeEventListener() {} },
 	console, Date,
@@ -174,6 +175,142 @@ assert.equal(api.CommandCodeAccountSwitch({ cc: null, ccState: null, t }), null,
 	const tree = api.CommandCodeAccountSwitch({ cc, ccState: cc.getSnapshot(), t });
 	const flat = nodes(tree);
 	assert.ok(flat.some((n) => typeof n.children?.[0] === "string" && n.children[0].includes("账户列表不可用")), "降级显示不可用文案");
+	cc.dispose();
+}
+
+// ── 显示账户：store 状态驱动所有 commandcode 读取携带 commandCodeAccount ────
+{
+	const calls = [];
+	const store = api.createUsageStore((method, query) => { calls.push({ method, query }); return { entries: [], settings: null, configured: {}, updatedAt: "" }; });
+	await store.readAll();
+	assert.equal(calls[0].method, "read");
+	assert.equal(calls[0].query.commandCodeAccount, "", "初始读取按默认账户");
+	await store.setCommandCodeAccount("COMMANDCODE_ACCOUNT_WORK");
+	assert.equal(calls.at(-1).method, "refresh");
+	assert.deepEqual(plain(calls.at(-1).query), { providerIds: ["commandcode"], force: true, commandCodeAccount: "COMMANDCODE_ACCOUNT_WORK" }, "切换账户立即强制重拉该账户用量");
+	assert.equal(store.getCommandCodeAccount(), "COMMANDCODE_ACCOUNT_WORK");
+	const before = calls.length;
+	await store.setCommandCodeAccount("COMMANDCODE_ACCOUNT_WORK");
+	assert.equal(calls.length, before, "相同账户不重复请求");
+	await store.setCommandCodeAccount("");
+	assert.equal(calls.at(-1).query.commandCodeAccount, "", "切回自动轮换按默认账户重拉");
+	assert.equal(store.getCommandCodeAccount(), "");
+	store.dispose();
+}
+{
+	// readAll 必须携带当前显示账户（不能写死默认值）；账户 id 先 trim 再进入读取。
+	const calls = [];
+	const store = api.createUsageStore((method, query) => { calls.push({ method, query }); return { entries: [], settings: null, configured: {}, updatedAt: "" }; });
+	await store.setCommandCodeAccount("  COMMANDCODE_ACCOUNT_WORK  ");
+	assert.equal(store.getCommandCodeAccount(), "COMMANDCODE_ACCOUNT_WORK", "显示账户 id 先 trim");
+	await store.readAll();
+	const read = calls.find((c) => c.method === "read");
+	assert.equal(read.query.commandCodeAccount, "COMMANDCODE_ACCOUNT_WORK", "readAll 携带当前显示账户而非写死默认值");
+	store.dispose();
+}
+
+// ── UsagePill：账户区 ready 后把 activeId 同步为显示账户；弹层标注当前账户 ──
+class PillHooks {
+	slots = []; index = 0; queue = [];
+	state(initial) { const i = this.index++; if (!(i in this.slots)) this.slots[i] = { value: typeof initial === "function" ? initial() : initial }; return [this.slots[i].value, (value) => { this.slots[i].value = typeof value === "function" ? value(this.slots[i].value) : value; }]; }
+	ref(value) { const i = this.index++; return this.slots[i] ||= { current: value }; }
+	changed(a, b) { return !a || a.length !== b.length || a.some((v, i) => !Object.is(v, b[i])); }
+	effect(fn, deps) { const i = this.index++; const prev = this.slots[i]; if (!prev || this.changed(prev.deps, deps)) { this.slots[i] = { deps, cleanup: prev?.cleanup }; this.queue.push(() => { this.slots[i].cleanup?.(); this.slots[i].cleanup = fn(); }); } }
+	render(component, props, effects = true) { harness = this; this.index = 0; const tree = component(props); if (effects) for (const fn of this.queue.splice(0)) fn(); return tree; }
+	unmount() { for (const slot of this.slots) slot?.cleanup?.(); harness = null; }
+}
+{
+	const WORK = "COMMANDCODE_ACCOUNT_WORK";
+	const switches = [];
+	const setCommandCodeAccount = (id) => { switches.push(id); return Promise.resolve(); };
+	const cc = api.createCommandCodeAccounts({
+		describe: describeOk(namespaceRow({ accounts: [{ label: "工作号", apiKeyEnv: WORK }], activeAccount: WORK })),
+		mutate: async () => ({ ok: true, value: null })
+	});
+	const readEntry = async () => ({ providerId: "commandcode", state: "ok", coverage: "complete", freshness: "fresh", windows: [{ kind: "5h", percent: 10, status: "ok" }], extras: [], lastAttemptAt: "2026-10-08T00:00:00Z", lastSuccessAt: "2026-10-08T00:00:00Z" });
+	const ph = new PillHooks();
+	const props = { providerId: "commandcode", label: "Command Code", t, getLocale: () => "zh", readEntry, cc, setCommandCodeAccount };
+	ph.render(api.UsagePill, props);
+	await flush();
+	ph.render(api.UsagePill, props); // ccState 就绪后再次渲染，effect 依赖变化触发同步
+	await flush();
+	assert.ok(switches.includes(WORK), "describe 发现固定账户后同步为显示账户");
+	// 弹层标注：open 置真后渲染，用量账户行跟随 activeId。
+	// Hook 槽序固定：0 snapshot / 1 failed / 2 failState / 3 refreshing / 4 open。
+	const openSetter = ph.slots[4];
+	openSetter.value = true;
+	trees.length = 0;
+	const tree = ph.render(api.UsagePill, props);
+	const flat = nodes(tree);
+	const annotation = flat.filter((n) => typeof n.type === "string" && n.type === "p" && JSON.stringify(n.children).includes("上方用量"));
+	assert.equal(annotation.length, 1, "弹层显示用量账户标注");
+	assert.ok(JSON.stringify(annotation[0].children).includes("工作号"), "标注显示所选账户 label");
+	ph.unmount();
+	cc.dispose();
+}
+{
+	// 自动轮换：标注为默认账户并附不跟随说明（账户区不可用时不显示标注，见下块）。
+	const cc = api.createCommandCodeAccounts({ describe: describeOk(namespaceRow({ accounts: [] })), mutate: async () => ({ ok: true, value: null }) });
+	await cc.load();
+	const readEntry = async () => ({ providerId: "commandcode", state: "ok", coverage: "complete", freshness: "fresh", windows: [{ kind: "5h", percent: 10, status: "ok" }], extras: [], lastAttemptAt: "2026-10-08T00:00:00Z", lastSuccessAt: "2026-10-08T00:00:00Z" });
+	const ph = new PillHooks();
+	const props = { providerId: "commandcode", label: "Command Code", t, getLocale: () => "zh", readEntry, cc, setCommandCodeAccount: () => Promise.resolve() };
+	ph.render(api.UsagePill, props);
+	await flush();
+	ph.render(api.UsagePill, props);
+	await flush();
+	const openSetter = ph.slots[4];
+	openSetter.value = true;
+	trees.length = 0;
+	const tree = ph.render(api.UsagePill, props);
+	const flat = nodes(tree);
+	const annotation = flat.filter((n) => typeof n.type === "string" && n.type === "p" && JSON.stringify(n.children).includes("上方用量"));
+	assert.equal(annotation.length, 1, "自动轮换仍显示用量账户标注");
+	assert.ok(JSON.stringify(annotation[0].children).includes("默认账户"), "自动轮换标注默认账户");
+	assert.ok(JSON.stringify(annotation[0].children).includes("不跟随实际服务账户"), "自动轮换附不跟随说明");
+	ph.unmount();
+	cc.dispose();
+	const hidden = api.CommandCodeAccountSwitch({ cc: null, ccState: null, t });
+	assert.equal(hidden, null);
+}
+{
+	// 核心竞态：切账户后，旧账户的在途响应不得覆盖新账户数据（providerSequence 版本守卫）。
+	const WORK = "COMMANDCODE_ACCOUNT_WORK";
+	let releaseRead;
+	const entry = (account, percent) => ({ providerId: "commandcode", state: "ok", coverage: "complete", freshness: "fresh", windows: [{ kind: "5h", percent, status: "ok" }], extras: [], account, lastAttemptAt: "2026-10-08T00:00:00Z", lastSuccessAt: "2026-10-08T00:00:00Z" });
+	const store = api.createUsageStore((method, query) => {
+		if (method === "read") return new Promise((resolve) => { releaseRead = () => resolve({ entries: [entry("default", 99)], settings: null, configured: {}, updatedAt: "2026-10-08T00:00:00Z" }); });
+		return { entries: [entry(query.commandCodeAccount === "" ? "default" : query.commandCodeAccount, 5)], settings: null, configured: {}, updatedAt: "2026-10-08T00:01:00Z" };
+	});
+	const initial = store.readAll();
+	await flush();
+	await store.setCommandCodeAccount(WORK);
+	releaseRead();
+	await initial;
+	const current = store.getSnapshot().entries.find((e) => e.providerId === "commandcode");
+	assert.equal(current.account, WORK, "旧账户在途响应不覆盖新账户条目");
+	assert.equal(current.windows[0].percent, 5, "显示的仍是新账户数据");
+	store.dispose();
+}
+{
+	// 账户区不可用（describe 失败）时弹层不显示用量账户标注。
+	const cc = api.createCommandCodeAccounts({ describe: async () => ({ ok: false, error: { message: "not mounted" } }), mutate: async () => ({ ok: false }) });
+	await cc.load();
+	const readEntry = async () => ({ providerId: "commandcode", state: "ok", coverage: "complete", freshness: "fresh", windows: [{ kind: "5h", percent: 10, status: "ok" }], extras: [], lastAttemptAt: "2026-10-08T00:00:00Z", lastSuccessAt: "2026-10-08T00:00:00Z" });
+	const ph = new PillHooks();
+	const props = { providerId: "commandcode", label: "Command Code", t, getLocale: () => "zh", readEntry, cc, setCommandCodeAccount: () => Promise.resolve() };
+	ph.render(api.UsagePill, props);
+	await flush();
+	ph.render(api.UsagePill, props);
+	await flush();
+	const openSetter = ph.slots[4];
+	openSetter.value = true;
+	trees.length = 0;
+	const tree = ph.render(api.UsagePill, props);
+	const flat = nodes(tree);
+	const annotation = flat.filter((n) => typeof n.type === "string" && n.type === "p" && JSON.stringify(n.children).includes("上方用量"));
+	assert.equal(annotation.length, 0, "账户区不可用时不显示用量账户标注");
+	ph.unmount();
 	cc.dispose();
 }
 console.log("commandcode 账户切换测试全部通过 ✅");

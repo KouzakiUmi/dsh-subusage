@@ -39,8 +39,8 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 - `cancelMimoLogin(request)`：必需 `{ jobId: string }`，codec 为 `dsh-subusage#MimoLoginCancel`。
 - 登录返回 `dsh-subusage#SubUsageLoginState`，只公开任务状态、固定错误说明与可选公共结果，不包含 Cookie。
 
-- `read()` 保留无参初始化入口。
-- `refresh(request)`：`request = { providerIds: string[], force: boolean }`，只读取指定厂商；返回的 entries 由 Client 合并。
+- `read(request?)`：request 在 wire 层可选（两端描述符声明 `acceptsUndefined`，网关对缺参放行、service 直调无参同样兜底），缺参/undefined 等价于全量 `refresh({ providerIds: 全部, force: false })`（默认账户）；也可传入与 refresh 相同的查询（Client 初始读取会携带 `commandCodeAccount`）。
+- `refresh(request)`：`request = { providerIds: string[], force: boolean, commandCodeAccount?: string }`，只读取指定厂商；`commandCodeAccount` 仅对 commandcode 生效（空串/缺省 = 默认账户，额外账户 id 即其凭据引用名）；返回的 entries 由 Client 合并。
 - `save(settings)`：provider patch，包含 `providerId`、`expectedRevision`、来源模式、凭据保持/替换/清除动作与可选 Z.ai 参数。凭据由提供方插件管理的厂商（`managedByPlugin`，现即 commandcode）拒绝一切凭据补丁，只接受裸 patch。
 - 检测开关使用独立补丁 `{ expectedRevision, visibility: { providers?, hideWithoutApi? } }`，不得混入凭据字段；provider 开关增量合并，不重置未提交条目。
 - 公共 settings 只含 revision、非秘密参数、hasKeys、keyModes 与 xiaomi 的 `hasCookie`、`loginAt`、`expiresAt`。后两项是本地计时元数据（ISO 串或 null），不是秘密，也不参与凭据有效性判断。
@@ -56,7 +56,7 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 - 重置日期解析成功后统一输出 ISO，不保留原串；`Date.parse` 可接受带括号注释的 RFC 日期，原样回传会携带不可信文本或秘密。
 - Z.ai 百分比为 0–100；MiMo `percent` 为 0–1；OpenCode Go 三窗通常包裹于 `usage`。
 - Kimi 新格式仅兼容有明确窗口含义和数值依据的字段；未知结构报错，不猜测额度。
-- Command Code 并行直连 `/alpha/billing/credits` 与 `/alpha/billing/subscriptions`（请求头对齐提供方插件的 accountHeaders：Bearer、accept-encoding: identity、x-command-code-version、x-cli-environment）。absent 窗口是未报告上限（不画额度行）；`cap: 0` 是报告过的无上限，按 0% 不受限展示；`exceeded` 或原始比例达 100% 即限流；已出现的窗口块缺 `used`/`cap` 或非数值一律报错，不当作零用量。月余额 `credits.monthlyCredits` 是剩余金额，使用已知套餐表快照计算 `max(0, total - remaining)`，不是接口直接报告的月cap；未知套餐或缺月余额时 coverage=partial，不猜测百分比。planId优先 subscriptions.data.planId、回退 credits.planId，重置取 subscriptions.data.currentPeriodEnd（ISO或毫秒），非法日期不输出。月池耗尽不参与短窗级联（额外购买/赠送池可能仍可用）；周/5小时保持现有级联。余额只显示真正报告过的月剩余/已购/赠送字段。多账户轮换或固定 activeAccount 时显示默认（顶层 Key）账户额度，自定义 apiBase 不跟随。
+- Command Code 并行直连 `/alpha/billing/credits` 与 `/alpha/billing/subscriptions`（请求头对齐提供方插件的 accountHeaders：Bearer、accept-encoding: identity、x-command-code-version、x-cli-environment）。absent 窗口是未报告上限（不画额度行）；`cap: 0` 是报告过的无上限，按 0% 不受限展示；`exceeded` 或原始比例达 100% 即限流；已出现的窗口块缺 `used`/`cap` 或非数值一律报错，不当作零用量。月余额 `credits.monthlyCredits` 是剩余金额，使用已知套餐表快照计算 `max(0, total - remaining)`，不是接口直接报告的月cap；未知套餐或缺月余额时 coverage=partial，不猜测百分比。planId优先 subscriptions.data.planId、回退 credits.planId，重置取 subscriptions.data.currentPeriodEnd（ISO或毫秒），非法日期不输出。月池耗尽不参与短窗级联（额外购买/赠送池可能仍可用）；周/5小时保持现有级联。余额只显示真正报告过的月剩余/已购/赠送字段。用量显示跟随药丸弹层选择的账户：默认账户（含自动轮换）走 `COMMANDCODE_API_KEY` 凭据链，额外账户按其凭据引用名（`apiKeyEnv`）从凭据服务 → 启动环境解析（对齐提供方插件 `slots()`/`resolveRef`），缓存指纹计入账户选择，entry 带 `account` 字段；自动轮换不跟随实际服务账户，自定义 apiBase 不跟随。
 - 单厂商凭据、网络、解析异常不影响其它厂商条目。
 - 按厂商共享 TTL 缓存与 in-flight 请求；配置/凭据变化使旧账号缓存失效。
 - TTL 为 60 秒。Client 仅订阅活跃、开启的提供商，隐藏页面暂停定时读取，回到可见状态再检查；不要把所有厂商做成独立全局轮询。
@@ -128,6 +128,13 @@ node --input-type=module -e "import {chromium} from 'playwright-core'; import {r
 ```
 
 预览页面包括布局示意，不完全复刻 DSH 外壳。市场所用设置截图来自 `settings-530-xiaomi-token-plan-cn-dark-credentials.png`，弹层来自 `settings-530-nanogpt-light-pill.png`。人工检查后将 PNG 复制到 `assets/screenshots/` 的相应文件，保留离线标记并同步 [截图声明](../screenshots.json) 与 README。市场只需 GitHub 仓库图片，当前 npm 白名单不包含这些 PNG。
+
+### Command Code 账户切换同步控制用量显示验证记录（未发布）
+
+- `node tests/run-all.mjs` 全部通过，`node scripts/check-manifest.mjs` 与相关 `node --check` 通过。
+- 新增覆盖：Host 按账户引用名解析 Key（凭据服务命中、环境回落、缺失 no-key 且文案指明账户、非法引用名不抛错）、`default`/缺省同走默认链、账户切换不复用旧账户缓存而同账户 TTL 内命中、query 校验拒绝非 string 账户；Client store 显示账户状态（readAll/refresh 携带 `commandCodeAccount`、相同账户去重、切换强制重拉）、UsagePill 挂载即读账户配置并在账户区 ready 后同步 activeId、弹层「上方用量」标注（固定账户显示 label、自动轮换显示默认账户并附不跟随说明）。
+- 契约同步：Host/Client 两端 `read` descriptor 均接受与 `refresh` 相同的可选查询；`commitMimoLogin` 的缓存指纹补齐第五段与 `provider` 一致（否则 MiMo 登录后首次刷新会重复拉取）。
+- **未做**：真实 DSH 中与 `@mars-sea/dsh-commandcode-provider` 一同加载的实机验收、真实多账户切换的在线验证、浏览器截图。
 
 ### Command Code 药丸账户切换验证记录（未发布）
 

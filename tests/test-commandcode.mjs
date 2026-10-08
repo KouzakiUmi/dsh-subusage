@@ -88,7 +88,7 @@ const noBalance = normalizeCommandCode(body({}, { purchasedCredits: undefined, f
 assert.ok(!noBalance.extras.some((x) => x.kind === "balance"), "未报告的余额字段不显示");
 
 // ── 服务路径：凭据来源链、并行直连、错误映射 ───────────────────────────
-function harness({ credential, environment, authText, respond, stored } = {}) {
+function harness({ credential, environment, authText, respond, stored, accountCredential, accountEnvironment } = {}) {
 	const files = new Map();
  if (stored) files.set("memory/config", JSON.stringify(stored));
 	let now = Date.parse("2026-01-01T00:00:00Z");
@@ -107,6 +107,8 @@ function harness({ credential, environment, authText, respond, stored } = {}) {
 		io, configPath: "memory/config", now: () => now,
 		resolveCredentials: async (id) => credential?.[id],
 		resolveEnvironment: (id) => environment?.[id],
+		resolveAccountCredentials: async (ref) => accountCredential?.[ref],
+		resolveAccountEnvironment: (ref) => accountEnvironment?.[ref],
 		fetch: async (url, options) => {
 			calls.push({ url, options });
 			const value = await response(url, options);
@@ -159,6 +161,46 @@ const noKey = harness();
 const noKeyEntry = (await noKey.service.refresh({ providerIds: [C], force: false })).entries[0];
 assert.equal(noKeyEntry.state, "no-key"); assert.equal(noKeyEntry.errorCode, "subusage/no-key");
 assert.equal(noKey.calls.length, 0, "缺凭据不发请求");
+
+// ── 显示账户：额外账户按凭据引用名（apiKeyEnv）解析 Key，用量随切换账户 ──
+const WORK = "COMMANDCODE_ACCOUNT_WORK";
+const accountHit = harness({ accountCredential: { [WORK]: { value: "work-key" } } });
+const workEntry = (await accountHit.service.refresh({ providerIds: [C], force: false, commandCodeAccount: WORK })).entries[0];
+assert.equal(workEntry.state, "ok"); assert.equal(workEntry.keySource, "credentials");
+assert.equal(workEntry.account, WORK, "entry 标注所属账户");
+assert.equal(accountHit.calls[0].options.headers.authorization, "Bearer work-key", "额外账户用其引用名解析的 Key");
+const accountEnv = harness({ accountEnvironment: { [WORK]: { value: "work-env-key" } } });
+assert.equal((await accountEnv.service.refresh({ providerIds: [C], force: false, commandCodeAccount: WORK })).entries[0].keySource, "env", "凭据服务未命中回落启动环境");
+const accountMissing = harness();
+const missingEntry = (await accountMissing.service.refresh({ providerIds: [C], force: false, commandCodeAccount: WORK })).entries[0];
+assert.equal(missingEntry.state, "no-key");
+assert.ok(missingEntry.error.includes(WORK), "额外账户缺 Key 的错误文案指明账户");
+assert.equal(accountMissing.calls.length, 0, "额外账户缺凭据不发请求");
+// 非法引用名（client 输入不可信）按未配置处理，不让 credentialRef 抛错。
+const badRef = harness();
+const badRefEntry = (await badRef.service.refresh({ providerIds: [C], force: false, commandCodeAccount: "not a ref!" })).entries[0];
+assert.equal(badRefEntry.state, "no-key"); assert.equal(badRef.calls.length, 0);
+// "default" 与缺省同走默认账户链；read() 无参也是默认账户。
+const defaultAlias = harness({ credential: { [C]: { value: "credential-key" } } });
+const defaultEntry = (await defaultAlias.service.refresh({ providerIds: [C], force: false, commandCodeAccount: "default" })).entries[0];
+assert.equal(defaultEntry.keySource, "credentials"); assert.equal(defaultEntry.account, "default");
+const readEntry0 = (await defaultAlias.service.read()).entries.find(e => e.providerId === C);
+assert.equal(readEntry0.account, "default", "read() 无参按默认账户");
+// 账户切换不复用旧账户缓存：A 拉取后切 B 必须重新发请求。
+const switcher = harness({ credential: { [C]: { value: "credential-key" } }, accountCredential: { [WORK]: { value: "work-key" } } });
+await switcher.service.refresh({ providerIds: [C], force: false });
+const afterA = switcher.calls.length;
+await switcher.service.refresh({ providerIds: [C], force: false, commandCodeAccount: WORK });
+assert.ok(switcher.calls.length > afterA, "切换账户后重新拉取，不复用默认账户缓存");
+assert.equal(switcher.calls.at(-1).options.headers.authorization, "Bearer work-key");
+// 同一账户在 TTL 内仍命中缓存（fingerprint 含账户但不排斥重复读取）。
+const afterB = switcher.calls.length;
+await switcher.service.refresh({ providerIds: [C], force: false, commandCodeAccount: WORK });
+assert.equal(switcher.calls.length, afterB, "同账户 TTL 内命中缓存");
+// query 校验：commandCodeAccount 非 string 拒绝。
+const refreshDescriptor = subUsageRemote.descriptors.find((d) => d.method === "refresh");
+assert.throws(() => refreshDescriptor.parameters[0].codec.schema.parse({ providerIds: [C], force: false, commandCodeAccount: 3 }), /Invalid account selection/);
+assert.equal(refreshDescriptor.parameters[0].codec.schema.parse({ providerIds: [C], force: false }).commandCodeAccount, "", "缺省按默认账户");
 
 // 旧/手写配置不能绕过managed边界，使用本插件私存Key。
 const obsolete = harness({ stored: { keys: { [C]: "obsolete-secret" }, keyModes: { [C]: "manual" } }, authText: JSON.stringify({ apiKey: "actual-cli-key" }) });

@@ -13,7 +13,7 @@ const HOST_STUBS = [
 		/import \{ RemoteError, TypertRemoteService \} from "@deepseek-ai\/dsh-typert-protocol";/,
 		"class RemoteError extends Error { constructor(code, message, details) { super(message); this.code = code; this.details = details; } }\nclass TypertRemoteService { constructor(ctx, key) { if (typeof key !== 'string' || !key) throw new Error('bad serviceKey'); this.ctx = ctx; } }"
 	],
-	[/import \{ credentialRef \} from "@deepseek-ai\/dsh-credentials";/, "const credentialRef = (name) => ({ kind: 'env', name });"],
+	[/import \{ credentialRef, isCredentialRefName \} from "@deepseek-ai\/dsh-credentials";/, "const credentialRef = (name) => ({ kind: 'env', name });\nconst isCredentialRefName = (value) => typeof value === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);"],
 	[/import \{ launchEnvironmentOf \} from "@deepseek-ai\/dsh-launch-environment";/, "const launchEnvironmentOf = (ctx) => ({ get: (k) => ctx.__env?.[k] });"]
 ];
 

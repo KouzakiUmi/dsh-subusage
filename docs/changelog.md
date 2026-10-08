@@ -2,6 +2,14 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 未发布：Command Code 账户切换同步控制用量显示
+
+- 药丸弹层内的账户切换不再只影响提供方插件：切换后药丸本体与弹层上方的用量窗口同步改为显示所选账户的额度。显示账户跟随账户区的当前固定项（含初始 describe 发现的固定账户）；选择「自动轮换」时仍显示默认账户（顶层 Key）的用量，弹层标注明确说明不跟随实际服务账户。
+- Client store 维护显示账户状态，所有 Command Code 读取（初始读取、刷新、定时轮询、设置页刷新）自动携带；切换账户时旧账户在途数据立即失效并强制重拉。Host 端 `read`/`refresh` RPC 新增可选 `commandCodeAccount` 参数（缺省/空串 = 默认账户），额外账户按其凭据引用名（`apiKeyEnv`）从凭据服务 → 启动环境解析 Key，与提供方插件 `slots()`/`resolveRef` 同一通道；缓存指纹计入账户，不同账户不串缓存，entry 新增 `account` 字段标注所属账户。
+- 兼容性：read 的 `request` 参数在两端描述符声明 `acceptsUndefined`，缺参/undefined 按全量默认账户查询处理——旧版 Client bundle（无参 read）与新 Host 共存的窗口期内初始读取优雅降级，而不是整体失败。
+- 弹层在用量窗口上方新增「上方用量：{账户}」标注行；账户区提示文案同步更新。设置页 Command Code 帮助文案改为说明显示所选账户的额度。
+- 测试：`tests/test-commandcode.mjs` 覆盖按账户解析 Key（凭据服务/环境/缺失/非法引用名）、账户切换不复用缓存、同账户 TTL 命中与 query 校验；`tests/test-commandcode-accounts.mjs` 覆盖 store 显示账户状态、readAll/refresh 携带参数与弹层标注渲染；`tests/test-host-service.mjs`、`tests/test-client-behavior.mjs` 同步 RPC 契约断言，`tests/test-contract.mjs` 的两端描述符比较无需改动即覆盖 read 新参数。`node tests/run-all.mjs` 全部通过。
+
 ## 0.8.1：发布渠道修复
 
 - 与 0.8.0 同一功能集（MiMo Cookie 有效期监控、Command Code 药丸账户切换）；0.8.0 已发布 GitHub Release（build-3e929375bf14）但未到达 npm。

@@ -58,7 +58,7 @@ assert.equal(store.reader(ids[0]), store.reader(ids[0]), "reader 稳定");
 const r1 = store.reader(ids[0])(), r2 = store.reader(ids[0])();
 await flush();
 assert.equal(calls.filter((c) => c.method === "refresh").length, 1);
-assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1).query)), { providerIds: [ids[0]], force: false });
+assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1).query)), { providerIds: [ids[0]], force: false, commandCodeAccount: "" });
 gate.resolve(result([entry(ids[0], 88)])); await Promise.all([r1, r2]);
 assert.equal(store.getSnapshot().entries.length, ids.length, "partial merge 保留其它家");
 assert.equal(store.getSnapshot().entries.find((e) => e.providerId === ids[1]).windows[0].percent, 25);
