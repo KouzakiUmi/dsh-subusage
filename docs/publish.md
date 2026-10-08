@@ -29,6 +29,8 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 `0.8.1` 已于 2026-10-08 经 `release.yml` 的 Trusted Publishing 发布，registry 的 latest 已核对为 0.8.1。首次发布后查询短暂读到旧元数据，工作流因此报验证失败，但上传已完成；恢复时应先查询 registry，不能把工作流失败直接等同于版本未发布。
 
+`0.8.2` 已于 2026-10-08 经 `release.yml` 的 Trusted Publishing 发布，registry 的 latest 已核对为 0.8.2。上传成功但可见性核对在 60 秒重试窗口内未通过（与 0.8.1 相同的传播延迟假失败）；随后直接查询 registry 确认版本可读，再经 `workflow_dispatch`（`version_tag=v0.8.2`）重跑，脚本核对到已发布版本后跳过发布并转绿。
+
 **自动发布（默认路径）**：更新版本并推送代码后，推送对应的 `vX.Y.Z` 标签；`release.yml` 检查、打包并发布 npm。认证使用已配置的 npm Trusted Publisher，不要求仓库发布令牌；结果在「Publish to npm (new versions only)」步骤核对。仅推送 `main` 不会更新 npm。
 
 ### 2026-10-08 流程检查
