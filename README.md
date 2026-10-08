@@ -6,7 +6,7 @@
 
 ## 安装与快速开始
 
-当前仓库版本 **0.8.2**，可从 GitHub Release 获取。npm 自动发布采用 Trusted Publishing（GitHub OIDC）；可用版本见 [npm](https://www.npmjs.com/package/dsh-subusage)。安装时使用目标 DSH 部署提供的插件管理器或 CLI，并启用本 bundle：
+当前仓库版本 **0.8.3**，可从 GitHub Release 获取。npm 自动发布采用 Trusted Publishing（GitHub OIDC）；可用版本见 [npm](https://www.npmjs.com/package/dsh-subusage)。安装时使用目标 DSH 部署提供的插件管理器或 CLI，并启用本 bundle：
 
 | 来源 | 安装标识或下载地址 |
 |---|---|
@@ -51,7 +51,7 @@
 | Z.ai 国际 | `ZAI_CODING_API_KEY` | `zai-coding`，默认关闭，独立国际 Coding Plan Key |
 | Synthetic | `SYNTHETIC_API_KEY` | `synthetic`，默认关闭，模型订阅请求额度 |
 | NanoGPT | `NANOGPT_API_KEY` | `nanogpt`，默认关闭；也可手动填写 Usage only 管理令牌 |
-| Kimi | `KIMI_CODING_API_KEY` | 需要 Kimi Coding Key，不是 Moonshot 开平台 Key |
+| Kimi | `KIMI_CODING_API_KEY` | 需要 Kimi Coding Key，不是 Moonshot 开平台 Key；窗口集合按套餐体系下发（老套餐 5 小时 + 7 天，新套餐 Go / Plus 为 5 小时 + 月度） |
 | MiMo | 不使用 API Key | 通过控制台 Cookie 会话读取 |
 | OpenCode Go | `OPENCODE_API_KEY` | OpenCode Go Key |
 | MiniMax 国际 | `MINIMAX_API_KEY` | `minimax` 路由；国际站订阅 Key |
@@ -100,13 +100,15 @@ JSON 中有域名的条目按 `platform.xiaomimimo.com` 的 Cookie 域规则过�
 | Z.ai 国际 | 5 小时、每周（按响应） | Token / Credits 配额，区域凭据独立 |
 | Synthetic | 滚动订阅池 | 已用/总请求次数、重置时间 |
 | NanoGPT | 每日、每周、试用周期（按响应） | 输入 Token 数、重置时间；不包含图像额度 |
-| Kimi | 5 小时、7 天 | 已用百分比、套餐档 |
+| Kimi | 5 小时、7 天、月度（按账户下发） | 已用百分比、套餐档 |
 | MiMo | 本周期额度池 | 用量明细、重置时间、套餐与余额 |
 | OpenCode Go | 滚动、每周、每月 | 已用百分比、重置时间 |
 | MiniMax 国际 / 中国 | 短周期（通常 5 小时）、每周 | 通用/编程池已用百分比、可信计数明细、重置时间 |
 | Command Code | 5 小时、每周、月额度池 | 已用/上限（月总额为套餐快照）、重置/账期、套餐（planId）、月剩余、已购 + 赠送余额 |
 
 非公开控制台接口可能变更；缺失或非法百分比不会当作零用量。部分数据、未知额度和暂时失败有明确状态，不能据此保证推理接口一定可用。
+
+Kimi 的窗口集合随套餐体系变化：老套餐（节奏命名，如 Allegro）返回 5 小时与 7 天，新套餐（Go / Plus 命名）返回 5 小时与月度总额，因此同一插件在不同账号上显示的窗口数可以不同；月度池里的 Code 份额不是独立预算，不单独成窗。插件按接口实际下发的窗口解析，不要求固定集合。
 
 
 ## 常见问题
@@ -116,6 +118,7 @@ JSON 中有域名的条目按 `platform.xiaomimimo.com` 的 Cookie 域规则过�
 | 设置页没有提供商标签 | 展开提供商管理，确认开关和凭据；无凭据的条目默认隐藏，可临时关闭自动隐藏查看指引 |
 | 已配置凭据却没有药丸 | 确认当前模型的提供商 ID 与支持表一致、检测已开启；自定义 ID 可在设置页查看，但不会自动映射 |
 | 显示认证失效 | 检查是否用了对应产品/区域的订阅 Key；MiMo 重新登录或导入 Cookie；旧额度不会当作有效数据保留 |
+| Kimi 缺少 7 天窗口，或提示结构错误 | 窗口集合按套餐体系下发：老套餐（节奏命名，如 Allegro）为 5 小时 + 7 天，新套餐（Go / Plus 命名）为 5 小时 + 月度总额。0.8.3 起按实际下发的窗口解析，不再要求 7 天窗口；升级后仍报「Invalid Kimi usage response」即为未识别的字段结构，插件不会猜测额度，可回报该响应 |
 | 显示缓存、部分数据或额度未知 | 查看更新时间和错误说明；缓存来自之前的成功读取，部分数据不保证有可用额度，余额也不等于订阅余量 |
 | 刷新后数字暂未变化 | 成功结果按提供商缓存 60 秒；手动刷新可跳过普通 TTL，但仍遵守限流退避和 Retry-After |
 | MiMo 自动登录无法启动 | Host 所在机器需安装 Google Chrome 并有桌面环境；远程或无桌面部署使用手动导入 |

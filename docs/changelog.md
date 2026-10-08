@@ -2,6 +2,12 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.8.3：Kimi 月度窗口与响应形态兼容
+
+- 修复「Invalid Kimi usage response」：`/coding/v1/usages` 的窗口集合按账户下发，部分账户只返回 `usages.limit_5h` + `limit_month_total`（无 `limit_7d`），而旧代码把 `limit_7d` 当必需字段，对这类 Key 一律判为结构非法。现在 `limit_5h` / `limit_7d` / `limit_month_total` 各自按下发内容成窗；`limit_month_code` 是月池的 Code 份额而非独立预算，不单独成窗。月池是最外层窗口，耗尽时连坐 5 小时与 7 天窗口。
+- 旧形态兜底：没有比例池时，用 `limits[]` 中 `window.duration=300` / `TIME_UNIT_MINUTE` 项的 `limit` / `remaining` 反推 5 小时窗口，再用顶层 `usage` 的 `limit` / `remaining` 反推周额度；未知结构仍报错，不猜测额度。
+- 测试：`tests/test-cascade.mjs` 覆盖月池耗尽连坐 5 小时、连坐来源标注与反向不连坐；`tests/test-host-service.mjs` 用实测现行响应（`limit_5h` + 月池 + `booster_wallet`）与旧绝对形态断言窗口集合与百分比。`node tests/run-all.mjs` 全部通过。
+
 ## 0.8.2：Command Code 账户切换同步控制用量显示
 
 - 药丸弹层内的账户切换不再只影响提供方插件：切换后药丸本体与弹层上方的用量窗口同步改为显示所选账户的额度。显示账户跟随账户区的当前固定项（含初始 describe 发现的固定账户）；选择「自动轮换」时仍显示默认账户（顶层 Key）的用量，弹层标注明确说明不跟随实际服务账户。

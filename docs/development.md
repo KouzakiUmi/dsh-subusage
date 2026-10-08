@@ -55,7 +55,7 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 - 非法/缺失百分比不是 0%；部分数据不能默认绿色可用。
 - 重置日期解析成功后统一输出 ISO，不保留原串；`Date.parse` 可接受带括号注释的 RFC 日期，原样回传会携带不可信文本或秘密。
 - Z.ai 百分比为 0–100；MiMo `percent` 为 0–1；OpenCode Go 三窗通常包裹于 `usage`。
-- Kimi 新格式仅兼容有明确窗口含义和数值依据的字段；未知结构报错，不猜测额度。
+- Kimi `/coding/v1/usages` 的窗口集合按账户下发：`usages` 比例池可能只有 `limit_5h` + `limit_month_total`（`limit_7d` 仅在部分套餐出现，不能当必需字段），旧账户则只有顶层 `usage` + `limits[]` 绝对计数，同一 Key 连续请求形态稳定。归一化按实际下发的窗口名产出窗口；`limit_month_code` 是月池的 Code 份额而非独立预算，不单独成窗；无任何比例池时，用 `limits[]` 中 `duration=300 / TIME_UNIT_MINUTE` 项的 `limit`/`remaining` 反推 5 小时窗口，再用顶层 `usage` 的 `limit`/`remaining` 反推周额度。未知结构仍报错，不猜测额度。
 - Command Code 并行直连 `/alpha/billing/credits` 与 `/alpha/billing/subscriptions`（请求头对齐提供方插件的 accountHeaders：Bearer、accept-encoding: identity、x-command-code-version、x-cli-environment）。absent 窗口是未报告上限（不画额度行）；`cap: 0` 是报告过的无上限，按 0% 不受限展示；`exceeded` 或原始比例达 100% 即限流；已出现的窗口块缺 `used`/`cap` 或非数值一律报错，不当作零用量。月余额 `credits.monthlyCredits` 是剩余金额，使用已知套餐表快照计算 `max(0, total - remaining)`，不是接口直接报告的月cap；未知套餐或缺月余额时 coverage=partial，不猜测百分比。planId优先 subscriptions.data.planId、回退 credits.planId，重置取 subscriptions.data.currentPeriodEnd（ISO或毫秒），非法日期不输出。月池耗尽不参与短窗级联（额外购买/赠送池可能仍可用）；周/5小时保持现有级联。余额只显示真正报告过的月剩余/已购/赠送字段。用量显示跟随药丸弹层选择的账户：默认账户（含自动轮换）走 `COMMANDCODE_API_KEY` 凭据链，额外账户按其凭据引用名（`apiKeyEnv`）从凭据服务 → 启动环境解析（对齐提供方插件 `slots()`/`resolveRef`），缓存指纹计入账户选择，entry 带 `account` 字段；自动轮换不跟随实际服务账户，自定义 apiBase 不跟随。
 - 单厂商凭据、网络、解析异常不影响其它厂商条目。
 - 按厂商共享 TTL 缓存与 in-flight 请求；配置/凭据变化使旧账号缓存失效。
@@ -128,6 +128,13 @@ node --input-type=module -e "import {chromium} from 'playwright-core'; import {r
 ```
 
 预览页面包括布局示意，不完全复刻 DSH 外壳。市场所用设置截图来自 `settings-530-xiaomi-token-plan-cn-dark-credentials.png`，弹层来自 `settings-530-nanogpt-light-pill.png`。人工检查后将 PNG 复制到 `assets/screenshots/` 的相应文件，保留离线标记并同步 [截图声明](../screenshots.json) 与 README。市场只需 GitHub 仓库图片，当前 npm 白名单不包含这些 PNG。
+
+### 0.8.3 验证记录：Kimi 月度窗口与响应形态兼容
+
+- `node tests/run-all.mjs` 全部通过，`node scripts/check-manifest.mjs` 与三个 `node --check` 通过。
+- 触发场景（实测）：`/coding/v1/usages` 按套餐体系下发不同窗口集合——老套餐（节奏命名，如 Allegro）返回 `limit_5h` + `limit_7d`；新套餐（Go / Plus 命名）只返回 `usages.limit_5h` + `limit_month_total` + `limit_month_code`，没有 `limit_7d`。同一把新套餐 Key 连续三次请求形态稳定，`/v1/me` 报 `user_level_name: "Plus"`、`goods_version: 2`。旧代码把 `limit_7d` 当必需字段，对新套餐 Key 一律抛 `Invalid Kimi usage response`，与 HTTP 层和 Key 有效性无关。
+- 回归覆盖：现行响应（`limit_5h` + 月池 + `booster_wallet`）产出 `["5h","month"]`，`month_code` 不单独成窗；月池耗尽连坐 5 小时并标注 `blockedBy: ["month"]`，反向不连坐；旧绝对形态（顶层 `usage` + `limits[]`）按 `limit`/`remaining` 反推 5 小时与周额度；`used_ratio` 非数值与完全未知结构仍然报错。
+- **未做**：老套餐 Key（节奏命名）的在线响应采样（依据“老套餐正常、新套餐报错”的现场反馈与该分支原有断言）；真实 DSH 中安装 0.8.3 后的实机验收。
 
 ### 0.8.2 验证记录：Command Code 账户切换同步控制用量显示
 

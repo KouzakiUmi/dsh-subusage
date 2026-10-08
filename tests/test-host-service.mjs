@@ -134,6 +134,15 @@ for (const key of ["usages", "usage", "limits"]) {
  assert.equal(windows[0].percent, 99.5); assert.equal(windows[0].status, "ok"); assert.equal(windows[1].percent, 99.9);
 }
 assert.throws(() => normalizeKimi({ usages: { limit_5h: {}, limit_7d: { used_ratio: 0 } } }));
+// Kimi 现行响应实测形态：limit_7d 缺失不是结构错误，月池生效，month_code 不作独立窗口。
+const kimiLive = normalizeKimi({ limits: [{ window: { duration: 300, timeUnit: "TIME_UNIT_MINUTE" }, detail: { limit: "100", remaining: "100", resetTime: "2026-10-08T12:08:05.600596Z" } }], booster_wallet: { status: "STATUS_DISABLED" }, usages: { limit_5h: { used_ratio: 0, reset_time: "2026-10-08T12:08:05Z" }, limit_month_total: { used_ratio: 0.0006, reset_time: "2026-11-08T00:00:00Z" }, limit_month_code: { used_ratio: 0, reset_time: "2026-11-08T00:00:00Z" } } });
+assert.deepEqual(kimiLive.map(w => w.kind), ["5h", "month"]);
+assert.equal(kimiLive[0].percent, 0); assert.equal(kimiLive[1].percent, 0.1);
+// 无比例池时退回绝对值：limits[] 的 300 分钟项 = 5 小时窗口，顶层 usage = 周额度。
+const kimiAbsolute = normalizeKimi({ usage: { limit: "100", used: "26", remaining: "74", resetTime: "2026-08-11T15:53:05Z" }, limits: [{ window: { duration: 300, timeUnit: "TIME_UNIT_MINUTE" }, detail: { limit: "200", used: "139", remaining: "61", resetTime: "2026-08-11T14:00:00Z" } }] });
+assert.deepEqual(kimiAbsolute.map(w => w.kind), ["5h", "week"]);
+assert.equal(kimiAbsolute[0].percent, 69.5); assert.equal(kimiAbsolute[1].percent, 26);
+assert.throws(() => normalizeKimi({ usages: { unknown_window: { used_ratio: 0 } } }));
 assert.throws(() => normalizeZai({ data: { limits: [{ type: "CREDIT_LIMIT", unit: 3, percentage: NaN }] } }));
 const peers = normalizeZai({ data: { limits: [{ type: "CREDIT_LIMIT", unit: 6, percentage: 100 }, { type: "CREDIT_LIMIT", unit: 6, percentage: 10 }, { type: "CREDIT_LIMIT", unit: 3, percentage: 0 }] } });
 assert.equal(peers.windows[1].status, "ok"); assert.deepEqual(peers.windows[2].detail.blockedBy, ["week"]);
