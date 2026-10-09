@@ -29,9 +29,11 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 `0.8.1` 已于 2026-10-08 经 `release.yml` 的 Trusted Publishing 发布，registry 的 latest 已核对为 0.8.1。首次发布后查询短暂读到旧元数据，工作流因此报验证失败，但上传已完成；恢复时应先查询 registry，不能把工作流失败直接等同于版本未发布。
 
-`0.8.2` 已于 2026-10-08 经 `release.yml` 的 Trusted Publishing 发布，registry 的 latest 已核对为 0.8.2。上传成功但可见性核对在 60 秒重试窗口内未通过（与 0.8.1 相同的传播延迟假失败）；随后直接查询 registry 确认版本可读，再经 `workflow_dispatch`（`version_tag=v0.8.2`）重跑，脚本核对到已发布版本后跳过发布并转绿。
+`0.8.2` 已于 2026-10-08 经 `release.yml` 的 Trusted Publishing 发布，registry 的 latest 已核对为 0.8.2。上传成功，但可见性核对在 60 秒重试窗口内未通过——**这是 npm 发布后的验证与传播过程，属正常行为，不是工作流缺陷**；随后直接查询 registry 确认版本可读，再经 `workflow_dispatch`（`version_tag=v0.8.2`）重跑，脚本核对到已发布版本后跳过发布并转绿。
 
-`0.8.3` 已于 2026-10-08 经 `release.yml` 的 Trusted Publishing 发布，registry 的 latest 已核对为 0.8.3。传播延迟假失败第三次复现：上传成功，但 60 秒可见性窗口内 registry 仍只读到旧版本，工作流报 `Publication verification failed`；直接查询 registry 确认 0.8.3 可读后经 `workflow_dispatch`（`version_tag=v0.8.3`）重跑。第一次重跑在「Create versioned GitHub Release」的资产上传阶段遇到 GitHub 侧 `other side closed`——该步骤 `overwrite_files: true` 已先删除旧附件，`v0.8.3` Release 因此一度没有任何资产；再次重跑转绿，`v0.8.3` 与 `build-d17346a3ef0c` 两个 Release 的 `dsh-subusage.tgz` digest 一致（`sha256:1b6f2d61…`）。可见性核对窗口偏短已是稳定复现项（0.8.1 / 0.8.2 / 0.8.3 连续三次），恢复流程仍按「先查 registry、再重跑」执行，不改动已发布版本。
+`0.8.3` 已于 2026-10-08 经 `release.yml` 的 Trusted Publishing 发布，registry 的 latest 已核对为 0.8.3。同样是发布后验证/传播延迟：上传成功，但 60 秒可见性窗口内 registry 仍只读到旧版本，工作流报 `Publication verification failed`；直接查询 registry 确认 0.8.3 可读后经 `workflow_dispatch`（`version_tag=v0.8.3`）重跑。第一次重跑在「Create versioned GitHub Release」的资产上传阶段遇到 GitHub 侧 `other side closed`——该步骤 `overwrite_files: true` 已先删除旧附件，`v0.8.3` Release 因此一度没有任何资产；再次重跑转绿，`v0.8.3` 与 `build-d17346a3ef0c` 两个 Release 的 `dsh-subusage.tgz` digest 一致（`sha256:1b6f2d61…`）。
+
+> **发布后核对不到版本时怎么办（0.8.1 起每次发布都会遇到）**：这是 **npm 侧的发布后验证**，不是工作流缺陷——`0.8.1` / `0.8.2` / `0.8.3` / `0.10.0` / `0.10.1` / `0.10.2` / `0.10.3` 都出现过。处置固定为「**先查 registry 确认版本可读，再用 `workflow_dispatch` 重跑让工作流转绿**」，不改动已发布版本，也不为此放宽核对窗口。**绝不能把工作流那次失败直接当成版本未发布**，更不要因此重新发一次。
 
 **自动发布（默认路径）**：更新版本并推送代码后，推送对应的 `vX.Y.Z` 标签；`release.yml` 检查、打包并发布 npm。认证使用已配置的 npm Trusted Publisher，不要求仓库发布令牌；结果在「Publish to npm (new versions only)」步骤核对。仅推送 `main` 不会更新 npm。
 
