@@ -48,11 +48,30 @@ const okFetch = calls => async (url, options) => {
 	assert.equal(view.settings, undefined, "不返回 settings");
 	const raw = JSON.stringify(view);
 	for (const leak of ["settings", "keySource", "apiDetected", "envName", "sk-fixture", "sk-or-fixture"]) assert.ok(!raw.includes(leak), `视图不得包含 ${leak}`);
-	// 未知 id 被忽略而不是报错；缺省则读全部登记的 provider。
-	assert.deepEqual((await h.service.quota({ providerIds: ["nope", DEEPSEEK] })).providers.map(p => p.providerId), [DEEPSEEK]);
+	// 调用方（尤其是模型）手里的名字未必是本插件的 provider id，所以：认不出的原样回报、
+	// 命中多条时全返回、一个都认不出时照样把全量数据给出去——三种情况都不能是空。
+	const mixed = await h.service.quota({ providerIds: ["nope", DEEPSEEK] });
+	assert.equal(JSON.stringify(mixed.providers.map(p => p.providerId)), JSON.stringify(["nope", DEEPSEEK]), "认不出的名字排在最前，命中的照常返回");
+	assert.equal(mixed.providers[0].state, "error");
+	assert.ok(mixed.providers[0].error.includes("不认识提供商名「nope」"), "要说出是哪个名字不认识");
+	assert.ok(mixed.providers[0].error.includes("zai") && mixed.providers[0].error.includes("省略 providers"), "要给出可用的写法与下一步");
+	assert.equal((await h.service.quota({ providerIds: ["nope"] })).providers.length, 31, "一个都没认出来时给说明 + 全部 30 条数据");
 	assert.equal((await h.service.quota()).providers.length, 30, "缺省读全部 30 家");
+	// 别名：厂商名、大小写与分隔符都无关；一个别名命中多条路由就全给（各自带真实状态，不猜也不吞）。
+	const aliased = await h.service.quota({ providerIds: ["zai"] });
+	assert.equal(JSON.stringify(aliased.providers.map(p => p.providerId)), JSON.stringify(["zai-coding-cn", "zai-coding"]), "zai 命中中国版与国际版两条");
+	assert.equal(JSON.stringify((await h.service.quota({ providerIds: ["Z.AI"] })).providers.map(p => p.providerId)), JSON.stringify(["zai-coding-cn", "zai-coding"]), "大小写与分隔符无关");
+	assert.equal(JSON.stringify((await h.service.quota({ providerIds: ["zai_coding_cn"] })).providers.map(p => p.providerId)), JSON.stringify(["zai-coding-cn"]), "归一化后按 id 命中");
+	assert.equal((await h.service.quota({ providerIds: ["ark"] })).providers.length, 7, "ark 命中全部 7 条路由");
+	assert.equal(JSON.stringify((await h.service.quota({ providerIds: ["Kimi"] })).providers.map(p => p.providerId)), JSON.stringify(["kimi-coding"]));
+	assert.equal(JSON.stringify((await h.service.quota({ providerIds: ["grok"] })).providers.map(p => p.providerId)), JSON.stringify(["xai-oauth"]));
+	// 视图里不能出现 `undefined` 值的键：调用方的 schema 校验会把它判成型别错误（DSH 就会），
+	// 而且「字段缺席」本来就该表示「这家没报告」，不是「报告了空」。
+	for (const entry of (await h.service.quota()).providers) {
+		for (const [key, value] of Object.entries(entry)) assert.notEqual(value, undefined, `${entry.providerId}.${key} 不得是 undefined`);
+	}
 	h.service.dispose();
-	console.log("PASS quota 只读视图：形状、过滤、未知 id 忽略与不泄露内部状态");
+	console.log("PASS quota 只读视图：形状、别名与未知名字的兜底、不泄露内部状态");
 }
 
 // ── [2] 单家失败不拖垮其它家 ─────────────────────────────────────────────
@@ -94,6 +113,16 @@ const okFetch = calls => async (url, options) => {
 	assert.equal(tool.output.schema.type, "object");
 	assert.equal(tool.output.schema.properties.providers.type, "array");
 	assert.equal(tool.output.schema.properties.providers.items.properties.state.required, true);
+	// 输出结构不会发给模型（DSH 只投影 name/description/parameters），所以它同时也是**返回值校验器**
+	// ——写错会让工具在真实运行时报 ToolOutputError。至少要保证两个数组有元素级 schema。
+	assert.equal(tool.output.schema.properties.providers.items.properties.windows.items.properties.percent.required, true, "windows 元素有字段级 schema");
+	assert.equal(tool.output.schema.properties.providers.items.properties.windows.items.additionalProperties, true, "窗口形态随厂商变化，保留扩展余地");
+	assert.equal(tool.output.schema.properties.providers.items.properties.extras.items.properties.value.required, true, "extras 元素有字段级 schema");
+	// 模型看不到 output schema，所以「怎么用」必须写在描述里。
+	assert.ok(tool.description.includes("no arguments"), "描述要说明可以不传参数");
+	assert.ok(tool.description.includes("vendor names"), "描述要说明可以传厂商名");
+	assert.ok(tool.parameters.providers.description.includes("unmatched name"), "参数说明要交代认不出时的行为");
+	assert.ok(tool.parameters.providers.description.includes("separators"), "参数说明要交代大小写与分隔符无关");
 	// execute 经服务拿数据，并把 providers/refresh 映射到 quota 的参数。
 	const seen = [];
 	service.quota = async request => { seen.push(request); return { updatedAt: "x", providers: [] }; };
@@ -115,7 +144,20 @@ const okFetch = calls => async (url, options) => {
 	assert.ok(text.includes("缓存数据"), "缓存要标注");
 	assert.ok(text.includes("HTTP 500"), "失败原因要透出");
 	assert.ok(!text.includes("undefined"), "不留 undefined");
-	console.log("PASS subusage_quota 工具：契约、参数映射与 render 文案");
+	// render 的文本才是模型真正读到的东西：读不到数据时也要给下一步，绝不能是空。
+	const emptyText = tool.output.render({}, { providers: [] })[0].text;
+	assert.ok(emptyText.trim().length > 0 && emptyText.includes("全部"), "空结果也要给可执行的下一步");
+	const allMissing = tool.output.render({}, { providers: [
+		{ providerId: "kimi-coding", label: "Kimi", state: "no-key", windows: [], extras: [] },
+		{ providerId: "chutes", label: "Chutes", state: "disabled", windows: [], extras: [] }
+	] })[0].text;
+	assert.ok(allMissing.includes("未配置凭据 1 条") && allMissing.includes("检测已关闭 1 条"), "一条都没读到时给汇总原因");
+	// 服务还没就绪时给可读原因，而不是一句没有信息量的报错。
+	const bare = [];
+	const bareScope = { ...scope, tools: { register: t => { bare.push(t); return () => {}; } }, get: () => undefined };
+	apply({ get: () => undefined, inject: (_names, cb) => cb(bareScope), plugin: () => {}, logger: bareScope.logger });
+	await assert.rejects(() => bare[0].execute({}, {}), /服务尚未就绪.*重启/s, "未就绪要说明下一步");
+	console.log("PASS subusage_quota 工具：契约、参数映射、schema 元素级形状与 render 兜底");
 }
 
 console.log("\n额度查询 API 测试全部通过 ✅");

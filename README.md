@@ -6,7 +6,7 @@
 
 > **English.** dsh-subusage shows subscription quota and balance for the AI providers you already use, as a pill next to the model selector in DeepSeek Harness. Provider switches and credentials live in one settings page, and other plugins or agents can read the same snapshot through a read-only quota API.
 
-[![npm version](https://img.shields.io/badge/npm-0.10.4-blue)](https://www.npmjs.com/package/dsh-subusage)
+[![npm version](https://img.shields.io/badge/npm-0.10.5-blue)](https://www.npmjs.com/package/dsh-subusage)
 [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
 [![DSH](https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.1%20%3C0.3.0--0-informational)](#compatibility--兼容性)
 
@@ -246,8 +246,13 @@ ark-coding-plan-byteplus ARK_CODING_PLAN_BYTEPLUS_API_KEY
 
 | 参数 | 类型 | 说明 |
 |---|---|---|
-| `providers` | `string[]`（可选） | 限定 provider id，例如 `["deepseek", "openrouter"]`；省略表示读取全部 |
+| `providers` | `string[]`（可选） | 限定范围。可传本插件的 provider id（`deepseek`、`zai-coding-cn`、`kimi-coding`…），也可直接传厂商名（`zai`、`kimi`、`mimo`、`minimax`、`commandcode`、`grok`、`codex`、`ark`、`deepseek`…）；大小写与 `-` `.` `_` 都无关。省略即读取全部 |
 | `refresh` | `boolean`（可选） | `true` 绕过最多 60 秒的缓存，仅在确需最新数字时使用 |
+
+调用约定（**结果永远不为空**）：
+
+- 模型手里的名字往往不是这里的 provider id（它更可能看到 DSH 的路由名，例如 `zai`），所以匹配是**宽松**的：一个名字命中多条路由时**全部返回**（`zai` → 中国版 + 国际版，`ark` → 7 条），每条各自带着真实 `state`（没启用的如实标 `disabled`），由调用方自己判断要看哪条。
+- 一个名字都认不出时，返回里会**先**给一条说明（写明可用写法），**再附上全部 30 条数据**——数据先给出去，判断交给调用方，而不是回一个空结果。
 
 **Host 服务**（Cordis `Service`，key 为 `subUsage`）：
 
@@ -256,14 +261,15 @@ const service = ctx.get("subUsage");
 const view = await service.quota({ providerIds: ["deepseek"], force: false });
 // view = {
 //   updatedAt,
-//   providers: [{ providerId, label, state, windows, extras, coverage, freshness, lastSuccessAt, error? }]
+//   providers: [{ providerId, label, state, windows, extras, coverage?, freshness?, lastSuccessAt?, error? }]
 // }
 ```
 
 - `state`：`ok` | `no-key` | `no-cookie` | `error` | `disabled`
 - `windows[].percent` 是**已用**百分比（0–100）；`extras` 放余额与套餐名等补充项
 - 视图**刻意精简**：不返回设置，也不返回 `keySource` / `apiDetected` / 继承变量名等内部状态，第三方消费者拿不到任何与 Key 相关的字段
-- `providerIds` 里的未知 id 会被忽略；单家读取失败只影响它自己的条目，其余照常返回
+- 视图里**不出现值为 `undefined` 的字段**：字段缺席表示「这家没有报告」，而不是「报告了空」——带 `undefined` 的键会被调用方的 schema 校验判成型别错误
+- 单家读取失败只影响它自己的条目，其余照常返回
 - 与设置页共用同一份缓存（TTL 60 秒），频繁调用不会反复请求各家接口
 
 ## Troubleshooting / 常见问题

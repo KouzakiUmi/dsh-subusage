@@ -64,7 +64,7 @@
 
 - **新增 Agent 工具 `subusage_quota`**：模型可以直接查询各厂商剩余额度与余额，参数 `providers`（限定厂商）与 `refresh`（绕过最多 60 秒缓存）。经 `ctx.inject(["tools"], c => c.tools.register(defineTool({...})))` 注册，`execute` 里取 `ctx.get("subUsage")` 调服务。`package.json` 的 peerDependencies 增加 `@deepseek-ai/dsh-tools`。
 - **新增对外只读方法 `quota(request)`**：`SubUsageService` 本来就 `extends TypertRemoteService extends cordis Service`（服务 key `subUsage`），其他插件直接 `ctx.get("subUsage").quota(...)` 即可，不必自己逐个厂商请求。返回 `{ updatedAt, providers: [{ providerId, label, state, windows, extras, coverage, freshness, lastSuccessAt, error? }] }`。
-- **刻意不返回 settings 与内部状态**：`keySource` / `apiDetected` / 继承变量名一概不出现——第三方消费者只需要额度，不该知道本机配了哪些凭据。未知 `providerIds` 被忽略；单家失败只影响自己的条目（有测试断言视图里搜不到 `settings` / `keySource` / `apiDetected` 与 Key 本身）。
+- **刻意不返回 settings 与内部状态**：`keySource` / `apiDetected` / 继承变量名一概不出现——第三方消费者只需要额度，不该知道本机配了哪些凭据。未知 `providerIds` 被忽略；单家失败只影响自己的条目（有测试断言视图里搜不到 `settings` / `keySource` / `apiDetected` 与 Key 本身）。（**更正**：「未知 `providerIds` 被忽略」在 `0.10.5` 已推翻——静默过滤会让调用方以为本机没有额度，现在改为宽松命名匹配 + 认不出时附上全量数据。）
 - **用量面板内联行动条（UX）**：设置页原本「状态在上、操作在下」，出错时得先展开底部「提供商管理」、找到那一家、再展开「连接与凭据」。现在面板在**真正需要处理时**给出行动条：MiMo 未登录/被拒 → 「登录并自动导入」；已过期或 2 小时内到期 → 「重新登录」；其它厂商缺凭据/被拒 → 「配置凭据」（展开该厂商编辑器并滚动过去）。**正常状态不显示**（还有几小时的倒计时不算事件），且凭据编辑仍复用下面那一份，不存在两套字段与两套校验。
 - 测试：新增 `tests/test-quota-api.mjs`（视图形状与「不泄露内部状态」、未知 id 忽略、单家失败隔离、工具契约与参数映射、render 文案含未配置/已关闭/限流/缓存/失败原因）与 `tests/test-usage-action.mjs`（行动条判定：缺凭据、凭据被拒、已过期、2 小时/30 分钟档、正常倒计时不打扰、计时不可解析时不编造）；`tests/smoke-host.mjs` 断言 `subusage_quota` 已注册且带 object 根 schema；`tests/test-client-render.mjs` 断言 MiMo Cookie 失效时面板出现行动条、正常状态没有。
 
@@ -116,6 +116,15 @@
 - 凭据只读共享登录文件：优先 `~/.grok/auth.json`（槽位 `https://auth.x.ai::…`），回退 dsh-grok-kit 旧版 `~/.dsh/.xai-oauth-auth.json` 信封；不保存凭据、不自行刷新 token（避免与两端的 refresh-token 轮换互相顶掉），不接受手动 Key（API Key 路线取不到订阅周池）。缺凭据时提示在 Grok Kit 登录或运行 `grok login`。
 - 响应两代形态兼容：新形态 `creditUsagePercent` + `currentPeriod`；旧形态按 `monthlyLimit`/`used`（美分）折算比例并归月账期窗口；`{}`（proto3 零值）解码为 0，无上限不折算。未知结构报错不猜额度。
 - 测试：新增 `tests/test-supergrok.mjs`（归一化两代形态/周期归类/套餐两级回退/余额边界、登录文件各形态与槽位优先级、请求头、并行拉取、错误映射、缓存与 token 轮换失效、managed 边界）；`tests/test-contract.mjs` 补 `xai-oauth` 刷新契约与 managed 拒写断言；`tests/test-client-render.mjs` / `tests/test-client-behavior.mjs` / `tests/test-host-service.mjs` 同步提供商计数与索引。`node tests/run-all.mjs` 全部通过。
+
+## 0.10.5：额度查询改用宽松命名匹配，并把「空结果」这条路堵死
+
+- **症状**：模型调用 `subusage_quota(providers: ["zai"])` 拿到的是**空列表**，看起来像「本机什么都没配」。真正的原因是两套命名：模型手里的是 DSH 的路由名（`zai`、`grok`、`codex`），而本插件的 provider id 是路由 id（`zai-coding-cn`、`xai-oauth`、`openai-codex`）——旧实现只做精确 id 匹配，认不出的一律 `filter` 掉，于是「传了名字」反而比「不传」结果更少。
+- **改法**：名称解析改成**归一化宽松匹配**（大小写与 `-` `.` `_` 空格均无关），并为路由登记别名（厂商名、品牌中文名、GLM/Zhipu 这类同义写法）。一个名字命中多条路由时**全部返回**：`zai` → 中国版 + 国际版，`ark` → 7 条，每条各自带真实 `state`（没启用的如实标 `disabled`）——不替调用方猜一条，也不返回空。
+- **兜底**：一个名字都认不出时，返回里**先**给一条说明（写明可用写法与「省略参数即查全部」），**再附上全部 30 条数据**。原则是「数据先给出去，判断交给调用方」：旧行为的静默过滤会让调用方以为本机没有额度，而真正的原因只是名字没对上。`render` 出的文本同样不再可能是空的——读不到数据时也给下一步。
+- **工具说明补全**：DSH 只把 `name` / `description` / `parameters` 投影给模型，`output.schema` **不会**发给模型（`dsh-tools` 的投影刻意丢掉 `output` / `execute` 等本地字段），所以「怎么用」只能写在描述里。描述现在交代了「不传参数即查全部」「可传厂商名」「认不出时会拿到全量数据」，`providers` 参数也说明了大写与分隔符无关。
+- **`output.schema` 补元素级 schema，并修掉两处会真炸的问题**：`windows` / `extras` 原先只声明 `type: "array"`、没有 `items`，等于对元素不做任何约束。补上 `items` 后用**真实的 `dsh-tools` 校验器**（`valueSchemaSpecToJsonSchema` + `validateJsonSchemaValue`）压了一遍真实输出，抓到两个会直接让工具失败的缺陷：①未知名字条目多带了一个 `errorCode` 字段，而该层是 `additionalProperties: false`；②`lastSuccessAt` / `coverage` / `freshness` 为 `undefined` 时键仍存在，被判成「不是 string」。现在 `quota()` 只输出**真正有值**的字段——与项目既有的「absent field ≠ 0」一致：字段缺席表示「这家没有报告」，不是「报告了空」。窗口与 `detail` 两层用 `additionalProperties: true`：形态随厂商变化，收紧成白名单只会让新增字段在运行时被判违规。
+- 测试：`tests/test-quota-api.mjs` 覆盖别名（`zai` / `Z.AI` / `zai_coding_cn` / `ark` / `Kimi` / `grok`）、混入未知名字时的顺序（说明在前）、全认不出时的「说明 + 30 条」、视图不含 `undefined` 键、`render` 在空结果与「一条都没读到」时的兜底文案，以及 schema 的元素级形状与描述措辞。
 
 ## 0.10.4：修好 AFP 两条额度线的分组（0.10.2 声称过，但一直没有生效）
 
