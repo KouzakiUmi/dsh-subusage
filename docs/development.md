@@ -142,6 +142,27 @@ node --input-type=module -e "import {chromium} from 'playwright-core'; import {r
 
 预览页面包括布局示意，不完全复刻 DSH 外壳。市场所用设置截图来自 `settings-530-xiaomi-token-plan-cn-dark-credentials.png`，弹层来自 `settings-530-nanogpt-light-pill.png`。人工检查后将 PNG 复制到 `assets/screenshots/` 的相应文件，保留离线标记并同步 [截图声明](../screenshots.json) 与 README。市场只需 GitHub 仓库图片，当前 npm 白名单不包含这些 PNG。
 
+### 0.10.8 运行时验证记录：web profile 的安装—启动—回滚闭环
+
+**环境**：Desktop 内置 Core `0.2.1-alpha.1`（与 `dsh.compatibility.dshReleases` 里标 `compatible` 的版本一致），真实 `$DSH_HOME` 下的 `web` profile，固定 Commit `c47521df4dab8559b4d6d04f502a9477a5a5f5da`（= `v0.10.8`）。**未触碰 `desktop` profile**（验证后复核其依赖清单不变）。
+
+| 操作 | 结果 | 要点 |
+|---|---|---|
+| install | pass | `dsh plugin --profile web add 'git+…dsh-subusage.git#c47521df…'`；pnpm 2.9s，`package.json` 锁到该 Commit；profile 由 CLI 自动初始化 |
+| dump-config | pass | 组合树含 `- id: subusage` / `name: dsh-subusage`；无加载错误 |
+| start | pass | `dsh --profile web --no-open --port 3081` 起服务并打印带 token 的 URL |
+| api-smoke | pass | 无 token 根路径 **HTTP 401**；带 token **HTTP 200**（35,975 B HTML，`<title>DeepSeek Harness</title>`） |
+| ui-readback | pass | 真实浏览器（本机 Chrome，headless）里 **设置 → 订阅用量** 面板完整渲染；火山方舟卡片显示「该组共 **4** 条路由定义」，与 0.10.8 移除 legacy 后的数量一致 |
+| uninstall | pass | 依赖移除；`bundles` 回到 `[@deepseek-ai/dsh-base, @deepseek-ai/dsh-web-app]` |
+| rollback | pass | 卸载后 `dump-config` 中再无 `subusage`；端口释放；隔离 `DSH_HOME` 已删除 |
+
+**两条与插件无关的环境限制**（记录下来，避免下次误判）：
+
+- **npm 全局 CLI（`0.1.2-rc.1`）跑 web profile 会失败**：本机 `~/.dsh/cordis.patch.yml` 里 `arkcli helper` 写的 MCP 条目带 `arkcli_managed` 字段，而 `0.1.2-rc.1` 的 `@deepseek-ai/dsh-mcp-client` schema **严格拒绝**该字段（`dsh: plugin tree failed to load … 1 entry did not activate`）。Desktop Core `0.2.1-alpha.1` 的该 schema 允许它，所以 Desktop 一直正常。验证因此改用 Desktop 自带的 Core。
+- **隔离 `DSH_HOME` 下启动会停在** `user patch-layer watching requires the Cordis HMR service`：profile 初始化时写入的 `patchReload: live` 需要 HMR 服务，而隔离 home 里没有。同样与本插件无关，所以最终用真实 `DSH_HOME` + 专用 `web` profile 做隔离。
+
+**未做**：没有在 `0.2.0-rc.1` / `0.2.0-rc.2` / `0.2.1-alpha.2` 上重复这六步，`dsh.compatibility.dshReleases` 对这三个保持 `unknown`；真实 Desktop profile 的插件更新与界面回读仍由用户自行验收。
+
 ### 0.10.0 → 0.10.1 验证记录：火山方舟全面覆盖、额度查询 API、RPC 版本窗口期与设置页排序
 
 - **默认可见性按「本机实际装了什么路由」判定（`providerRoutable`）**：provider id 就是路由 id，而路由由提供方插件/CLI 按账号**实际持有的东西**写入——`arkcli helper` 只为真正订阅的套餐写路由。因此只用常量 `defaultEnabled` 会出现「只买了 Agent Plan，却默认把 Coding Plan 也点亮」的假象。现在的判定链是：显式设置 > `defaultEnabled` > `configured[id] !== false`。三点必须守住：①**逐个判定，两种套餐可以共存**（本机两条路由都在就两条都显示，不做二选一）；②`configured` 缺失时按「未知」放行——`detectConfigured` 拿不到路由表时返回 `undefined` 而**不是** `false`，否则会谎报「全都没装」把每条标签都清空；③用户关掉「没有检测到 API 的默认隐藏」时不再按路由收起（那是「我要看全部」的明确表达）。
