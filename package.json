@@ -10,7 +10,7 @@
     "type": "git",
     "url": "git+https://github.com/KouzakiUmi/dsh-subusage.git"
   },
-  "description": "显示 DeepSeek 官方余额、火山方舟（arkcli 官方 CLI 路由与旧插件路由、Agent/Coding Plan 个人版与企业版席位）、Z.ai（中国与国际）、Kimi、MiMo、OpenCode Go、Command Code、SuperGrok、Codex（ChatGPT 订阅）、MiniMax（中国）、Synthetic、NanoGPT、SiliconFlow、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM 的订阅余量与余额；共享刷新与凭据管理，默认关闭 19 家。",
+  "description": "显示 DeepSeek 官方余额、火山方舟（arkcli 官方 CLI 路由与旧插件路由、Agent/Coding Plan 个人版与企业版席位，设置页合并为一组）、Z.ai（中国与国际）、Kimi、MiMo、OpenCode Go、Command Code、SuperGrok、Codex（ChatGPT 订阅，默认关闭）、MiniMax（中国）、Synthetic、NanoGPT、SiliconFlow、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM 的订阅余量与余额；共享刷新与凭据管理，默认关闭 20 家。",
   "keywords": [
     "dsh",
     "dsh-plugin",

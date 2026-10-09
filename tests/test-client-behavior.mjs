@@ -2,9 +2,12 @@
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import assert from "node:assert/strict";
-const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go", "commandcode", "openai-codex", "xai-oauth", "minimax-cn", "deepseek", "arkcli-agent-plan", "arkcli-coding-plan"];
+// 本机装着的那条 Ark 路由（其余 Ark 路由在 result() 里标成未安装，见下方 ARK_NOT_INSTALLED）。
+// Codex 默认关闭：它的提供方插件自带用量药丸，两个并排是重复信息。
+const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go", "commandcode", "xai-oauth", "minimax-cn", "deepseek", "arkcli-agent-plan"];
 // 默认关闭的厂商：在提供商管理里可见开关、但不产生 tab。新增厂商时同步这里。
-const defaultOff = ["zai-coding", "synthetic", "nanogpt", "ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "arkcli-agent-plan-team", "arkcli-coding-plan-team"];
+// openai-codex 默认关闭——它的提供方插件自带用量药丸。
+const defaultOff = ["zai-coding", "synthetic", "nanogpt", "ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "arkcli-agent-plan-team", "arkcli-coding-plan-team", "openai-codex"];
 const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
 let spec, clock = Date.parse("2026-10-01T10:00:00Z"), nextTimer = 0;
 const intervals = new Map(), timeouts = new Map(), events = new Map();
@@ -35,7 +38,10 @@ const plugin = spec.factory(() => react), api = plugin.__test;
 const t = (key) => api.zh[key] || key;
 const publicSettings = (revision = "1") => ({ revision, zai: { type: 1, organization: "", project: "" }, xiaomi: { hasCookie: true }, hasKeys: {}, keyModes: {} });
 const entry = (providerId, percent = 25, extra = {}) => ({ providerId, state: "ok", coverage: "complete", freshness: "fresh", windows: [{ kind: "sub", percent, status: percent >= 100 ? "rate-limited" : "ok" }], extras: [], lastAttemptAt: new FakeDate(clock).toISOString(), lastSuccessAt: new FakeDate(clock).toISOString(), ...extra });
-const result = (entries, revision = "1") => ({ entries, settings: publicSettings(revision), configured: {}, updatedAt: new FakeDate(clock).toISOString() });
+// 真实机器上只有装了的 Ark 路由才存在。测试默认只放行 agent-plan，其余 Ark 路由视为「未安装」——
+// 否则「未知路由一律放行」会让合并后的整组 7 条全部冒出来，测试就和真实行为脱节了。
+const ARK_NOT_INSTALLED = ["arkcli-coding-plan", "arkcli-agent-plan-team", "arkcli-coding-plan-team", "ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus"];
+const result = (entries, revision = "1") => ({ entries, settings: publicSettings(revision), configured: Object.fromEntries(ARK_NOT_INSTALLED.map(id => [id, false])), updatedAt: new FakeDate(clock).toISOString() });
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const nodes = (tree) => tree && typeof tree === "object" ? [tree, ...tree.children.flatMap(nodes)] : [];
@@ -125,10 +131,11 @@ const uiStore = { getSnapshot: () => uiSnapshot, subscribe: () => () => {}, read
 const uh = new Hooks(), props = { usageStore: uiStore, t, getLocale: () => "zh" };
 tree = uh.render(api.SubusageSection, props);
 let tabs = nodes(tree).filter((n) => n.props.role === "tab");
-assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Codex", "SuperGrok", "MiniMax CN", "DeepSeek", "ARK Plan", "ARK Code"]);
+assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "SuperGrok", "MiniMax CN", "DeepSeek", "ARK Plan"]);
 assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
 assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + defaultOff.length + 1); assert.ok(!textOf(tree).includes("保存设置"));
+// 设置页卡片数：23 家非 Ark provider + 1 张 Ark 合并卡片（组内 7 条路由） + 1 个「默认隐藏」开关 = 25。
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 25); assert.ok(!textOf(tree).includes("保存设置"));
 let focused; tabs[0].props.onKeyDown({ key: "End", preventDefault() {}, currentTarget: { parentElement: { querySelectorAll: () => tabs.map((_, i) => ({ focus() { focused = i; } })) } } });
 assert.equal(focused, ids.length - 1); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids.at(-1));
 // End 键跳到最后一个 tab，其技术信息应显示该 provider 的继承变量名。
@@ -331,7 +338,8 @@ const management = tree.children.at(-1);
 assert.equal(management.type, "details", "管理区为设置页末尾的折叠菜单");
 assert.equal(management.props.id, "subusage-provider-management"); assert.notEqual(management.props.open, true, "默认折叠");
 assert.equal(management.children[0].type, "summary"); assert.equal(management.children[0].children[0], "提供商管理");
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + defaultOff.length + 1, "所有关闭/隐藏提供商保留管理开关");
+// 关闭/隐藏的提供商仍保留管理开关；Ark 的 7 条路由合并成一张卡片，所以是 25 而不是 30。
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 25, "所有关闭/隐藏提供商保留管理开关（Ark 组已合并）");
 assert.deepEqual(nodes(tree).filter(n => n.props.role === "tab").map(n => n.props.id), ids.filter(id => ![ids[1], ids[3]].includes(id)).map(id => `subusage-tab-${id}`));
 assert(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick({ preventDefault() {} }); tree = ch.render(api.SubusageSection, cp);
@@ -363,7 +371,9 @@ const beforeToggle = controlPatches.length; await nodes(tree).find(n => n.props[
 ch.unmount();
 controlSnapshot = withPrefs(result(controlSnapshot.entries), preferences(Object.fromEntries(ids.map(id => [id, false]))));
 const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSection, cp);
-assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + defaultOff.length + 1);
+// 设置页的卡片数：23 家非 Ark provider + 1 张 Ark 合并卡片（组内 7 条路由） + 1 个「默认隐藏」开关 = 25。
+// 注意不能写成 ids + defaultOff 再减——那两个列表只覆盖到 Ark 组的一部分成员。
+assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 25);
 assert.equal(nodes(tree).find(n => n.props.id === "subusage-provider-management").props.open, true, "空状态展开配置入口");
 assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.role === "tabpanel"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick({ preventDefault() {} }); tree = emptyControls.render(api.SubusageSection, cp);

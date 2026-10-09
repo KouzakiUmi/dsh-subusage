@@ -128,8 +128,9 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   const section = plugin.__test.SubusageSection({ usageStore, t: (key) => key, getLocale: () => "zh" });
   const all = flattenNodes(section), selects = all.filter((n) => n.type === "select");
   assert.equal(selects.length, 0, "设置页不使用任何下拉列表");
-  // 30 家 provider 的开关 + 1 个「没有检测到 API 的默认隐藏」开关；新增厂商时同步此数。
-  assert.equal(all.filter(n => n.props?.role === "switch").length, 31, "提供商与默认隐藏开关均可见");
+  // 火山方舟的 7 条路由在设置页合并成**一张**卡片（共用一个组开关），所以是
+  // (30 − 6) 张 provider 卡片 + 1 个「没有检测到 API 的默认隐藏」开关 = 25。
+  assert.equal(all.filter(n => n.props?.role === "switch").length, 25, "提供商卡片与默认隐藏开关均可见（Ark 组已合并）");
   if (provider === "xiaomi-token-plan-cn") {
     assert.ok(visibleText(section).includes("登录并自动导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));
@@ -217,7 +218,8 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 
   // 管理列表：已启用的在前，关闭项沉到末尾，组内各自保持既有顺序。
   const listed = flattenNodes(render()).filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("启用 ")).map(n => String(n.props["aria-label"]).slice("启用 ".length));
-  assert.equal(listed.length, order.length, "管理列表仍然列出全部提供商");
+  // Ark 的 7 条路由合并成一张卡片，所以比 PROVIDER_ORDER 少 6 条。
+  assert.equal(listed.length, order.length - 6, "管理列表列出全部提供商（Ark 组合并成一张卡片）");
   assert.equal(listed.at(-2), meta["zai-coding-cn"].short, "关闭的 Z.ai 沉到末尾组");
   assert.equal(listed.at(-1), meta["kimi-coding"].short, "关闭项在组内保持既有顺序");
   assert.ok(listed.slice(0, -2).every(short => !off.has(order.find(id => meta[id].short === short))), "前面的都是已启用的");

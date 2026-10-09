@@ -95,9 +95,14 @@ const RESET_5H = "2026-10-09T12:00:00.000Z", RESET_7D = "2026-10-15T00:00:00.000
 		}
 	});
 	let result = await service.read();
-	assert.equal(result.settings.visibility.providers[ID], true, "对齐 DSH 内置路由，默认开启");
+	// Codex 默认关闭：它的提供方插件自带用量药丸，两个并排只是重复信息（用户仍可手动开启）。
+	assert.equal(result.settings.visibility.providers[ID], false, "默认关闭，避免与提供方插件的药丸重复");
 	assert.equal(result.configured[ID], true);
-	assert.equal(calls.length, 1, "默认开启即读取一次");
+	assert.equal(calls.length, 0, "默认关闭时不为它发请求");
+	assert.equal(result.entries.find(e => e.providerId === ID).state, "disabled", "关闭状态如实报告");
+	// 默认关闭只是「不打扰」，不是「不能用」：下面要验证读取路径，这里显式开启它。
+	// 注意 visibility 补丁按设计不带 providerId（那是逐条凭据补丁的字段）。
+	await service.save({ expectedRevision: result.settings.revision, visibility: { providers: { [ID]: true } } });
 	result = await service.refresh({ providerIds: [ID], force: true });
 	const entry = result.entries[0];
 	assert.equal(entry.state, "ok");
@@ -114,6 +119,8 @@ const RESET_5H = "2026-10-09T12:00:00.000Z", RESET_7D = "2026-10-15T00:00:00.000
 		io, configPath: "memory/config2", resolveCredentials: async () => undefined, resolveEnvironment: () => undefined,
 		resolveCodexAuth: async () => undefined, fetch: async () => { throw new Error("不该发请求"); }
 	});
+	// 先开启：Codex 现在默认关闭（提供方插件自带药丸），不开启只会拿到 disabled，测不到 no-key 指引。
+	await bare.save({ expectedRevision: (await bare.read()).settings.revision, visibility: { providers: { [ID]: true } } });
 	const bareResult = await bare.refresh({ providerIds: [ID], force: true });
 	assert.equal(bareResult.entries[0].state, "no-key");
 	assert.ok(bareResult.entries[0].error.includes("codex login"), "指明用 codex login");

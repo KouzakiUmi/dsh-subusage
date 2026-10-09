@@ -11,7 +11,7 @@
 
 ## 1. 清单与默认开关
 
-30 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）只维护在 [README 的「支持的数据」](../README.md#支持的数据--supported-data) 一处，避免同一份事实在两处漂移：**默认开启 11 条、默认关闭 19 条**（`PROVIDERS[id].defaultEnabled !== false`）。
+30 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）只维护在 [README 的「支持的数据」](../README.md#支持的数据--supported-data) 一处，避免同一份事实在两处漂移：**默认开启 10 条、默认关闭 20 条**（`PROVIDERS[id].defaultEnabled !== false`；Codex 默认关闭是因为它的提供方插件自带用量药丸）。设置页里那 30 条会合并成 **25 张卡片**——火山方舟的 7 条路由共用一个组开关。
 
 新增厂商须同时改 `PROVIDERS`、`PROVIDER_META` / `PROVIDER_ORDER`、帮助文案、README 与默认值测试；未获明确需求的新订阅商一律 `defaultEnabled: false`，原有偏好通过存储合并保留。
 

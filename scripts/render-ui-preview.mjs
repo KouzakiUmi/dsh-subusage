@@ -38,8 +38,11 @@ const ids = ['zai-coding-cn', 'kimi-coding', 'xiaomi-token-plan-cn', 'opencode-g
 const mimoLoggedInAt = clock - 22.3 * 3600000;
 const mimoExpiresAt = clock + 95 * 60000;
 const entry = (providerId, percent, kind = 'sub') => ({ providerId, state: 'ok', apiDetected: true, keySource: providerId === 'xiaomi-token-plan-cn' ? 'cookie' : 'env', freshness: 'fresh', coverage: 'complete', lastSuccessAt: new PreviewDate(clock).toISOString(), lastAttemptAt: new PreviewDate(clock).toISOString(), ...(providerId === 'xiaomi-token-plan-cn' ? { cookieExpiresAt: new PreviewDate(mimoExpiresAt).toISOString() } : {}), windows: [{ kind, percent, status: percent >= 100 ? 'rate-limited' : 'ok' }], extras: [] });
+// 本机实际只有 arkcli-agent-plan 这一条 Ark 路由。其余 Ark 路由必须显式标成「未安装」：
+// 客户端对拿不到路由表的 id 按「未知」放行，不标的话合并后的整组 7 条都会冒出来，预览就不像真界面了。
+const ARK_NOT_INSTALLED = ['arkcli-coding-plan', 'arkcli-agent-plan-team', 'arkcli-coding-plan-team', 'ark-coding-plan-cn', 'ark-agent-plan-cn', 'ark-coding-plan-byteplus'];
 const result = {
-  updatedAt: new PreviewDate(clock).toISOString(), configured: Object.fromEntries(ids.map(id => [id, true])),
+  updatedAt: new PreviewDate(clock).toISOString(), configured: { ...Object.fromEntries(ids.map(id => [id, true])), ...Object.fromEntries(ARK_NOT_INSTALLED.map(id => [id, false])) },
   settings: { revision: 'offline-preview', visibility: { hideWithoutApi: true, providers: Object.fromEntries(ids.map(id => [id, true])) }, zai: { type: 1, organization: '', project: '' }, xiaomi: { hasCookie: true, loginAt: new PreviewDate(mimoLoggedInAt).toISOString(), expiresAt: new PreviewDate(mimoExpiresAt).toISOString() }, hasKeys: {}, keyModes: Object.fromEntries(ids.map(id => [id, 'inherit'])) },
   entries: [
     { ...entry(ids[0], 37), extras: [{ kind: 'plan', value: 'Lite' }], windows: [

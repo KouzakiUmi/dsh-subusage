@@ -43,16 +43,18 @@ try {
       };
     });
     assert.equal(info.overflow, false, `${theme}/${width} 不得横向溢出：${JSON.stringify(info.overflowNodes)}`);
-    // 预览页的桩数据把默认关闭项也打开了，所以这里是「除团队版外的全部可见条目」= 12。
-    assert.equal(info.providerCount, 12, '预览桩下的可见 provider 数（默认开启 11 家 + 桩里额外打开的 MiniMax 国际版）');
+    // 预览桩的 configured 把其余 Ark 路由标成未安装，且 Codex 现在默认关闭，
+    // 所以可见数不是 PROVIDERS 的默认开启数。
+    assert.equal(info.providerCount, 10, '预览桩下的可见 provider 数');
     assert.equal(info.selectedProvider, 'subusage-tab-xiaomi-token-plan-cn', '标签选中态必须匹配当前详情');
     assert.equal(info.tabsVisible, true, '窄屏仍使用按钮导航');
     assert(info.tabWidths.every(width => width > 0), '所有标签均有可点击区域');
     assert.equal(info.selectCount, 0, '整个设置页不使用下拉列表');
-    assert.equal(info.switches.length, 31, '三十个提供商开关与默认隐藏开关');
+    // 30 条 provider 里有 7 条 Ark 路由合并成一张卡片，所以是 (30 − 6) + 1 个默认隐藏开关 = 25。
+    assert.equal(info.switches.length, 25, '提供商卡片（Ark 组已合并）与默认隐藏开关');
     assert(info.switches.every(item => item.label), '开关有无障碍名称');
-    // 预览页的桩数据把 MiniMax 国际版也打开了，所以这里比 PROVIDERS 的 19 条少 1。
-    assert.equal(info.switches.filter(item => item.state === 'false').length, 18, '预览桩下关闭的 18 家（19 条默认关闭里，MiniMax 国际版被桩打开）');
+    // 预览桩下关闭的卡片数 = 默认关闭 20 条 − Ark 组内被合并掉的 5 条 − 桩里打开的 MiniMax 国际版 1 条 = 14。
+    assert.equal(info.switches.filter(item => item.state === 'false').length, 14, '预览桩下关闭的 14 张卡片');
     await page.screenshot({ path: file.replace(/\.html$/, '.png'), fullPage: true });
     await context.close();
     console.log(`PASS ${theme}/${width} 提供商开关、可换行按钮、无下拉、无溢出`);
