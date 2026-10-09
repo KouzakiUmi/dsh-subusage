@@ -50,7 +50,7 @@ if (!pkg.repository || !/github\.com[:/]KouzakiUmi\/dsh-subusage/.test(
 else ok("repository 指回本仓库");
 
 // files 白名单必须覆盖安装所需的全部产物
-for (const f of ["lib", "locale", "cordis.patch.yml"]) {
+for (const f of ["lib", "cordis.patch.yml", "LICENSE"]) {
 	if (!(pkg.files || []).includes(f)) fail(`files 缺少 ${f}`);
 }
 if ((pkg.files || []).length > 0) ok(`files = ${pkg.files.join(", ")}`);
@@ -73,13 +73,15 @@ if (!patchText.includes("- insert:")) fail("cordis.patch.yml 缺少 - insert: �
 if (!/name:\s*dsh-subusage\b/.test(patchText)) fail("cordis.patch.yml 未注册 name: dsh-subusage");
 ok("cordis.patch.yml 含 insert 条目(dsh-subusage)");
 
-// ── locale ─────────────────────────────────────────────────────────────────
-for (const loc of ["zh", "en"]) {
-	const p = join(root, "locale", `${loc}.json`);
-	if (!existsSync(p)) fail(`缺少 locale/${loc}.json`);
-	else JSON.parse(readFileSync(p, "utf8"));
-}
-ok("locale/zh.json + locale/en.json 存在且为合法 JSON");
+// ── 许可证 ─────────────────────────────────────────────────────────────────
+// GitHub 与 DSH STORE 都要求 manifest / 仓库 / 分发产物三方一致地声明许可证；
+// 仓库根缺 LICENSE 时 GitHub 的 licenseInfo 会是 null（本项目曾经如此）。
+if (!existsSync(join(root, "LICENSE"))) fail("缺少 LICENSE");
+else if (!readFileSync(join(root, "LICENSE"), "utf8").includes("MIT License")) fail("LICENSE 不是 MIT");
+else if (!(pkg.files || []).includes("LICENSE")) fail("files 未包含 LICENSE");
+else ok("LICENSE 存在、为 MIT 且已打进包");
+
+// locale/ 目录已移除：DSH 不读它，客户端文案走 lib/client.js 里 ctx.locale.register 的内联字典。
 
 if (process.exitCode) {
 	console.error("\n清单校验未通过 —— 以上 FAIL 项修完再发版。");

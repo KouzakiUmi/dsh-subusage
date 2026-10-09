@@ -222,8 +222,8 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 
   // 管理列表：已启用的在前，关闭项沉到末尾，组内各自保持既有顺序。
   const listed = flattenNodes(render()).filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("启用 ")).map(n => String(n.props["aria-label"]).slice("启用 ".length));
-  // Ark 剩下的 5 条路由合并成一张卡片，所以比 PROVIDER_ORDER 少 4 条。
-  assert.equal(listed.length, order.length - 4, "管理列表列出全部提供商（Ark 组合并成一张卡片）");
+  // Ark 剩下的 4 条路由合并成一张卡片，所以比 PROVIDER_ORDER 少 3 条。
+  assert.equal(listed.length, order.length - 3, "管理列表列出全部提供商（Ark 组合并成一张卡片）");
   assert.equal(listed.at(-2), meta["zai-coding-cn"].short, "关闭的 Z.ai 沉到末尾组");
   assert.equal(listed.at(-1), meta["kimi-coding"].short, "关闭项在组内保持既有顺序");
   assert.ok(listed.slice(0, -2).every(short => !off.has(order.find(id => meta[id].short === short))), "前面的都是已启用的");

@@ -117,6 +117,16 @@
 - 响应两代形态兼容：新形态 `creditUsagePercent` + `currentPeriod`；旧形态按 `monthlyLimit`/`used`（美分）折算比例并归月账期窗口；`{}`（proto3 零值）解码为 0，无上限不折算。未知结构报错不猜额度。
 - 测试：新增 `tests/test-supergrok.mjs`（归一化两代形态/周期归类/套餐两级回退/余额边界、登录文件各形态与槽位优先级、请求头、并行拉取、错误映射、缓存与 token 轮换失效、managed 边界）；`tests/test-contract.mjs` 补 `xai-oauth` 刷新契约与 managed 拒写断言；`tests/test-client-render.mjs` / `tests/test-client-behavior.mjs` / `tests/test-host-service.mjs` 同步提供商计数与索引。`node tests/run-all.mjs` 全部通过。
 
+## 0.10.8：移除 BytePlus 与 locale 死文件，补齐上架所需的声明
+
+- **火山方舟只剩官方 CLI 的 4 条路由。** `ark-coding-plan-byteplus` 也移除了：它走的 `ark.ap-southeast-1.byteplusapi.com` 与 `GetCodingPlanUsage` **确实存在**——返回的是业务信封错误 `NotFound.BillingType`（`coding plan config is not exist`），不是路由不存在——但本机没有 BytePlus 账号可验证，实现正确性无从确认，所以不再保留。取舍与证据记在 [provider-coverage.md](provider-coverage.md)。国内那两条 legacy 路由的药丸别名（`ROUTE_PROVIDER_ALIAS`）保留，装旧插件的用户不受影响。
+- **修正 peer 范围会静默排除预发布版本。** 原来的 `>=0.2.0-rc.1 <0.3.0-0` 看起来覆盖 0.2.x，但 node-semver 只在范围里**某个比较符与该版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时才放行预发布——`0.2.1-alpha.1`（**当前活跃版本**）因此被静默排除。改为逐元组的显式分支：`>=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-0 <0.3.0-0`。这是 awesome-dsh-plugin 贡献指南专门警告过的一条，我们正好踩中。
+- **新增 `LICENSE`（MIT）。** 仓库根此前没有这个文件，GitHub 因此把 `licenseInfo` 判为 `null`；DSH STORE 也要求 manifest、仓库与分发产物三方一致地声明许可证。现在 `files` 白名单包含它，`check-manifest.mjs` 会校验它存在、是 MIT 且已打进包。
+- **新增 `engines.node` 与 `dsh.compatibility`。** `engines.node >=22.19.0`；`dsh.compatibility.node` 同值；`dsh.compatibility.dshReleases` 逐版本声明——**只有本机实机验证过的 `0.2.1-alpha.1` 标 `compatible`，其余三个标 `unknown`**（没有证据不猜）。
+- **移除 `locale/`**：DSH 不读这个目录（核实过 manifest 与插件管理相关包），客户端文案走 `lib/client.js` 里 `ctx.locale.register` 的内联字典，所以它是死文件。同时去掉 `exports` 里的 `./locale/*` glob 与 `files` 里的 `locale`。
+- **README 补齐上架所需的声明**：新增「实测覆盖」一节（**已实测验证**的 7 项与**仅桩测试**的其余提供商分列，并邀请用户开 issue 补充）；「权限与数据」补上命令/进程/生命周期脚本/运行依赖/浏览器边界；「兼容性」补上 Node 与已验证 Core 版本，并解释那个 `||` 分支为什么不能省；「安装」补上 GitHub 固定 Commit 方式，并说明为什么不能用浮动分支；新增「主要风险」。
+- 测试：`check-manifest.mjs` 的 locale 断言换成 LICENSE 断言（存在 / MIT / 已打进包）；`prepare-release.mjs` 与 `test-release-pack.mjs` 的清单同步；各文件计数 28 → 27。
+
 ## 0.10.7：删掉旧插件的国内重复路由，同一个 plan 只留一个面板
 
 - **症状（用户报的）**：同一个 Agent Plan 显示成两个面板——`Ark Agent Plan (CN, legacy plugin)` 与 `ARK Agent Plan (arkcli)`，数字还不一样（4.2% vs 5.3%）；Coding Plan 同样成对出现。用户的原话是「legacy 的数据比新的延迟」。

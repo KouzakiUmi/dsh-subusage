@@ -13,7 +13,7 @@ import { loadHostModule } from "./helpers.mjs";
 import { parseVolcAgentPlan, parseVolcCodingPlan, parseVolcSeatAfp, parseVolcSeatCoding, parseVolcSeatIds, volcEscape, volcSignature } from "../lib/volcengine.js";
 
 const { SubUsageService, subUsageRemote } = await loadHostModule();
-const CODING = "arkcli-coding-plan", AGENT = "arkcli-agent-plan", BYTEPLUS = "ark-coding-plan-byteplus";
+const CODING = "arkcli-coding-plan", AGENT = "arkcli-agent-plan";
 const TEAM = "arkcli-agent-plan-team";
 const TEAM_CODING = "arkcli-coding-plan-team";
 const AK = "AKLTTestAccessKeyId0000", SK = "TestSecretAccessKey0000000000000000";
@@ -273,16 +273,15 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 	vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { PROVIDER_ORDER, PROVIDER_META, ROUTE_PROVIDER_ALIAS, draftFor, settingsPatch }; exports.apply = apply;"), { window: { __ModuleLoader__: { load: (value) => { spec = value; } } }, console });
 	const client = spec.factory((name) => { assert.equal(name, "react"); return react; });
 	const order = client.__test.PROVIDER_ORDER, meta = client.__test.PROVIDER_META;
-	for (const id of [CODING, AGENT, BYTEPLUS]) {
+	for (const id of [CODING, AGENT]) {
 		assert.ok(order.includes(id), `${id} 在提供商顺序中`);
 		assert.equal(meta[id].volc, true, `${id} 标记为 AK/SK 凭据`);
 	}
-	// arkcli 两条是官方 CLI 写的路由，默认开启；BytePlus 是 legacy 且走独立站点，默认关闭。
+	// Ark 现在只剩官方 CLI 写的那 4 条路由；个人版两条默认开启。
 	assert.notEqual(meta[CODING].defaultEnabled, false, "官方 CLI 的 Coding Plan 默认开启");
 	assert.notEqual(meta[AGENT].defaultEnabled, false, "官方 CLI 的 Agent Plan 默认开启");
-	assert.equal(meta[BYTEPLUS].defaultEnabled, false, "BytePlus 默认关闭");
 	// provider id 必须与写入方注册的路由逐字一致，否则选中方舟模型时药丸不会出现。
-	assert.deepEqual([CODING, AGENT, BYTEPLUS], ["arkcli-coding-plan", "arkcli-agent-plan", "ark-coding-plan-byteplus"]);
+	assert.deepEqual([CODING, AGENT], ["arkcli-coding-plan", "arkcli-agent-plan"]);
 	assert.equal(meta[CODING].envName, "ARKCLI_CODING_PLAN_API_KEY", "推理环境变量名与 arkcli helper 一致");
 	// 旧插件的两个国内路由 id 已从提供商列表移除（与 arkcli 查同一份订阅），但必须仍能归并到 arkcli 路由——
 	// 否则装了旧插件的用户，模型路由还是那两个 id，会突然失去整个用量面板。

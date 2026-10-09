@@ -6,7 +6,7 @@
 
 > **English.** dsh-subusage shows subscription quota and balance for the AI providers you already use, as a pill next to the model selector in DeepSeek Harness. Provider switches and credentials live in one settings page, and other plugins or agents can read the same snapshot through a read-only quota API.
 
-[![npm version](https://img.shields.io/badge/npm-0.10.7-blue)](https://www.npmjs.com/package/dsh-subusage)
+[![npm version](https://img.shields.io/badge/npm-0.10.8-blue)](https://www.npmjs.com/package/dsh-subusage)
 [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
 [![DSH](https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.1%20%3C0.3.0--0-informational)](#compatibility--兼容性)
 
@@ -62,15 +62,53 @@
 
 非公开控制台接口可能变更；缺失或非法百分比不会被当作零用量；「读取成功」只表示接口读取健康度，不保证仍有额度。
 
+## Support status / 实测覆盖
+
+### 已实测验证
+
+下面这些在**真实账号**上跑通过（本仓库开发机 + 各家的官方 CLI / 插件）：
+
+| 提供商 | 验证范围 | 凭据来源 |
+|---|---|---|
+| 火山方舟 Agent Plan（个人版，`arkcli-agent-plan`） | 5 小时 / 周 / 月 AFP 绝对值 + 日限额 + 档位 | 本机 IAM AK/SK 直连 `GetAFPUsage`，HTTP 200 |
+| 火山方舟 Coding Plan（个人版，`arkcli-coding-plan`） | session / weekly / monthly 三个窗口 | 同一组 AK/SK 直连 `GetCodingPlanUsage`，HTTP 200 |
+| Kimi Coding | 5 小时 / 周 / 月窗口 | 真实 Key |
+| 小米 MiMo | 余额 + 套餐额度 | 真实平台会话 Cookie（含自动登录） |
+| Command Code | 月额度 | 提供方插件的凭据链 |
+| SuperGrok | 统一周池 + 加量余额 | 真实 `~/.grok/auth.json` |
+| Codex (ChatGPT) | 主 / 次窗口 + 档位 | 真实 `~/.codex/auth.json`（本插件默认关闭） |
+
+### 未验证
+
+其余提供商**只经过桩测试**——响应形态取自公开文档、第三方实现或抓包，**没有在真实账号上跑通过**：
+
+> Z.ai（中国与国际）、OpenCode Go、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、DeepSeek、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM，以及火山方舟的**团队版席位**与 **BytePlus 站点**。
+
+它们可能可用，也可能因为接口变更、字段差异或权限要求而失败。**本插件只保证上面那张表里的**。
+
+如果你用了其中之一，不管成功还是失败，都欢迎[开 issue](https://github.com/KouzakiUmi/dsh-subusage/issues)——附上提供商名称、错误文案与 DSH 版本即可（**不要贴 Key 或 Cookie**）。失败和成功一样有用：失败帮我们修适配，成功帮我们把这一行挪进上表。
+
+### 主要风险
+
+- **额度数字仅供参考，不要当计费依据。** 各家的额度接口都是未公开或半公开的，字段语义可能随时变化；本插件不做任何换算，读到什么显示什么。
+- **未验证的提供商会随接口变化而失效**（见上一节）。失效时在设置页关掉那一家的检测即可，其余不受影响；欢迎开 issue 帮我们补上。
+- **凭据以明文落盘**：本插件的配置不是加密凭据库；Windows 上真正的访问边界取决于目录 ACL，`chmod` 不能替代它。
+- **火山方舟是账号级读取**：一组 IAM AK/SK 能查到该账号名下**所有**套餐（Agent Plan、Coding Plan、团队席位）。把装了本插件的机器或配置文件交给别人时请注意这一点。
+- **浏览器自动化**：MiMo 的自动登录会启动一个隔离的 Chromium 会话——不点「登录并自动导入」就不会触发。
+- **收录不等于安全审计**：无论 DSH STORE 还是 awesome-dsh-plugin，收录只表示满足它们各自的清单规则，都不是对代码的安全审查。
+
 ## Compatibility / 兼容性
 
 | 项目 | 值 | 来源 |
 |---|---|---|
-| 核心 peer 范围 | `@deepseek-ai/dsh` 及各核心包均为 `>=0.2.0-rc.1 <0.3.0-0`（允许该范围内的预发布版本） | [`package.json`](package.json) 的 `peerDependencies` |
-| 开发目标版本 | DeepSeek Harness `0.2.0-rc.2` | [开发与验证说明](docs/development.md) |
-| 最后验证日期 | `2026-10-09` | 同上 |
+| 核心 peer 范围 | `@deepseek-ai/dsh` 及各核心包均为 `>=0.2.0-rc.1 <0.2.1-0 \|\| >=0.2.1-0 <0.3.0-0` | [`package.json`](package.json) 的 `peerDependencies` |
+| Node.js | `>=22.19.0` | `engines` 与 `dsh.compatibility.node` |
+| 已验证的 Core 版本 | `0.2.1-alpha.1` | 本机实机运行；逐版本状态见 `dsh.compatibility.dshReleases` |
+| 最后验证日期 | `2026-10-10` | [开发与验证说明](docs/development.md) |
 
-声明范围不代表范围内所有版本都已实机验证；实际验证范围（在线接口、真实账号、浏览器像素验收等）见 [开发与验证说明](docs/development.md)。这是树外 Host / Client bundle，通过 `cordis.patch.yml` 插入，不修改 DSH 核心、安装树或 ASAR。
+> **范围里那个 `||` 分支不是冗余。** node-semver 只有在范围中**某个比较符与该版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时，才放行预发布版本。所以 `>=0.2.0-rc.1 <0.3.0-0` 这种看起来覆盖 0.2.x 的写法会**静默排除** `0.2.1-alpha.1`——而它正是当前活跃版本。必须为每个 minor 元组各写一个带预发布标签的分支。
+
+`dsh.compatibility.dshReleases` 逐版本声明已知状态：**只有实际验证过的标 `compatible`**，其余一律 `unknown`——没有证据不猜。声明范围不代表范围内所有版本都已实机验证；实际验证范围（在线接口、真实账号、浏览器像素验收等）见 [开发与验证说明](docs/development.md)。这是树外 Host / Client bundle，通过 `cordis.patch.yml` 插入，不修改 DSH 核心、安装树或 ASAR。
 
 ## Install / 安装
 
@@ -81,10 +119,13 @@
 | 本地开发目录 | 仓库路径 | 以链接方式使用工作副本 |
 
 ```console
-# npm 包名
+# npm 包名（推荐：预构建，免构建授权）
 dsh plugin --profile <profile> add dsh-subusage
 
-# GitHub Release tarball（尚未经市场收录时的完整 URL）
+# GitHub 固定 Commit（DSH STORE / awesome-dsh-plugin 只接受这种来源）
+dsh plugin --profile <profile> add 'git+https://github.com/KouzakiUmi/dsh-subusage.git#<40 位完整 Commit>'
+
+# GitHub Release tarball（资产名不带版本号，所以这个地址不会随发版而失效）
 dsh plugin --profile <profile> add https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz
 
 # 本地开发目录（link 工作副本）
@@ -100,8 +141,10 @@ dsh plugin --profile <profile> remove dsh-subusage
 ```
 
 - `<profile>` 换成目标 profile；**Desktop 请使用随包 DSH CLI 或应用内插件管理页**，PATH 上的 npm 全局 `dsh` 不一定是它。参数与 profile 名以目标部署的 `dsh plugin --help` 为准；桌面插件页同样接受包名、GitHub 地址或本地目录。
+- **不要用浮动分支**（`#main`）安装：市场与商店只认固定到完整 40 位 Commit 的来源，浮动分支无法核实你装到的到底是哪份代码。
 - 安装只把包放进 profile，**不等于已启用**；按部署方式重载或重启，让 Host 与 Client 一起生效（只刷新页面不保证 Host 升级）。
 - 只取压缩包：`npm pack dsh-subusage`；核对发布结果：`npm view dsh-subusage version dist-tags`。
+- 本包**没有** `preinstall` / `install` / `postinstall` / `prepare` 脚本，安装期不执行任何代码；也不需要 pnpm 的 `allowBuilds` 授权。
 
 ## Quick start / 快速开始
 
@@ -227,7 +270,17 @@ ark-coding-plan-byteplus ARK_CODING_PLAN_BYTEPLUS_API_KEY
 | `~/.grok/auth.json`（回退 `~/.dsh/.xai-oauth-auth.json`） | Grok CLI / dsh-grok-kit 的 OAuth 登录 | **只读**，不保存、不刷新 |
 | `~/.commandcode/auth.json` | Command Code CLI（`cmd login`）的 Key | **只读**兜底 |
 
-**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`chatgpt.com/backend-api`、火山管控面 `open.volcengineapi.com` / `ark.ap-southeast-1.byteplusapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](docs/providers.md#网络端点)。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。
+**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`chatgpt.com/backend-api`、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](docs/providers.md#网络端点)。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
+
+**命令、进程与安装期行为**
+
+| 项 | 情况 |
+|---|---|
+| 执行外部命令 | **不执行**。没有任何 shell 调用 |
+| 生命周期脚本 | `preinstall` / `install` / `postinstall` / `prepare` **全部没有**；安装期不运行任何代码 |
+| 运行依赖 | `playwright-core`（唯一一个）。只用于可选的 MiMo 自动登录；**不下载浏览器**，用你本机已有的 Chrome/Chromium |
+| 浏览器 | 只有你点「登录并自动导入」时才启动一个**隔离的**临时会话，五分钟未完成自动超时；不读你日常浏览器的配置、Cookie 或 profile |
+| DSH 核心 | 不修改源码树、不碰任何 `@deepseek-ai/*` 包、不遮蔽官方插件清单；只用公开 Host 服务与 `cordis.patch.yml` 插入自己的行 |
 
 **密钥如何处理**
 

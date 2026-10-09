@@ -56,7 +56,7 @@ result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equa
 await h.service.save({ providerId: Z, keyMode: "inherit" }); delete h.credential[Z];
 h.respond(() => zBody); result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equal(result.entries[0].keySource, "env");
 const isolated = harness(); isolated.service.credentials = async id => { if (id === Z) throw new Error("DO NOT LEAK"); return undefined; };
-result = await isolated.service.read(); assert.equal(result.entries.length, 28); assert.equal(result.entries[0].errorCode, "subusage/credentials"); assert(!JSON.stringify(result).includes("DO NOT LEAK")); assert.equal(isolated.calls.length, 0);
+result = await isolated.service.read(); assert.equal(result.entries.length, 27); assert.equal(result.entries[0].errorCode, "subusage/credentials"); assert(!JSON.stringify(result).includes("DO NOT LEAK")); assert.equal(isolated.calls.length, 0);
 // 未知 provider id 不再整体拒绝（客户端已更新、Host 未重启时必然出现）：过滤掉它，并回一条可读的
 // unknown-provider 条目，好过让用户只看到网关的 boundary validation。形状错误（缺 force）仍拒绝。
 const unknownResult = await h.service.refresh({ providerIds: ["bad"], force: false });

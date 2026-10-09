@@ -10,7 +10,7 @@ export function validatePack(info) {
   if (typeof pack.filename !== 'string' || basename(pack.filename) !== pack.filename || pack.filename !== `dsh-subusage-${pack.version}.tgz`) throw new Error('Unexpected tarball filename');
   if (!Array.isArray(pack.files)) throw new Error('Missing package file list');
   const paths = new Set(pack.files.map(file => file.path));
-  for (const path of ['package.json', 'README.md', 'cordis.patch.yml', 'lib/index.js', 'lib/client.js', 'lib/mimo-login.js', 'locale/zh.json', 'locale/en.json']) {
+  for (const path of ['package.json', 'README.md', 'cordis.patch.yml', 'lib/index.js', 'lib/client.js', 'lib/mimo-login.js', 'LICENSE']) {
     if (!paths.has(path)) throw new Error(`Missing packaged file: ${path}`);
   }
   return pack;

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go", "commandcode", "xai-oauth", "minimax-cn", "deepseek", "arkcli-agent-plan"];
 // 默认关闭的厂商：在提供商管理里可见开关、但不产生 tab。新增厂商时同步这里。
 // openai-codex 默认关闭——它的提供方插件自带用量药丸。
-const defaultOff = ["zai-coding", "synthetic", "nanogpt", "ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "arkcli-agent-plan-team", "arkcli-coding-plan-team", "openai-codex"];
+const defaultOff = ["zai-coding", "synthetic", "nanogpt", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "arkcli-agent-plan-team", "arkcli-coding-plan-team", "openai-codex"];
 const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
 let spec, clock = Date.parse("2026-10-01T10:00:00Z"), nextTimer = 0;
 const intervals = new Map(), timeouts = new Map(), events = new Map();
@@ -40,7 +40,7 @@ const publicSettings = (revision = "1") => ({ revision, zai: { type: 1, organiza
 const entry = (providerId, percent = 25, extra = {}) => ({ providerId, state: "ok", coverage: "complete", freshness: "fresh", windows: [{ kind: "sub", percent, status: percent >= 100 ? "rate-limited" : "ok" }], extras: [], lastAttemptAt: new FakeDate(clock).toISOString(), lastSuccessAt: new FakeDate(clock).toISOString(), ...extra });
 // 真实机器上只有装了的 Ark 路由才存在。测试默认只放行 agent-plan，其余 Ark 路由视为「未安装」——
 // 否则「未知路由一律放行」会让合并后的整组 7 条全部冒出来，测试就和真实行为脱节了。
-const ARK_NOT_INSTALLED = ["arkcli-coding-plan", "arkcli-agent-plan-team", "arkcli-coding-plan-team", "ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus"];
+const ARK_NOT_INSTALLED = ["arkcli-coding-plan", "arkcli-agent-plan-team", "arkcli-coding-plan-team"];
 const result = (entries, revision = "1") => ({ entries, settings: publicSettings(revision), configured: Object.fromEntries(ARK_NOT_INSTALLED.map(id => [id, false])), updatedAt: new FakeDate(clock).toISOString() });
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };

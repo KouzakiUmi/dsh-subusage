@@ -15,7 +15,7 @@ assert.equal(result.settings.visibility.hideWithoutApi, true);
 const DEFAULT_OFF = ["zai-coding", "synthetic", "nanogpt", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "openai-codex"];
 // 火山方舟的逐条开关**不是**独立默认值：组开关是唯一真源，成员一律跟随（默认组开启）。
 // 组内每条各存一份的旧形态只在迁移时当输入用，读回后就被归一化掉。
-const ARK_ROUTES = ["arkcli-agent-plan", "arkcli-coding-plan", "arkcli-agent-plan-team", "arkcli-coding-plan-team", "ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus"];
+const ARK_ROUTES = ["arkcli-agent-plan", "arkcli-coding-plan", "arkcli-agent-plan-team", "arkcli-coding-plan-team"];
 assert.equal(result.settings.visibility.ark, true, "Ark 组默认开启");
 assert(Object.entries(result.settings.visibility.providers).every(([id, on]) => ARK_ROUTES.includes(id) ? on === result.settings.visibility.ark : DEFAULT_OFF.includes(id) ? !on : on), "旧厂商保持默认值，新增厂商默认关闭；Ark 逐条值一律跟随组开关");
 assert.equal(result.configured[Z], true); assert.equal(result.entries.find(e => e.providerId === Z).apiDetected, false, "有路由不代表有 Key");

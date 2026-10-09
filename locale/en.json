@@ -1,4 +1,0 @@
-{
-  "name": "Subscription usage",
-  "description": "Shows subscription quota and balance for 30 AI providers (DeepSeek, Volcengine Ark, Z.ai, Kimi, MiMo, Codex, MiniMax, OpenRouter, SiliconFlow, LiteLLM, ...), with one settings page for detection switches and credentials plus a read-only quota API."
-}

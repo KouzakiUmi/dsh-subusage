@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { validatePack } from '../scripts/prepare-release.mjs';
 
-const files = ['package.json', 'README.md', 'cordis.patch.yml', 'lib/index.js', 'lib/client.js', 'lib/mimo-login.js', 'locale/zh.json', 'locale/en.json'];
+const files = ['package.json', 'README.md', 'cordis.patch.yml', 'lib/index.js', 'lib/client.js', 'lib/mimo-login.js', 'LICENSE'];
 const pack = { name: 'dsh-subusage', version: '0.4.1', filename: 'dsh-subusage-0.4.1.tgz', files: files.map(path => ({ path })) };
 assert.equal(validatePack([pack]), pack);
 for (const info of [null, [], [pack, pack], [null], [{ ...pack, name: 'wrong' }], [{ ...pack, version: 'not-semver' }], [{ ...pack, filename: '../dsh-subusage-0.4.1.tgz' }], [{ ...pack, filename: 'different.tgz' }], [{ ...pack, files: null }]]) assert.throws(() => validatePack(info));
