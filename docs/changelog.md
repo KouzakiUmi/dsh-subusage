@@ -117,6 +117,11 @@
 - 响应两代形态兼容：新形态 `creditUsagePercent` + `currentPeriod`；旧形态按 `monthlyLimit`/`used`（美分）折算比例并归月账期窗口；`{}`（proto3 零值）解码为 0，无上限不折算。未知结构报错不猜额度。
 - 测试：新增 `tests/test-supergrok.mjs`（归一化两代形态/周期归类/套餐两级回退/余额边界、登录文件各形态与槽位优先级、请求头、并行拉取、错误映射、缓存与 token 轮换失效、managed 边界）；`tests/test-contract.mjs` 补 `xai-oauth` 刷新契约与 managed 拒写断言；`tests/test-client-render.mjs` / `tests/test-client-behavior.mjs` / `tests/test-host-service.mjs` 同步提供商计数与索引。`node tests/run-all.mjs` 全部通过。
 
+## 0.10.3：火山方舟合并成一张卡片、Codex 默认关闭
+
+- **设置页把火山方舟的 7 条路由合并成一张卡片**：它们共用同一组 IAM AK/SK，而一般用户只持有一个套餐，原来 7 张卡片各自问一遍同样的凭据纯属冗余。现在只有一个**组开关**（落在 `visibility.ark` 上）和一组凭据，卡片里说明本机实际装了哪几条路由。**这些 provider id 并没有合并**——药丸仍按 id 匹配路由。旧配置里逐条保存的开关会按「任一条开着」自动迁移。
+- **Codex 改为默认关闭**：它的提供方插件自带用量药丸，两个并排只是重复信息（仍可在提供商管理里手动开启）。README 新增「前置：这几家需要提供方插件」一节，列出 Command Code / SuperGrok / Codex 各自的前置插件与登录方式。
+
 ## 0.10.2：MiMo 登录入口修复、输入净化与凭据指引
 
 - **修好 MiMo 的登录入口**：点「登录并自动导入」原来打开的是站点**首页**，而首页不会触发登录，用户还得自己点进控制台找登录按钮。现在直接落在**控制台套餐页**（`platform.xiaomimimo.com/console/plan-manage`）——那也正是读取 `tokenPlan/detail` 与 `tokenPlan/usage` 的页面；控制台历史上出现过 502（仅首页可用），因此保留回退到首页。设置页里那个「仅打开官网」的手动入口也一并改到控制台页。
@@ -125,8 +130,6 @@
 - **新增[凭据获取指引](credentials.md)**，并接到 README（Quick start / Configuration / Troubleshooting）与设置页里需要用户先去别处操作的凭据区（火山 AK/SK、MiMo、普通 Key、LiteLLM、Z.ai 团队档）。内容含：每类凭据的**官网入口、环境变量名、界面填入位置**；火山子用户的**创建与授权完整清单**（`ArkReadOnlyAccess` + 「限制到项目资源」选否，以及 `AccessKeySelfManageAccess` / `AccessKeyFullAccess` 的取舍）；一张**报错对照表**。设置页的火山凭据区还加了直达控制台「API 访问密钥」的链接。
 - **Agent Plan 的额度按额度线分成两组展示**。官方口径（[套餐概览 · 额度刷新规则](https://ark.volcengine.com/region:cn-beijing/docs/agent-plan-personal-plan-overview#%E9%A2%9D%E5%BA%A6%E5%88%B7%E6%96%B0%E8%A7%84%E5%88%99)）里，**日限额只覆盖视觉模型、语音模型与 Harness**，而 5 小时 / 周 / 月属于文本 / 向量模型——两条不是同一条额度线，混排会让人把「日 50K > 周 35K」读成插件算错。现在按额度线分组显示（个人版与席位版共用同一组窗口定义），日限额排在最后并标注适用范围。**Coding Plan 不受影响**：官方只给 5 小时 / 周 / 月三条，本就是同一条线。
 - **药丸的窗口短标签改成中文**：`W` / `M` / `D` 这类缩写要用户自己猜；现在走 locale，中文显示「周 / 月 / 日 / 5时」，英文用 `1w` / `1m` / `1d`。
-- **设置页把火山方舟的 7 条路由合并成一张卡片**：它们共用同一组 IAM AK/SK，而一般用户只持有一个套餐，原来 7 张卡片各自问一遍同样的凭据纯属冗余。现在只有一个**组开关**（落在 `visibility.ark` 上）和一组凭据，卡片里说明本机实际装了哪几条路由。**这些 provider id 并没有合并**——药丸仍按 id 匹配路由。旧配置里逐条保存的开关会按「任一条开着」自动迁移。
-- **Codex 改为默认关闭**：它的提供方插件自带用量药丸，两个并排只是重复信息（仍可在提供商管理里手动开启）。README 新增「前置：这几家需要提供方插件」一节，列出 Command Code / SuperGrok / Codex 各自的前置插件与登录方式。
 
 ## 0.10.1：RPC 版本窗口期兼容、按路由判定默认可见性、设置页排序
 
