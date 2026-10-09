@@ -12,8 +12,12 @@ const ctx = { effect() {}, llm: { listProviders: () => [{ id: Z }] } };
 let service = new SubUsageService(ctx, options);
 let result = await service.read();
 assert.equal(result.settings.visibility.hideWithoutApi, true);
-const DEFAULT_OFF = ["zai-coding", "synthetic", "nanogpt", "ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "arkcli-agent-plan-team", "arkcli-coding-plan-team", "openai-codex"];
-assert(Object.entries(result.settings.visibility.providers).every(([id, on]) => DEFAULT_OFF.includes(id) ? !on : on), "旧厂商保持默认值，新增厂商默认关闭");
+const DEFAULT_OFF = ["zai-coding", "synthetic", "nanogpt", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "openai-codex"];
+// 火山方舟的逐条开关**不是**独立默认值：组开关是唯一真源，成员一律跟随（默认组开启）。
+// 组内每条各存一份的旧形态只在迁移时当输入用，读回后就被归一化掉。
+const ARK_ROUTES = ["arkcli-agent-plan", "arkcli-coding-plan", "arkcli-agent-plan-team", "arkcli-coding-plan-team", "ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus"];
+assert.equal(result.settings.visibility.ark, true, "Ark 组默认开启");
+assert(Object.entries(result.settings.visibility.providers).every(([id, on]) => ARK_ROUTES.includes(id) ? on === result.settings.visibility.ark : DEFAULT_OFF.includes(id) ? !on : on), "旧厂商保持默认值，新增厂商默认关闭；Ark 逐条值一律跟随组开关");
 assert.equal(result.configured[Z], true); assert.equal(result.entries.find(e => e.providerId === Z).apiDetected, false, "有路由不代表有 Key");
 assert.equal(result.configured[M], false); assert.equal(result.entries.find(e => e.providerId === M).apiDetected, true, "有手动 Key 即可检测，不依赖路由注册");
 assert.equal(calls, 1); assert(!JSON.stringify(result).includes("fixture-key"));

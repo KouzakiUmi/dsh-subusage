@@ -385,7 +385,9 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 	const infoBody = JSON.parse(infoCall.init.body);
 	assert.equal(infoBody.Scene, "", "GetSeatInfoUsage 带 Scene（Coding Plan 企业版=空串）");
 	assert.equal(infoBody.SeatID, "seat-c", "带单个 SeatID");
-	const listBody = JSON.parse(hc.calls.find(c => c.url.includes("ListSeatInfos")).init.body);
+	// 组开关是 Ark 的唯一真源，所以 `read()` 那一遍会把整组（含团队版）都查一遍：这里取属于
+	// Coding Plan 团队版的那次调用（登记顺序在 Agent Plan 团队版之后，故为最后一次）。
+	const listBody = JSON.parse(hc.calls.filter(c => c.url.includes("ListSeatInfos")).at(-1).init.body);
 	assert.equal(listBody.Scene, "coding_plan_enterprise", "ListSeatInfos 用 coding_plan_enterprise");
 	assert.deepEqual(listBody.Filter, {}, "Filter 必填，即便为空对象");
 	hc.service.dispose();
@@ -417,6 +419,42 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 		"分组标注经过 Host 装配后仍在（按 provider id 逐条比对）");
 	h.service.dispose();
 	console.log("PASS Host：AFP 两条额度线的分组标注活到 wire");
+}
+
+// ── [13] Ark 组开关是唯一真源：逐条残留不得让 Coding Plan 查不到 ──────────
+{
+	const h = harness();
+	h.credentials.set("VOLC_ACCESSKEY", { value: AK });
+	h.credentials.set("VOLC_SECRETKEY", { value: SK });
+	// 存储按 0.10.3 之前的「逐条开关」形态写入：组开关开着，但 Coding Plan 那条是 false。
+	// 迁移会用「任一条开着」把组开关合并成 true，却把逐条值原样留下——两端口径就此分叉：
+	// 界面按组开关显示这条路由，Host 却按逐条值回 disabled，用户拿到的是一张「订阅检测已关闭」的空卡片。
+	h.files.set("memory/config", JSON.stringify({ visibility: { ark: true, providers: { [CODING]: false, [AGENT]: true } } }));
+	// 桩用 2026-10-10 实测到的真实 GetCodingPlanUsage 响应形态：除 Level/Percent/ResetTimestamp 外
+	// 还带 Cap / RewardTotalPercent / HasReward，且 session 窗口的 ResetTimestamp 是 -1 哨兵。
+	h.setRespond(() => json({ ResponseMetadata: { RequestId: "r" }, Result: { Status: "Running", UpdateTimestamp: 1791566793, QuotaUsage: [
+		{ Level: "session", Percent: 0, ResetTimestamp: -1, Cap: 100, RewardTotalPercent: 0 },
+		{ Level: "weekly", Percent: 0, ResetTimestamp: 1791734400, Cap: 100, RewardTotalPercent: 0 },
+		{ Level: "monthly", Percent: 0, ResetTimestamp: 1794326399, Cap: 100, RewardTotalPercent: 0 }
+	], HasReward: false } }));
+	const refreshed = await h.service.refresh({ providerIds: [CODING], force: true });
+	const entry = refreshed.entries.find(e => e.providerId === CODING);
+	assert.notEqual(entry.state, "disabled", "组开关开着就不能因逐条值是 false 而跳过查询");
+	assert.equal(entry.state, "ok");
+	assert.deepEqual(entry.windows.map(w => w.kind), ["5h", "week", "month"], "session/weekly/monthly 映射到 5h/week/month");
+	assert.equal(entry.windows[0].percent, 0, "0% 是真实读数，不是「无数据」");
+	assert.equal(entry.windows[0].resetsAt, undefined, "ResetTimestamp=-1 是哨兵，不输出重置时间");
+	assert.equal(entry.windows[1].resetsAt, new Date(1791734400 * 1000).toISOString(), "秒级时间戳转 ISO");
+	assert.equal(entry.windows[0].detail, undefined, "接口不给绝对量，也不拿语义未证的 Cap 编造 detail");
+	// 归一化：公开设置里的逐条值必须跟随组开关（注入的 CODING=false 属于迁移残留，不该留在口径里）。
+	assert.equal(refreshed.settings.visibility.providers[CODING], true, "读回后逐条值跟随组开关");
+	assert.equal(refreshed.settings.visibility.providers[AGENT], true);
+	// 反向也要成立：关掉组开关后整组都真的跳过，而不是只跳过显式关过的那条。
+	await h.service.save({ expectedRevision: refreshed.settings.revision, visibility: { ark: false } });
+	const off = (await h.service.refresh({ providerIds: [CODING, AGENT], force: true })).entries;
+	assert.equal(JSON.stringify(off.map(e => e.state)), JSON.stringify(["disabled", "disabled"]), "组开关关掉后整组跳过");
+	h.service.dispose();
+	console.log("PASS Host：Ark 组开关是唯一真源，逐条残留不会让 Coding Plan 查不到");
 }
 
 console.log("\n火山方舟适配测试全部通过 ✅");

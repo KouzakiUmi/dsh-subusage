@@ -117,6 +117,16 @@
 - 响应两代形态兼容：新形态 `creditUsagePercent` + `currentPeriod`；旧形态按 `monthlyLimit`/`used`（美分）折算比例并归月账期窗口；`{}`（proto3 零值）解码为 0，无上限不折算。未知结构报错不猜额度。
 - 测试：新增 `tests/test-supergrok.mjs`（归一化两代形态/周期归类/套餐两级回退/余额边界、登录文件各形态与槽位优先级、请求头、并行拉取、错误映射、缓存与 token 轮换失效、managed 边界）；`tests/test-contract.mjs` 补 `xai-oauth` 刷新契约与 managed 拒写断言；`tests/test-client-render.mjs` / `tests/test-client-behavior.mjs` / `tests/test-host-service.mjs` 同步提供商计数与索引。`node tests/run-all.mjs` 全部通过。
 
+## 0.10.6：修好 Coding Plan 查不到用量，Grok token 过期说清楚
+
+- **症状（用户报的）**：有 Coding Plan 订阅、AK/SK 也配了，卡片却永远写着「订阅检测已关闭 / 暂无额度数据」；同一台机器用 `arkcli usage plan --product coding-plan` 能查到额度。
+- **根因一：两端判定分叉。** 设置页的 Ark 是一张合并卡片（7 条路由共用一个**组开关** `visibility.ark`），Client 按组开关判显隐，而 Host 的 `provider()` 只看**逐条开关** `visibility.providers[id]`。老配置里逐条各存一份（`arkcli-coding-plan: false`），迁移时又只把「任一条开着」合并成组开关 `true`——于是界面显示这条路由、Host 却回 `disabled`。现在 `parseStored` 读回时把逐条值归一化到组开关，Host 也用同一个 `providerEnabled()` 判定，两端口径只剩一个真源。
+- **根因二：Ark 不该按路由收起。** Client 原本对所有提供商都用「本机装没装这条**推理**路由」当可见性判据。可火山方舟的额度走**账号级管控面**：一组 IAM AK/SK 就能查到名下所有套餐——本轮用本机 AK/SK 实测，`GetCodingPlanUsage` 与 `GetAFPUsage` **两条都返回 HTTP 200 与完整窗口**，且两者在 arkcli 里同为控制面 `ark_action`（不存在「Coding Plan 专用查询 key」）。路由只是模型推理入口，「订了 Coding Plan、却没在 DSH 里配 coding-plan 路由」完全正常，按路由收起会让这类用户凭空少一条真正有数据的额度。现在 Ark 只按「有没有可用 AK/SK」判定，其余按路由取数的提供商不变。
+- **顺带修正默认值**：`defaultSettings()` 里 Ark 的逐条默认值改为直接跟随组开关。否则「首次读到（还没有配置文件）→ 保存 → 再读回」会因为归一化把成员值改成组开关的值而算出不同的 revision，第二次保存直接撞 `revision-conflict`——这个是我加归一化时被测试当场抓住的。
+- **Coding Plan 的响应形态更正**：实测响应里除 `Level` / `Percent` / `ResetTimestamp` 外还有 `Cap: 100`、`RewardTotalPercent`、`HasReward`——**字段确实存在**（此前文档写的是「未在任何来源证实存在」，已更正为「存在但语义无官方说明」）。仍然不展示：不编造单位，也不把 100 读成「还有 100 次」。`session` 窗口的 `ResetTimestamp` 是 `-1` 哨兵，不输出重置时间（既有的 `ms > 0` 判定已覆盖）。
+- **SuperGrok 的 token 过期说清楚**：`~/.grok/auth.json` 里带着 `expires_at`，而凭据解析从来没读它——过期后插件照发请求，拿到上游 401，界面显示「登录或凭据已失效」，可用户那边的 Grok Kit 明明写着「已登录」。现在解析出 `expiresAt`，已过期就**不发请求**并直接说明：token 何时过期、用一次 Grok CLI 或在 设置 → xAI Grok 里重新登录即可刷新同一个文件、以及**为什么本插件不代刷**（refresh-token 轮换由 Grok CLI / grok-kit 各自的锁协议管理，第三端刷新会把它们的轮换顶掉）。
+- 测试：`test-volcengine.mjs` 新增「组开关是唯一真源」（迁移残留的逐条 false 不得让 Host 跳过查询；反向关掉组开关后整组都跳过）；`test-provider-controls.mjs` / `test-client-render.mjs` / `test-client-behavior.mjs` 同步 Ark 整组可见的新语义；`test-supergrok.mjs` 新增过期 / 未过期 / 无 `expires_at` 三个用例。
+
 ## 0.10.5：额度查询改用宽松命名匹配，并把「空结果」这条路堵死
 
 - **症状**：模型调用 `subusage_quota(providers: ["zai"])` 拿到的是**空列表**，看起来像「本机什么都没配」。真正的原因是两套命名：模型手里的是 DSH 的路由名（`zai`、`grok`、`codex`），而本插件的 provider id 是路由 id（`zai-coding-cn`、`xai-oauth`、`openai-codex`）——旧实现只做精确 id 匹配，认不出的一律 `filter` 掉，于是「传了名字」反而比「不传」结果更少。

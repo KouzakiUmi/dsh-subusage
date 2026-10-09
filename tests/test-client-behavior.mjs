@@ -126,7 +126,11 @@ const sharedPill = api.createUsageStore(() => result([entry(ids[0])]));
 const sh = new Hooks(); sh.render(api.UsagePill, { ...pillProps, readEntry: sharedPill.reader(ids[0]) }); await flush();
 assert.equal(intervals.size, 1); sh.unmount(); assert.equal(intervals.size, 0); assert.equal(events.get("visibilitychange").size, 0); sharedPill.dispose();
 // 设置：7col短label、公共凭据不回填、dirty保存/取消、键盘与持久化、MiMo无Key/桥。
-const uiGate = deferred(); let uiSnapshot = result(ids.map((id) => entry(id))); let savedPatch;
+// 同组其余 6 条 Ark 路由在这里显示为「没有可用的 AK/SK」（apiDetected:false）：Ark 整组可见性是
+// 账号级订阅语义（配了 AK/SK 就 7 条全显示），已由 test-client-render.mjs 专门覆盖；
+// 本文件把断言集中在非 Ark 的交互上，所以让它们保持收起。
+const ARK_NO_CREDENTIAL = ARK_NOT_INSTALLED.map(id => entry(id, 0, { state: "no-key", apiDetected: false, windows: [] }));
+const uiGate = deferred(); let uiSnapshot = result([...ids.map((id) => entry(id)), ...ARK_NO_CREDENTIAL]); let savedPatch;
 const uiStore = { getSnapshot: () => uiSnapshot, subscribe: () => () => {}, readAll: async () => uiSnapshot, activate: () => () => {}, save: async (patch) => { savedPatch = patch; uiSnapshot = result([], "2"); return uiSnapshot; }, refresh: async () => uiGate.promise };
 const uh = new Hooks(), props = { usageStore: uiStore, t, getLocale: () => "zh" };
 tree = uh.render(api.SubusageSection, props);
@@ -324,7 +328,7 @@ assert.equal(api.providerVisible({ visibility: preferences({}, false) }, ids[0],
 assert.equal(api.providerVisible({ visibility: preferences({ [ids[0]]: false }, false) }, ids[0], entry(ids[0])), false);
 assert.equal(api.providerVisible({ visibility: preferences() }, ids[0], entry(ids[0], 0, { state: "error", apiDetected: true, errorCode: "subusage/auth" })), true);
 assert.equal(api.providerVisible({ visibility: preferences() }, ids[0], entry(ids[0], 0, { state: "error", apiDetected: null, errorCode: "subusage/credentials" })), true);
-let controlSnapshot = withPrefs(result(ids.map(id => entry(id, 20, { apiDetected: id !== ids[1], ...(id === ids[1] ? { state: "no-key" } : {}) }))), preferences({ [ids[3]]: false }));
+let controlSnapshot = withPrefs(result([...ids.map(id => entry(id, 20, { apiDetected: id !== ids[1], ...(id === ids[1] ? { state: "no-key" } : {}) })), ...ARK_NO_CREDENTIAL]), preferences({ [ids[3]]: false }));
 const controlPatches = [], controlRefreshes = [];
 const controlStore = { ...uiStore, getSnapshot: () => controlSnapshot, readAll: async () => controlSnapshot, refresh: async (ids) => { controlRefreshes.push(ids); return controlSnapshot; }, save: async patch => {
  controlPatches.push(patch); const old = controlSnapshot.settings.visibility, v = patch.visibility;

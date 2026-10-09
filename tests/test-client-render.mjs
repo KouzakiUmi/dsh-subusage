@@ -193,7 +193,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 {
   const order = plugin.__test.PROVIDER_ORDER, meta = plugin.__test.PROVIDER_META;
   // 用户只持有 Agent Plan：arkcli helper 不会为没订阅的套餐写路由，所以本机没有 Coding Plan 路由。
-  const configured = { ...Object.fromEntries(order.map(id => [id, true])), "arkcli-coding-plan": false, "arkcli-coding-plan-team": false };
+  const configured = { ...Object.fromEntries(order.map(id => [id, true])), "arkcli-coding-plan": false, "arkcli-coding-plan-team": false, "zai-coding": false };
   // 靠前的两家设为关闭，用来检验管理列表的排序确实把已启用项提前、关闭项后置。
   const off = new Set(["zai-coding-cn", "kimi-coding"]);
   const settings = { revision: "r", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: true }, visibility: { hideWithoutApi: true, providers: Object.fromEntries(order.map(id => [id, !off.has(id)])) } };
@@ -203,10 +203,14 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 
   const allOn = { ...settings, visibility: { ...settings.visibility, providers: Object.fromEntries(order.map(id => [id, true])) } };
   const tabs = tabIds(render({ settings: allOn }));
-  assert.ok(!tabs.includes("arkcli-coding-plan"), "本机没有该路由时不显示 Coding Plan 标签");
-  assert.ok(!tabs.includes("arkcli-coding-plan-team"), "团队版同理");
+  // 火山方舟**不按路由收起**：额度走账号级管控面（一组 AK/SK 覆盖名下所有套餐），路由只是推理入口。
+  // 「订了 Coding Plan、却没在 DSH 里配 coding-plan 路由」完全正常，收起它等于凭空少一条有数据的额度。
+  assert.ok(tabs.includes("arkcli-coding-plan"), "没有该路由也要显示 Coding Plan（额度是账号级订阅）");
+  assert.ok(tabs.includes("arkcli-coding-plan-team"), "团队版同理");
   assert.ok(tabs.includes("arkcli-agent-plan"), "实际持有的 Agent Plan 照常显示");
-  assert.equal(tabs.length, order.length - 2, `只收起缺路由的两条：${tabs.length} vs ${order.length - 2}`);
+  // 其余**按路由取数**的提供商仍按「本机没装这条路由」收起（这里拿 Z.ai 国际版作样本）。
+  assert.ok(!tabs.includes("zai-coding"), "按路由取数的提供商仍按路由收起");
+  assert.equal(tabs.length, order.length - 1, `只收起装不上的那一条：${tabs.length} vs ${order.length - 1}`);
   // 两个套餐**可以共存**（用户明确提醒过）：本机两条路由都在时两条都要显示，不能做成二选一。
   const both = tabIds(render({ settings: allOn, configured: Object.fromEntries(order.map(id => [id, true])) }));
   assert.ok(both.includes("arkcli-agent-plan") && both.includes("arkcli-coding-plan"), "Agent Plan 与 Coding Plan 共存时都显示");
@@ -246,14 +250,16 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 	assert.equal(flattenNodes(pillTree).filter(n => n.type === plugin.__test.UsageWindowRow).length, afpWindows.length, "四个窗口各渲染一行");
 
 	// 设置页与弹层共用同一个列表组件：分组不能只在其中一处出现。
-	// Ark 的组开关是整组语义（7 条路由一起显隐），所以靠路由表把其余 6 条标成「本机没装」来
-	// 让面板落到 Agent Plan 上——比按 useState 顺序塞值稳。
-	const onlyAgent = (id) => id === "ark-agent-plan-cn";
+	// Ark 现在**不按路由收起**（额度是账号级订阅，见 providerVisible），所以要让面板落到 Agent Plan 上，
+	// 得让同组其余 6 条明确「没有可用的 AK/SK」（apiDetected:false）——组开关本身管不了这个。
+	const afpMeta = plugin.__test.PROVIDER_META;
+	const otherArk = plugin.__test.PROVIDER_ORDER.filter(id => id !== "ark-agent-plan-cn" && afpMeta[id]?.volc);
 	const afpSettings = { revision: "r", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: true },
-		visibility: { hideWithoutApi: true, providers: Object.fromEntries(plugin.__test.PROVIDER_ORDER.map(id => [id, onlyAgent(id)])) } };
-	const afpConfigured = Object.fromEntries(plugin.__test.PROVIDER_ORDER.map(id => [id, onlyAgent(id)]));
+		visibility: { ark: true, hideWithoutApi: true, providers: Object.fromEntries(plugin.__test.PROVIDER_ORDER.map(id => [id, id === "ark-agent-plan-cn"])) } };
+	const afpConfigured = Object.fromEntries(plugin.__test.PROVIDER_ORDER.map(id => [id, id === "ark-agent-plan-cn"]));
+	const afpEntries = [afpEntry, ...otherArk.map(id => ({ providerId: id, label: id, state: "no-key", apiDetected: false, windows: [], extras: [], coverage: "partial", freshness: "unknown" }))];
 	stateValues = ["ark-agent-plan-cn"]; stateIndex = 0;
-	const section = plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => ({ settings: afpSettings, configured: afpConfigured, entries: [afpEntry] }) }, t: (key) => key, getLocale: () => "zh" });
+	const section = plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => ({ settings: afpSettings, configured: afpConfigured, entries: afpEntries }) }, t: (key) => key, getLocale: () => "zh" });
 	assert.ok(visibleText(section).includes("视觉 / 语音模型与 Harness"), "设置页同样标出日限额的适用范围");
 
 	// 明细拆行：首行只放用量与适用范围，次行只放重置时间。

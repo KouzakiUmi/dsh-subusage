@@ -106,6 +106,34 @@ for (const call of served.calls) {
 }
 assert.deepEqual(entry.extras, [{ kind: "plan", value: "SuperGrok" }, { kind: "balance", value: "0.00 USD" }]);
 
+// ── 过期 token：不发请求，直接说「去刷一次」，而不是笼统的「凭据已失效」──────
+// 登录文件里的 access token 短命（实测 ~24h），本插件刻意不代刷（refresh-token 轮换归 Grok CLI /
+// grok-kit 的锁协议）。但不读 expires_at 的话，用户看到的只是上游 401 转成的「登录或凭据已失效」，
+// 而他那边的 Grok Kit 明明写着「已登录」——两边对不上，只会以为插件坏了。
+{
+	const expired = harness({ grokText: grokDoc({ expires_at: "2025-12-31T00:00:00.000Z" }) });
+	const stale = (await expired.service.refresh({ providerIds: [X], force: true })).entries[0];
+	assert.equal(stale.state, "error");
+	assert.equal(stale.errorCode, "subusage/auth");
+	assert.ok(stale.error.includes("过期") && stale.error.includes("已于"), "要说是过期，不是笼统的凭据失效");
+	assert.ok(stale.error.includes("Grok CLI") && stale.error.includes("不代刷"), "给出可执行的下一步，并说明为什么不代刷");
+	assert.equal(expired.calls.length, 0, "已过期就不发这一枪");
+	expired.service.dispose();
+}
+{
+	// 未过期照常请求：别把好 token 判死。
+	const fresh = harness({ grokText: grokDoc({ expires_at: "2026-06-01T00:00:00.000Z" }) });
+	assert.equal((await fresh.service.refresh({ providerIds: [X], force: true })).entries[0].state, "ok");
+	assert.equal(fresh.calls.length, 2);
+	fresh.service.dispose();
+}
+{
+	// 没有 expires_at 的形态（旧信封）不当作过期。
+	const noExpiry = harness({ grokText: grokDoc() });
+	assert.equal((await noExpiry.service.refresh({ providerIds: [X], force: true })).entries[0].state, "ok");
+	noExpiry.service.dispose();
+}
+
 // settings 拉取失败不阻塞用量：套餐回退 billing 响应，无则不显示。
 const settingsDown = harness({ grokText: grokDoc(), respond: (url) => url.includes("billing") ? billing({ creditUsagePercent: 30 }, { subscription_tier: "X Premium+" }) : { http: 500 } });
 const downEntry = (await settingsDown.service.refresh({ providerIds: [X], force: true })).entries[0];
