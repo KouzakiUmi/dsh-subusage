@@ -151,7 +151,8 @@ uiGate.resolve(result([entry(ids[3], 0, { state: "error", windows: [], error: "v
 tree = uh.render(api.SubusageSection, props); assert.ok(textOf(tree).includes("已保存；验证获取失败")); assert.ok(!textOf(tree).includes("保存设置"));
 tabs = nodes(tree).filter((n) => n.props.role === "tab"); tabs[2].props.onClick(); tree = uh.render(api.SubusageSection, props);
 assert.ok(!nodes(tree).some((n) => n.type === "input" && n.props.type === "password"));
-const link = nodes(tree).find((n) => n.type === "a"); assert.equal(link.props.href, "https://platform.xiaomimimo.com"); assert.equal(link.props.rel, "noopener noreferrer"); assert.equal(link.props.target, "_blank");
+// MiMo 的手动入口必须直达控制台套餐页：站点首页不触发登录，用户还得自己点进控制台。
+const link = nodes(tree).find((n) => n.type === "a"); assert.equal(link.props.href, "https://platform.xiaomimimo.com/console/plan-manage"); assert.equal(link.props.rel, "noopener noreferrer"); assert.equal(link.props.target, "_blank");
 nodes(tree).find((n) => n.type === "button" && n.children.includes("手动导入")).props.onClick(); tree = uh.render(api.SubusageSection, props);
 const textarea = nodes(tree).find((n) => n.type === "textarea"); assert.equal(textarea.props.value, ""); assert.equal(textarea.props.onBlur, undefined);
 textarea.props.onChange({ target: { value: "[{invalid" } }); tree = uh.render(api.SubusageSection, props);

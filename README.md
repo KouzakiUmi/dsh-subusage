@@ -6,7 +6,7 @@
 
 > **English.** dsh-subusage shows subscription quota and balance for the AI providers you already use, as a pill next to the model selector in DeepSeek Harness. Provider switches and credentials live in one settings page, and other plugins or agents can read the same snapshot through a read-only quota API.
 
-[![npm version](https://img.shields.io/badge/npm-0.10.1-blue)](https://www.npmjs.com/package/dsh-subusage)
+[![npm version](https://img.shields.io/badge/npm-0.10.2-blue)](https://www.npmjs.com/package/dsh-subusage)
 [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
 [![DSH](https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.1%20%3C0.3.0--0-informational)](#compatibility--兼容性)
 
@@ -109,7 +109,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 
 1. 安装并启用 bundle，按部署方式重载或重启。
 2. 打开 **设置 → 订阅用量 → 提供商管理**，开启需要的提供商（默认关闭的 19 条需手动开启）。
-3. 为它配置凭据：在卡片里展开「连接与凭据」填 Key / AK-SK，或把 Key 放进凭据服务 / 启动环境；MiMo 用「登录并自动导入」。
+3. 为它配置凭据：在卡片里展开「连接与凭据」填 Key / AK-SK，或把 Key 放进凭据服务 / 启动环境；MiMo 用「登录并自动导入」。**不知道去哪拿、或填了不生效** → 见[凭据获取指引](docs/credentials.md)。
 4. 回到会话，选中该提供商的模型：输入区左侧出现余量药丸（绿色成功 / 红色失败），点开看窗口明细。
 5. 排障顺序：点「立即刷新」→ 看设置页顶部 `X/Y 家数据获取成功`（可点击，跳到第一家没读成功的）。
 
@@ -126,6 +126,7 @@ $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需
 ## Configuration / 配置
 
 - **设置页路径**：设置 → **订阅用量** → 提供商管理。「没有检测到API的默认隐藏」默认开启；首次没有可见条目时管理区自动展开。关闭的提供商仍可配置凭据，只是不会发起用量请求。
+- **凭据从哪来**：每一类凭据的**官网入口、环境变量名与界面填入位置**都写在[凭据获取指引](docs/credentials.md)——包括火山的 IAM AK/SK（子用户还要挂 `ArkReadOnlyAccess` 且不限制到项目）、MiMo 的平台会话 Cookie、以及各家 API Key 的对照表。**注意推理 Key 与额度凭据不通用。**
 - **默认开关策略**：新安装默认开启 11 条、默认关闭 19 条；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
 - **凭据来源优先级**（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；切到自定义（`manual`）模式时只使用保存的手动 Key。界面会区分这三种来源。
 - **不接受本地 Key 的提供商**：`commandcode`（凭据链属提供方插件）、`xai-oauth`、`openai-codex`（只读各自 CLI 的登录文件），以及 MiMo（Cookie 会话）。
@@ -256,6 +257,8 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 |---|---|
 | 药丸不显示 | 依次确认：当前模型的 provider id 是否与上表一致（自定义 id 不会自动映射）→ 该家检测开关是否开启 → 是否被「没有检测到API的默认隐藏」收起（可在设置页临时关掉它）→ 运行中的 Host 与 Client 是否都已重载 |
 | 设置页没有提供商标签 | 展开提供商管理，确认开关和凭据；无凭据的条目默认隐藏，可临时关闭自动隐藏查看指引 |
+| 提示「无凭据 / 未检测到 Key」 | 先确认填的是**额度凭据**而不是推理 Key（两者不通用，见[凭据获取指引](docs/credentials.md)），再按该家小节核对来源、环境变量与权限 |
+| 提示「已保存」但仍是「无凭据」 | 凭据编辑要点「**保存设置**」才提交（提供商开关才是立即保存）；确认后若仍为空，把界面文案反馈上来 |
 | 某家读取失败，其他家正常 | 单家失败只影响自己的条目。按文案分类处理：认证类（401 / 凭据被拒）换对应产品与区域的凭据；权限 / 未订阅类（403）检查账号权限与套餐；限流类等待退避后重试 |
 | 显示认证失效 | 检查是否用了对应产品 / 区域的订阅 Key；MiMo 重新登录或导入 Cookie；旧额度不会当作有效数据保留 |
 | MiMo Cookie 过期 | 会话 Cookie 自签发起 24 小时有效。药丸与设置页会在 2 小时内 / 30 分钟内分别变黄、变橙，到期显示「Cookie 已过期，请重新登录」；重新登录或重新导入即重新计时。倒计时只是提醒，真实失效以官方接口返回为准 |
@@ -305,7 +308,7 @@ node scripts/render-ui-preview.mjs 530 nanogpt light pill
 node scripts/check-browser-runtime.mjs   # 需要工作区可解析 playwright-core 且本机装有 Google Chrome
 ```
 
-文档入口：[开发与验证](docs/development.md)（RPC 契约、缓存与凭据约定、离线预览与实机验收范围）、[提供商清单与额度语义](docs/providers.md)、[提供商覆盖与取舍](docs/provider-coverage.md)、[UX 设计](docs/design-ux.md)、[发布与市场收录](docs/publish.md)、[更新记录](docs/changelog.md)、[审查记录](docs/code-review.md)。
+文档入口：[凭据获取指引](docs/credentials.md)（每类凭据的官网入口、环境变量与填入位置、报错对照）、[开发与验证](docs/development.md)（RPC 契约、缓存与凭据约定、离线预览与实机验收范围）、[提供商清单与额度语义](docs/providers.md)、[提供商覆盖与取舍](docs/provider-coverage.md)、[UX 设计](docs/design-ux.md)、[发布与市场收录](docs/publish.md)、[更新记录](docs/changelog.md)、[审查记录](docs/code-review.md)。
 
 > 打包说明：`package.json` 的 `files` 白名单是 `lib` / `locale` / `cordis.patch.yml` / `README.md`，因此 `assets/title.svg`、`assets/screenshots/` 与 `docs/` **不进 npm 包**——顶部 title 图与下面的界面预览只在 GitHub 页面显示。改动白名单属于发布决策，需单独处理。
 

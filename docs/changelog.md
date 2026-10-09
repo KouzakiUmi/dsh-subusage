@@ -117,6 +117,15 @@
 - 响应两代形态兼容：新形态 `creditUsagePercent` + `currentPeriod`；旧形态按 `monthlyLimit`/`used`（美分）折算比例并归月账期窗口；`{}`（proto3 零值）解码为 0，无上限不折算。未知结构报错不猜额度。
 - 测试：新增 `tests/test-supergrok.mjs`（归一化两代形态/周期归类/套餐两级回退/余额边界、登录文件各形态与槽位优先级、请求头、并行拉取、错误映射、缓存与 token 轮换失效、managed 边界）；`tests/test-contract.mjs` 补 `xai-oauth` 刷新契约与 managed 拒写断言；`tests/test-client-render.mjs` / `tests/test-client-behavior.mjs` / `tests/test-host-service.mjs` 同步提供商计数与索引。`node tests/run-all.mjs` 全部通过。
 
+## 0.10.2：MiMo 登录入口修复、输入净化与凭据指引
+
+- **修好 MiMo 的登录入口**：点「登录并自动导入」原来打开的是站点**首页**，而首页不会触发登录，用户还得自己点进控制台找登录按钮。现在直接落在**控制台套餐页**（`platform.xiaomimimo.com/console/plan-manage`）——那也正是读取 `tokenPlan/detail` 与 `tokenPlan/usage` 的页面；控制台历史上出现过 502（仅首页可用），因此保留回退到首页。设置页里那个「仅打开官网」的手动入口也一并改到控制台页。
+- **输入净化覆盖到全部输入框**：AK/SK 之外，**普通 API Key** 与 **LiteLLM 代理地址**此前也把「含控制字符」当成错误**直接拒绝保存**——从网页或控制台复制时常带尾随换行，于是填了也存不上；**Z.ai 的组织/项目**则会把内部换行原样存进去。现在统一走 `stripInvisible`（剔除空白与零宽字符），只有**全空白**才拒绝（否则会把「清空」误当成「替换成空值」）。新增 `tests/test-input-sanitize.mjs` 覆盖这六个输入框。
+- **保存后如实反馈**：火山 AK/SK 保存时若「你填了值、但实际没写进去」，界面直接给红色提示并指出改用环境变量，而不是笼统回一句「已保存」。
+- **新增[凭据获取指引](credentials.md)**，并接到 README（Quick start / Configuration / Troubleshooting）与设置页里需要用户先去别处操作的凭据区（火山 AK/SK、MiMo、普通 Key、LiteLLM、Z.ai 团队档）。内容含：每类凭据的**官网入口、环境变量名、界面填入位置**；火山子用户的**创建与授权完整清单**（`ArkReadOnlyAccess` + 「限制到项目资源」选否，以及 `AccessKeySelfManageAccess` / `AccessKeyFullAccess` 的取舍）；一张**报错对照表**。设置页的火山凭据区还加了直达控制台「API 访问密钥」的链接。
+- **Agent Plan 的额度按额度线分成两组展示**。官方口径（[套餐概览 · 额度刷新规则](https://ark.volcengine.com/region:cn-beijing/docs/agent-plan-personal-plan-overview#%E9%A2%9D%E5%BA%A6%E5%88%B7%E6%96%B0%E8%A7%84%E5%88%99)）里，**日限额只覆盖视觉模型、语音模型与 Harness**，而 5 小时 / 周 / 月属于文本 / 向量模型——两条不是同一条额度线，混排会让人把「日 50K > 周 35K」读成插件算错。现在按额度线分组显示（个人版与席位版共用同一组窗口定义），日限额排在最后并标注适用范围。**Coding Plan 不受影响**：官方只给 5 小时 / 周 / 月三条，本就是同一条线。
+- **药丸的窗口短标签改成中文**：`W` / `M` / `D` 这类缩写要用户自己猜；现在走 locale，中文显示「周 / 月 / 日 / 5时」，英文用 `1w` / `1m` / `1d`。
+
 ## 0.10.1：RPC 版本窗口期兼容、按路由判定默认可见性、设置页排序
 
 - **症状**：升级插件后只刷新页面（没重启 DSH）会看到 `typert gateway: subUsage/refresh: wire field "request" failed boundary validation`，界面一片空白，看不出该做什么。
@@ -125,6 +134,7 @@
 - 契约测试同步更新：`tests/test-contract.mjs` 断言过滤行为与 `unknown` 列表，`tests/test-host-service.mjs` 断言那条可读条目。
 - **默认可见性改为按「本机实际装了什么路由」判定**：provider id 就是路由 id，而路由由提供方插件/CLI 按你**实际持有的东西**写入——`arkcli helper` 只会为真正订阅的套餐写路由。所以只持有 Agent Plan 的账号不再看到默认开启的 Coding Plan。**两种套餐可以共存**，本机两条路由都在时两条都显示，不做二选一。判定是逐个 provider 进行的，且 `configured` 缺失（拿不到路由表）时按「未知」放行，不再谎报「全都没装」把所有标签清空；用户关掉「没有检测到 API 的默认隐藏」时同样不再按路由收起。
 - **设置页的提供商管理把已启用的排到最前面**（组内保持登记顺序），不必每次往下翻找自己开了哪几家。
+
 
 ## 0.8.3：Kimi 月度窗口与响应形态兼容
 

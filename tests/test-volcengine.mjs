@@ -76,7 +76,10 @@ const AK = "AKLTTestAccessKeyId0000", SK = "TestSecretAccessKey0000000000000000"
 		AFPDaily: { Quota: "100.0", Used: "22.5", SubscribeTime: 1778716800000, ResetTime: 1778803200000 },
 		AFPWeekly: { Quota: "500.0", Used: "150.0", SubscribeTime: 1778457600000, ResetTime: 1779062400000 },
 		AFPMonthly: { Quota: "2000.0", Used: "850.5", SubscribeTime: 1777939200000, ResetTime: 1780531200000 } } });
-	assert.deepEqual(parsed.windows.map(w => w.kind), ["5h", "day", "week", "month"], "四个滚动窗口");
+	assert.deepEqual(parsed.windows.map(w => w.kind), ["5h", "week", "month", "day"], "文本 / 向量模型三条在前，日限额单独成组在后");
+	// 官方口径：日限额只在视觉模型、语音模型与 Harness 上生效，与文本模型的三条不是同一条额度线，
+	// 因此两组各自标注影响范围——否则把两条线的配额并排放在一起会被当成一组来比（"日比周还高"）。
+	assert.deepEqual(parsed.windows.map(w => w.groupLabel), ["文本 / 向量模型", "文本 / 向量模型", "文本 / 向量模型", "视觉 / 语音模型与 Harness"], "两条额度线各自成组标注");
 	assert.equal(parsed.windows[0].percent, 25, "字符串额度算成比例");
 	assert.deepEqual(parsed.windows[0].detail, { used: 12.5, limit: 50, unit: "AFP" }, "绝对值明细");
 	assert.equal(parsed.windows[0].resetsAt, new Date(1778806800000).toISOString(), "ResetTime 是毫秒");
@@ -296,6 +299,12 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 		AFPDaily: { Quota: "0", Used: "0" },
 		AFPWeekly: { Quota: "500.0", Used: "150.0", ResetTime: 1779062400000 } }] } });
 	assert.deepEqual(afp.windows.map(w => w.kind), ["5h", "week"], "Quota=0 的窗口不产出");
+	// 席位版与个人版共用同一组 AFP 窗口，两条额度线的分组标注也要一起带上。
+	assert.deepEqual(afp.windows.map(w => w.groupLabel), ["文本 / 向量模型", "文本 / 向量模型"], "席位版同样带额度线分组");
+	const seatWithDaily = parseVolcSeatAfp({ Result: { SeatAFPUsages: [{ SeatID: "seat-b",
+		AFPFiveHour: { Quota: "10", Used: "1" }, AFPWeekly: { Quota: "20", Used: "2" }, AFPDaily: { Quota: "99", Used: "9" } }] } });
+	assert.deepEqual(seatWithDaily.windows.map(w => w.kind), ["5h", "week", "day"], "席位版的日限额同样排到最后");
+	assert.equal(seatWithDaily.windows.at(-1).groupLabel, "视觉 / 语音模型与 Harness");
 	assert.equal(afp.windows[0].percent, 25);
 	assert.equal(afp.windows[0].resetsAt, new Date(1778806800000).toISOString(), "ResetTime 是毫秒");
 	assert.equal(afp.plan, "Large");

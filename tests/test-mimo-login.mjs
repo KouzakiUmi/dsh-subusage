@@ -1,6 +1,6 @@
 // 所有 browser/cookie/IO/fetch 都是 dummy；绝不启动真实 Chrome。
 import assert from "node:assert/strict";
-import { MimoLogin, extractMimoCookie, extractMimoSession, MIMO_API_URLS } from "../lib/mimo-login.js";
+import { MimoLogin, extractMimoCookie, extractMimoSession, MIMO_API_URLS, MIMO_LOGIN_URL, MIMO_ORIGIN } from "../lib/mimo-login.js";
 import { loadHostModule } from "./helpers.mjs";
 const { SubUsageService } = await loadHostModule();
 const M = "xiaomi-token-plan-cn", Z = "zai-coding-cn";
@@ -30,7 +30,7 @@ function harness(options = {}) {
  let content = null, writes = 0, launches = 0, closes = 0, calls = 0;
  let suppliedCookies = options.cookies ?? cookies;
  const events = {};
- const browser = { on(event, cb) { events[event] = cb; }, async close() { closes++; }, async newContext() { return { cookies: async urls => { assert.deepEqual(urls, MIMO_API_URLS); return suppliedCookies; }, newPage: async () => ({ on(event, cb) { events[`page:${event}`] = cb; }, goto: async url => { assert.equal(url, "https://platform.xiaomimimo.com"); } }) }; } };
+ const browser = { on(event, cb) { events[event] = cb; }, async close() { closes++; }, async newContext() { return { cookies: async urls => { assert.deepEqual(urls, MIMO_API_URLS); return suppliedCookies; }, newPage: async () => ({ on(event, cb) { events[`page:${event}`] = cb; }, goto: async url => { assert.equal(url, MIMO_LOGIN_URL, "第一步必须落到控制台套餐页：站点首页不触发登录，用户还得自己点进控制台"); assert.notEqual(url, MIMO_ORIGIN, "不能只打开首页"); } }) }; } };
  const io = { readFileSync() { if (content === null) throw Object.assign(new Error(), { code: "ENOENT" }); return content; }, mkdirSync() {}, writeFileSync(_, value) { writes++; content = value; }, chmodSync() {}, renameSync() {} };
  let http = 200, body = options.partial ? { data: {} } : { data: { usage: { items: [{ name: "plan_total_token", percent: .1 }] } } };
  const service = new SubUsageService({ effect() {}, get() {}, llm: { listProviders: () => [] } }, {
