@@ -224,4 +224,45 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   assert.equal(listed.at(-1), meta["kimi-coding"].short, "关闭项在组内保持既有顺序");
   assert.ok(listed.slice(0, -2).every(short => !off.has(order.find(id => meta[id].short === short))), "前面的都是已启用的");
 }
-console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/提供商开关/无下拉布局、用量面板内联行动条、待处理排序与计数跳转、路由缺失收起与已启用前置");
+// AFP 的两条额度线：分组标注必须在渲染层真的变成标题，用量与重置必须各占一行。
+// 这两条都曾静默失效：Host 侧重装窗口对象时丢了 groupLabel（前端因此永远没有标题可插），
+// 明细行又把用量和重置挤在同一个 join(" · ") 里，窄弹层会从「重置于 …（还有 …）」中间折断。
+{
+	// 日配额（50.0K）比 5 小时（10.0K）高是官方口径：这条线只覆盖视觉 / 语音模型与 Harness。
+	const afpWindows = [
+		{ kind: "5h", percent: 2.6, status: "ok", resetsAt: "2026-10-10T01:34:25.000Z", groupLabel: "文本 / 向量模型", detail: { used: 0.2587, limit: 10000, unit: "AFP" } },
+		{ kind: "week", percent: 0.7, status: "ok", resetsAt: "2026-10-12T00:00:00.000Z", groupLabel: "文本 / 向量模型", detail: { used: 0.2587, limit: 35000, unit: "AFP" } },
+		{ kind: "month", percent: 0.3, status: "ok", resetsAt: "2026-11-09T23:59:59.000Z", groupLabel: "文本 / 向量模型", detail: { used: 0.2587, limit: 100000, unit: "AFP" } },
+		{ kind: "day", percent: 0, status: "ok", resetsAt: "2026-10-10T00:00:00.000Z", groupLabel: "视觉 / 语音模型与 Harness", detail: { used: 0, limit: 50000, unit: "AFP" } }
+	];
+	const afpEntry = { providerId: "ark-agent-plan-cn", label: "ARK Agent Plan", state: "ok", coverage: "complete", freshness: "fresh", windows: afpWindows, extras: [{ kind: "plan", value: "medium" }], lastAttemptAt: "2026-10-09T23:51:45.000Z" };
+	const count = (haystack, needle) => haystack.split(needle).length - 1;
+	const arkPill = renderWrapper("ark-agent-plan-cn");
+	stateValues = [{ entry: afpEntry, updatedAt: 0 }, null, null, false, true]; stateIndex = 0;
+	const pillTree = arkPill.type(arkPill.props), pillText = visibleText(pillTree);
+	assert.equal(count(pillText, "文本 / 向量模型"), 1, "同一条额度线的组标题只插一次，不逐行重复");
+	assert.equal(count(pillText, "视觉 / 语音模型与 Harness"), 1, "日限额的适用范围必须标出来");
+	assert.ok(pillText.indexOf("视觉 / 语音模型与 Harness") > pillText.indexOf("文本 / 向量模型"), "分组顺序跟随窗口顺序（日限额在最后）");
+	assert.equal(flattenNodes(pillTree).filter(n => n.type === plugin.__test.UsageWindowRow).length, afpWindows.length, "四个窗口各渲染一行");
+
+	// 设置页与弹层共用同一个列表组件：分组不能只在其中一处出现。
+	// Ark 的组开关是整组语义（7 条路由一起显隐），所以靠路由表把其余 6 条标成「本机没装」来
+	// 让面板落到 Agent Plan 上——比按 useState 顺序塞值稳。
+	const onlyAgent = (id) => id === "ark-agent-plan-cn";
+	const afpSettings = { revision: "r", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: true },
+		visibility: { hideWithoutApi: true, providers: Object.fromEntries(plugin.__test.PROVIDER_ORDER.map(id => [id, onlyAgent(id)])) } };
+	const afpConfigured = Object.fromEntries(plugin.__test.PROVIDER_ORDER.map(id => [id, onlyAgent(id)]));
+	stateValues = ["ark-agent-plan-cn"]; stateIndex = 0;
+	const section = plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => ({ settings: afpSettings, configured: afpConfigured, entries: [afpEntry] }) }, t: (key) => key, getLocale: () => "zh" });
+	assert.ok(visibleText(section).includes("视觉 / 语音模型与 Harness"), "设置页同样标出日限额的适用范围");
+
+	// 明细拆行：首行只放用量与适用范围，次行只放重置时间。
+	const row = plugin.__test.UsageWindowRow({ w: afpWindows[0], t: (key) => ({ detailUsed: "已用 {used} / 总计 {limit} {unit}", detailResetIn: "重置于 {time}（还有 {rest}）" })[key] ?? key, getLocale: () => "zh" });
+	const detailBox = row.children.at(-1);
+	assert.equal(detailBox.children.length, 2, "用量与重置拆成两行");
+	assert.ok(visibleText(detailBox.children[0]).includes("总计 10.0K AFP"), "首行是用量");
+	assert.ok(!visibleText(detailBox.children[0]).includes("重置于"), "用量行不夹带重置时间");
+	assert.ok(visibleText(detailBox.children[1]).includes("重置于"), "次行是重置时间");
+	assert.ok(!visibleText(detailBox.children[1]).includes("总计"), "重置行不夹带用量");
+}
+console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/提供商开关/无下拉布局、用量面板内联行动条、待处理排序与计数跳转、路由缺失收起与已启用前置、AFP 分组与明细拆行");

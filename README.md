@@ -6,7 +6,7 @@
 
 > **English.** dsh-subusage shows subscription quota and balance for the AI providers you already use, as a pill next to the model selector in DeepSeek Harness. Provider switches and credentials live in one settings page, and other plugins or agents can read the same snapshot through a read-only quota API.
 
-[![npm version](https://img.shields.io/badge/npm-0.10.3-blue)](https://www.npmjs.com/package/dsh-subusage)
+[![npm version](https://img.shields.io/badge/npm-0.10.4-blue)](https://www.npmjs.com/package/dsh-subusage)
 [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
 [![DSH](https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.1%20%3C0.3.0--0-informational)](#compatibility--兼容性)
 

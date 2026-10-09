@@ -27,10 +27,10 @@ const context = {
   document: {}, console, Date: PreviewDate
 };
 let code = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
-code = code.replace('exports.apply = apply;', 'exports.__preview = { SubusageSection, UsagePill, createCommandCodeAccounts, zh, en }; exports.apply = apply;');
+code = code.replace('exports.apply = apply;', 'exports.__preview = { SubusageSection, UsagePill, createCommandCodeAccounts, PROVIDER_META, zh, en }; exports.apply = apply;');
 if (openCredentials) code = code.replace('const [editorOpen, setEditorOpen] = react.useState(false);', 'const [editorOpen, setEditorOpen] = react.useState(true);');
 vm.runInNewContext(code, context);
-const { SubusageSection, UsagePill, createCommandCodeAccounts, zh } = moduleSpec.factory(name => {
+const { SubusageSection, UsagePill, createCommandCodeAccounts, PROVIDER_META, zh } = moduleSpec.factory(name => {
   if (name !== 'react') throw new Error('Unexpected module'); return react;
 }).__preview;
 const ids = ['zai-coding-cn', 'kimi-coding', 'xiaomi-token-plan-cn', 'opencode-go', 'commandcode', 'minimax', 'minimax-cn', 'xai-oauth'];
@@ -57,7 +57,17 @@ const result = {
   ]
 };
 const previewQuota = { ...entry(providerId, 25, 'day'), windows: [{ kind: 'day', percent: 25, status: 'ok', detail: { used: 250000, limit: 1000000, unit: 'tokens' } }, { kind: 'week', percent: 40, status: 'ok' }] };
-if (pillPreview) previewStates = [{ entry: previewQuota, updatedAt: clock }, null, undefined, false, true];
+// Agent Plan 的 AFP 是**两条额度线**：5 小时 / 周 / 月走文本 / 向量模型，日限额只覆盖视觉 /
+// 语音模型与 Harness。日配额比周配额高是官方口径而不是算错，所以这条预览要按真实形态出——
+// 分组标题、适用范围与明细拆行都在这里可见。
+const afpQuota = { ...entry('arkcli-agent-plan', 2.6, '5h'), extras: [{ kind: 'plan', value: 'medium' }], windows: [
+  { kind: '5h', percent: 2.6, status: 'ok', resetsAt: new PreviewDate(clock + 2 * 3600000).toISOString(), groupLabel: '文本 / 向量模型', detail: { used: 0.2587, limit: 10000, unit: 'AFP' } },
+  { kind: 'week', percent: 0.7, status: 'ok', resetsAt: new PreviewDate(clock + 2 * 86400000).toISOString(), groupLabel: '文本 / 向量模型', detail: { used: 0.2587, limit: 35000, unit: 'AFP' } },
+  { kind: 'month', percent: 0.3, status: 'ok', resetsAt: new PreviewDate(clock + 31 * 86400000).toISOString(), groupLabel: '文本 / 向量模型', detail: { used: 0.2587, limit: 100000, unit: 'AFP' } },
+  { kind: 'day', percent: 0, status: 'ok', resetsAt: new PreviewDate(clock + 8 * 60000).toISOString(), groupLabel: '视觉 / 语音模型与 Harness', detail: { used: 0, limit: 50000, unit: 'AFP' } }
+] };
+const quota = providerId === 'arkcli-agent-plan' ? afpQuota : previewQuota;
+if (pillPreview) previewStates = [{ entry: quota, updatedAt: clock }, null, undefined, false, true];
 // Command Code 药丸弹层的账户切换区：虚构两个额外账户，固定项高亮；不发起任何网络请求。
 let cc;
 if (pillPreview && providerId === 'commandcode') {
@@ -68,7 +78,7 @@ if (pillPreview && providerId === 'commandcode') {
   });
   await cc.load();
 }
-const pillLabel = providerId === 'commandcode' ? 'Command Code' : 'NanoGPT';
+const pillLabel = providerId === 'commandcode' ? 'Command Code' : PROVIDER_META[providerId]?.label || providerId;
 const tree = pillPreview ? UsagePill({ providerId, label: pillLabel, readEntry: () => {}, t: key => zh[key] || key, getLocale: () => 'zh-CN', cc }) : SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => result }, t: key => zh[key] || key, getLocale: () => 'zh-CN' });
 const escape = value => String(value).replace(/[&<>\"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const unitless = new Set(['opacity', 'zIndex', 'fontWeight', 'lineHeight', 'flex', 'flexGrow', 'flexShrink', 'order', 'gridColumn']);

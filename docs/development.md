@@ -61,13 +61,14 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 - Command Code 并行直连 `/alpha/billing/credits` 与 `/alpha/billing/subscriptions`（请求头对齐提供方插件的 accountHeaders：Bearer、accept-encoding: identity、x-command-code-version、x-cli-environment）。absent 窗口是未报告上限（不画额度行）；`cap: 0` 是报告过的无上限，按 0% 不受限展示；`exceeded` 或原始比例达 100% 即限流；已出现的窗口块缺 `used`/`cap` 或非数值一律报错，不当作零用量。月余额 `credits.monthlyCredits` 是剩余金额，使用已知套餐表快照计算 `max(0, total - remaining)`，不是接口直接报告的月cap；未知套餐或缺月余额时 coverage=partial，不猜测百分比。planId优先 subscriptions.data.planId、回退 credits.planId，重置取 subscriptions.data.currentPeriodEnd（ISO或毫秒），非法日期不输出。月池耗尽不参与短窗级联（额外购买/赠送池可能仍可用）；周/5小时保持现有级联。余额只显示真正报告过的月剩余/已购/赠送字段。用量显示跟随药丸弹层选择的账户：默认账户（含自动轮换）走 `COMMANDCODE_API_KEY` 凭据链，额外账户按其凭据引用名（`apiKeyEnv`）从凭据服务 → 启动环境解析（对齐提供方插件 `slots()`/`resolveRef`），缓存指纹计入账户选择，entry 带 `account` 字段；自动轮换不跟随实际服务账户，自定义 apiBase 不跟随。
 - SuperGrok 并行直连官方 Grok CLI 计费代理 `/v1/billing?format=credits` 与 `/v1/settings`（请求头对齐官方 CLI：Bearer、`X-XAI-Token-Auth: xai-grok-cli`、`x-userid`、`x-grok-client-version`）。`creditUsagePercent` 是统一用量池的**已用**百分比（0–100，剩余 = 100 − 已用），周期取 `currentPeriod`（周/月枚举名，未知或缺失类型归通用订阅池 `sub`），重置取 `currentPeriod.end`，非法日期不输出；旧形态按 `monthlyLimit`/`used`（美分）折算比例并归月账期窗口，`{}`（proto3 零值）解码为 0，无上限（limit≤0）不折算。套餐名取 `/v1/settings` 的 `subscription_tier_display`（失败回退 billing 响应的 `subscription_tier`），已购加量余额 `prepaidBalance` 美分转美元显示；未报告的字段不冒充 0，无任何比例来源时报错不猜额度。
 - 单厂商凭据、网络、解析异常不影响其它厂商条目。- 按厂商共享 TTL 缓存与 in-flight 请求；配置/凭据变化使旧账号缓存失效。
+- 窗口对象上的**展示字段**（如 AFP 的 `groupLabel`）在 Host 重新构造窗口时必须一并带上：Host 的 `windowRow` 是白名单工厂，只保留 `kind / percent / resetsAt / status / detail`，解析器另外产出的标注会在这里被静默丢弃——不报错、不抛异常，界面只是少一块信息，单元测试照样全绿。凡「解析器产出 → Host 装配 → wire → Client 渲染」的字段都按这条处理，并在 Host 侧补一条跨装配层的断言（`0.10.4` 的 AFP 分组就是这么丢过一次的）。
 - TTL 为 60 秒。Client 仅订阅活跃、开启的提供商，隐藏页面暂停定时读取，回到可见状态再检查；不要把所有厂商做成独立全局轮询。
 - 新增厂商须同步 Host 的 PROVIDERS、Client 的 PROVIDER_META / PROVIDER_ORDER、帮助文案、README 和默认值测试。未获明确需求的新订阅商保持 `defaultEnabled: false`；原有偏好通过存储合并保留。
 - 允许保留的临时错误返回 stale 标记、上次成功时间与结构化错误；认证失效不保留旧额度。
 - 429/临时错误使用退避，倒计时本地更新，重置后有界刷新而不制造请求循环。
 - Retry-After / retryAt 优先于强制刷新和重置到期。已知本地配置修改只失效受影响厂商；未知外部 revision 修改保守失效所有条目。
 - 火山方舟（**7 条路由**：arkcli 的 `arkcli-agent-plan` / `arkcli-coding-plan` / `arkcli-agent-plan-team` / `arkcli-coding-plan-team`，旧插件的 `ark-coding-plan-cn` / `ark-agent-plan-cn` / `ark-coding-plan-byteplus`）：provider id 必须与写入方（官方 CLI `arkcli helper` 或旧插件 `@volcengine/ark-plan-api`）注册的路由**逐字一致**，否则选中方舟模型时药丸不会出现（路由未安装时 `configured` 为 false，条目仍可配置）。额度走管控面 OpenAPI：`POST https://open.volcengineapi.com/?Action=X&Version=2024-01-01`（BytePlus 走 `ark.ap-southeast-1.byteplusapi.com`），Action 与 Version 放在 query 串并参与签名。签名是火山通用 HMAC-SHA256 V4：CanonicalHeaders 块尾换行后与 SignedHeaders 行之间**有一个空行**；Credential 首段是 **8 位日期**（不是完整 X-Date）；`host` 必须与实际请求域名一致（两个接入域名混用必然 401）；query 用 RFC3986 严格转义（`! ' ( ) *` 必须转义）。凭据是 IAM 的 AK/SK 配对，与这些路由的推理 API Key（`ARK_*_API_KEY`）是两套；7 条共用 `settings.volc`，继承变量为 `VOLC_ACCESSKEY` / `VOLC_SECRETKEY`。**企业版/团队版走两步**：`ListSeatInfos`（带 `volcScene`）取 SeatID，再 `GetSeatAFPUsage` 或 `GetSeatInfoUsage`；多个席位只读第一个但如实标注总数。AK 与 SK 必须**同源配对**，`source` 只取 `credentials` / `env` / `manual` / `none` 之一，禁止跨来源拼接（否则 401 且看不出根因）。补丁形如 `volc: { accessKeyId | secretAccessKey: { action, value } }`，两个字段各自 keep/replace/clear：`replace` 不接受空串（SK 不回显，空串不是清空指令），`clear` 写空字符串而**不是 delete**（`publicSettings` 依赖字段存在）。共享凭据变化要让全部 `credentialKind === "volc"` 的条目一起失效，不能只失效当前标签页。
-- 火山方舟窗口语义：Coding Plan 的 `Result.QuotaUsage[].Level ∈ {session, weekly, monthly}`、`Percent` 是**已用百分数 0–100**（不套用「≤1 视为小数」规则，否则 0.39% 会被放大成 39%）、`ResetTimestamp` 是**秒**；Agent Plan 的 `AFPFiveHour/AFPDaily/AFPWeekly/AFPMonthly` 里 `Quota`/`Used` 是字符串绝对值、`ResetTime` 是**毫秒**、`Quota=0` 表示该窗口不适用（不产出行、不当 0%）；接口不返回 Coding Plan 的绝对量，`Cap` 字段未在任何来源证实存在，因此不产出 detail。**HTTP 200 且窗口为空是「未订阅」而不是 0% 用量**，界面显式说明。错误按业务信封 `ResponseMetadata.Error.Code` 分三类：401 类（`SignatureDoesNotMatch` / `InvalidAccessKey` 等）提示需要 AK/SK 而非推理 Key，403 类（`AccessDenied` / `OperationDenied` / 欠费）提示权限与订阅，`InvalidActionOrVersion` 提示接口可能已变更。
+- 火山方舟窗口语义：Coding Plan 的 `Result.QuotaUsage[].Level ∈ {session, weekly, monthly}`、`Percent` 是**已用百分数 0–100**（不套用「≤1 视为小数」规则，否则 0.39% 会被放大成 39%）、`ResetTimestamp` 是**秒**；Agent Plan 的 `AFPFiveHour/AFPDaily/AFPWeekly/AFPMonthly` 里 `Quota`/`Used` 是字符串绝对值、`ResetTime` 是**毫秒**、`Quota=0` 表示该窗口不适用（不产出行、不当 0%）；接口不返回 Coding Plan 的绝对量，`Cap` 字段未在任何来源证实存在，因此不产出 detail。**AFP 的四个窗口属于两条额度线**：5 小时 / 周 / 月走文本 / 向量模型，`AFPDaily` **只覆盖视觉 / 语音模型与 Harness**（官方「套餐概览 → 额度刷新规则」），所以日配额高于周配额是正常口径而不是算错；解析器给每条窗口产出 `groupLabel`，界面按它插分组标题并把日限额排在最后，前端拿不到该字段时**不会**退化成任何提示（见第 4 节关于 Host 装配丢字段的约定）。**HTTP 200 且窗口为空是「未订阅」而不是 0% 用量**，界面显式说明。错误按业务信封 `ResponseMetadata.Error.Code` 分三类：401 类（`SignatureDoesNotMatch` / `InvalidAccessKey` 等）提示需要 AK/SK 而非推理 Key，403 类（`AccessDenied` / `OperationDenied` / 欠费）提示权限与订阅，`InvalidActionOrVersion` 提示接口可能已变更。
 - MiMo 会话 Cookie 自签发起 24 小时有效。Host 在凭据写入的同一刻记录 `xiaomi.loginAt` / `xiaomi.expiresAt`（毫秒，清除凭据时归零），并把 `cookieExpiresAt` 挂到该厂商的每条 entry 上；自动登录经 `MimoLogin` 回调传入浏览器观测到的 Cookie 过期时刻，取 `min(24h 上限, 观测值)`——该回调必须透传第 4 个实参，少声明形参会静默退化成 24 小时上限。计时只在真正写入凭据（`cookieUpdate` 为 `replace`）时重置，`keep` 不得续满倒计时。解析存储只接受安全整数正数，损坏字段按未记录处理。Client 侧到期档位由 `cookieExpiry()` 单点判定：>2h 正常、≤2h 提醒、≤30min 紧急、已过期。**倒计时只用于展示**：归零不改凭据可用性，真实失效仍由官方接口返回决定；接口已判定凭据失效（`state: "error"`）时倒计时不得抢占主文案，但「已过期」本身仍优先，因为它就是重新登录的行动项。Client 合并/失效条目时保留 `cookieExpiresAt`，否则保存或登录后倒计时会短暂消失；但凭据被 `clear` / `replace` 时必须丢弃旧值，否则已删除的 Cookie 仍显示过期倒计时。
 
 ## 5. 凭据与 MiMo
@@ -125,6 +126,12 @@ node scripts/check-browser-runtime.mjs
 
 ```console
 node scripts/render-ui-preview.mjs 530 nanogpt light pill
+```
+
+`pill` 模式也支持 `arkcli-agent-plan`，用 Agent Plan 的真实形态（两条额度线 × 四个 AFP 窗口）出图，可用来目视确认分组标题与明细拆行：
+
+```console
+node scripts/render-ui-preview.mjs 530 arkcli-agent-plan dark pill
 ```
 
 可用以下独立 Chrome 命令将该 HTML 截成 PNG（先生成 HTML；所有 HTTP 请求会被阻止）：

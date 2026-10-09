@@ -117,6 +117,15 @@
 - 响应两代形态兼容：新形态 `creditUsagePercent` + `currentPeriod`；旧形态按 `monthlyLimit`/`used`（美分）折算比例并归月账期窗口；`{}`（proto3 零值）解码为 0，无上限不折算。未知结构报错不猜额度。
 - 测试：新增 `tests/test-supergrok.mjs`（归一化两代形态/周期归类/套餐两级回退/余额边界、登录文件各形态与槽位优先级、请求头、并行拉取、错误映射、缓存与 token 轮换失效、managed 边界）；`tests/test-contract.mjs` 补 `xai-oauth` 刷新契约与 managed 拒写断言；`tests/test-client-render.mjs` / `tests/test-client-behavior.mjs` / `tests/test-host-service.mjs` 同步提供商计数与索引。`node tests/run-all.mjs` 全部通过。
 
+## 0.10.4：修好 AFP 两条额度线的分组（0.10.2 声称过，但一直没有生效）
+
+- **症状**：Agent Plan 卡片里 5 小时 / 周 / 月 / 日四个窗口连排，**没有分组标题**——于是「日 50.0K 比周 35.0K 还高」看起来像插件算错。`0.10.2` 的更新记录里已经写过「按额度线分成两组展示」，但界面上从来没出现过。
+- **根因**：分组标注（`groupLabel`）由 `lib/volcengine.js` 的解析器产出，而 `lib/index.js` 的 Ark 分支会先用 `windowRow` **重新构造**一遍窗口对象再交给前端；`windowRow` 只认 `kind / percent / resetsAt / status / detail` 五个字段，`groupLabel` 在这里被**静默丢掉**。丢字段不报错、不抛异常，前端只是没有标题可插——所以解析器层的测试全绿，界面一直是错的。
+- **修法**：`toWindows` 重建窗口时把 `groupLabel` 一并带上。`tests/test-volcengine.mjs` 新增一段「分组标注经过 Host 装配后仍在」，逐条比对四个窗口而不是只看解析器输出——这是第一处**跨过 Host 装配**这层的断言，此前所有相关测试都停在解析器上，正是漏掉这个 bug 的原因。
+- **明细行拆成两行**：用量（`已用 x / 总计 y`）与重置时间原先用 ` · ` 挤在同一行，窄弹层会从「重置于 2026/10/10 01:34:25（还有 2 小时）」**中间折断**，读起来像属性与数值分了家。现在用量一行、重置一行，两行各自可换行（`overflowWrap: anywhere`）。
+- 弹层与设置页的窗口列表合并成同一个 `UsageWindowList`，分组标题不再只存在于其中一处；`tests/test-client-render.mjs` 新增一段同时钉住这两处，并断言「同一条额度线的标题只插一次」「日限额排在最后」。
+- 顺带：`render-ui-preview.mjs` 的 `pill` 模式支持 `arkcli-agent-plan`，用 AFP 的真实形态（两条额度线 × 四个窗口）出图，离线预览从此能直接看到分组与拆行效果。
+
 ## 0.10.3：火山方舟合并成一张卡片、Codex 默认关闭
 
 - **设置页把火山方舟的 7 条路由合并成一张卡片**：它们共用同一组 IAM AK/SK，而一般用户只持有一个套餐，原来 7 张卡片各自问一遍同样的凭据纯属冗余。现在只有一个**组开关**（落在 `visibility.ark` 上）和一组凭据，卡片里说明本机实际装了哪几条路由。**这些 provider id 并没有合并**——药丸仍按 id 匹配路由。旧配置里逐条保存的开关会按「任一条开着」自动迁移。
@@ -128,7 +137,7 @@
 - **输入净化覆盖到全部输入框**：AK/SK 之外，**普通 API Key** 与 **LiteLLM 代理地址**此前也把「含控制字符」当成错误**直接拒绝保存**——从网页或控制台复制时常带尾随换行，于是填了也存不上；**Z.ai 的组织/项目**则会把内部换行原样存进去。现在统一走 `stripInvisible`（剔除空白与零宽字符），只有**全空白**才拒绝（否则会把「清空」误当成「替换成空值」）。新增 `tests/test-input-sanitize.mjs` 覆盖这六个输入框。
 - **保存后如实反馈**：火山 AK/SK 保存时若「你填了值、但实际没写进去」，界面直接给红色提示并指出改用环境变量，而不是笼统回一句「已保存」。
 - **新增[凭据获取指引](credentials.md)**，并接到 README（Quick start / Configuration / Troubleshooting）与设置页里需要用户先去别处操作的凭据区（火山 AK/SK、MiMo、普通 Key、LiteLLM、Z.ai 团队档）。内容含：每类凭据的**官网入口、环境变量名、界面填入位置**；火山子用户的**创建与授权完整清单**（`ArkReadOnlyAccess` + 「限制到项目资源」选否，以及 `AccessKeySelfManageAccess` / `AccessKeyFullAccess` 的取舍）；一张**报错对照表**。设置页的火山凭据区还加了直达控制台「API 访问密钥」的链接。
-- **Agent Plan 的额度按额度线分成两组展示**。官方口径（[套餐概览 · 额度刷新规则](https://ark.volcengine.com/region:cn-beijing/docs/agent-plan-personal-plan-overview#%E9%A2%9D%E5%BA%A6%E5%88%B7%E6%96%B0%E8%A7%84%E5%88%99)）里，**日限额只覆盖视觉模型、语音模型与 Harness**，而 5 小时 / 周 / 月属于文本 / 向量模型——两条不是同一条额度线，混排会让人把「日 50K > 周 35K」读成插件算错。现在按额度线分组显示（个人版与席位版共用同一组窗口定义），日限额排在最后并标注适用范围。**Coding Plan 不受影响**：官方只给 5 小时 / 周 / 月三条，本就是同一条线。
+- **Agent Plan 的额度按额度线分成两组展示**。官方口径（[套餐概览 · 额度刷新规则](https://ark.volcengine.com/region:cn-beijing/docs/agent-plan-personal-plan-overview#%E9%A2%9D%E5%BA%A6%E5%88%B7%E6%96%B0%E8%A7%84%E5%88%99)）里，**日限额只覆盖视觉模型、语音模型与 Harness**，而 5 小时 / 周 / 月属于文本 / 向量模型——两条不是同一条额度线，混排会让人把「日 50K > 周 35K」读成插件算错。现在按额度线分组显示（个人版与席位版共用同一组窗口定义），日限额排在最后并标注适用范围。**Coding Plan 不受影响**：官方只给 5 小时 / 周 / 月三条，本就是同一条线。（**更正**：这条分组在 `0.10.2` / `0.10.3` **实际没有生效**——`groupLabel` 被 Host 装配窗口时丢掉了，界面一直没标题；`0.10.4` 修好并补了跨 Host → wire → Client 的断言。）
 - **药丸的窗口短标签改成中文**：`W` / `M` / `D` 这类缩写要用户自己猜；现在走 locale，中文显示「周 / 月 / 日 / 5时」，英文用 `1w` / `1m` / `1d`。
 
 ## 0.10.1：RPC 版本窗口期兼容、按路由判定默认可见性、设置页排序

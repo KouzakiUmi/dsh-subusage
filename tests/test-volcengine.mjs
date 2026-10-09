@@ -392,4 +392,31 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 	console.log("PASS 席位类 Host：两步调用、档位与席位标注、无席位时的说明、Scene 取值正确");
 }
 
+// ── [12] 分组标注必须活到 wire：前端只有拿到 groupLabel 才能插分组标题 ────
+{
+	const h = harness();
+	h.credentials.set("VOLC_ACCESSKEY", { value: AK });
+	h.credentials.set("VOLC_SECRETKEY", { value: SK });
+	// 个人版 Agent Plan 的四个 AFP 窗口。日配额（50.0K）比 5 小时（10.0K）和周（35.0K）都高是
+	// 官方口径而不是算错：日限额只覆盖视觉 / 语音模型与 Harness，跟文本模型那条线不可比。
+	h.setRespond(() => json({ ResponseMetadata: {}, Result: {
+		PlanType: "Medium",
+		AFPFiveHour: { Quota: "10.0", Used: "0.2587", ResetTime: 1790000000000 },
+		AFPWeekly: { Quota: "35.0", Used: "0.2587", ResetTime: 1790000000000 },
+		AFPMonthly: { Quota: "100.0", Used: "0.2587", ResetTime: 1790000000000 },
+		AFPDaily: { Quota: "50.0", Used: "0", ResetTime: 1790000000000 }
+	} }));
+	await enable(h, [AGENT]);
+	const entry = (await h.service.refresh({ providerIds: [AGENT], force: true })).entries.find(e => e.providerId === AGENT);
+	assert.equal(entry.state, "ok");
+	assert.deepEqual(entry.windows.map(w => w.kind), ["5h", "week", "month", "day"], "日限额排在最后");
+	// toWindows 会用 windowRow 重新构造窗口对象，最容易在这里丢掉解析器产出的字段；
+	// 丢了不报错，只是分组标题静默消失，所以必须在这一层钉住。
+	assert.deepEqual(entry.windows.map(w => w.groupLabel),
+		["文本 / 向量模型", "文本 / 向量模型", "文本 / 向量模型", "视觉 / 语音模型与 Harness"],
+		"分组标注经过 Host 装配后仍在（按 provider id 逐条比对）");
+	h.service.dispose();
+	console.log("PASS Host：AFP 两条额度线的分组标注活到 wire");
+}
+
 console.log("\n火山方舟适配测试全部通过 ✅");
