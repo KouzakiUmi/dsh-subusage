@@ -58,10 +58,12 @@ for (const id of ['zai-coding', 'synthetic', 'nanogpt']) for (const contract of 
  assert.equal(contract.descriptors.find(d => d.method === 'save').parameters[0].codec.schema.parse({ providerId: id, keyUpdate: { action: 'keep' } }).providerId, id);
 }
 assert.deepEqual(refresh.parameters[0].codec.schema.parse({ providerIds: ['commandcode'], force: false }).providerIds, ['commandcode'], 'commandcode 在刷新契约内');
+assert.deepEqual(refresh.parameters[0].codec.schema.parse({ providerIds: ['xai-oauth'], force: false }).providerIds, ['xai-oauth'], 'xai-oauth 在刷新契约内');
 assert.throws(() => refresh.parameters[0].codec.schema.parse({ providerIds: ['not-supported'], force: true }));
 const save = host.subUsageRemote.descriptors.find(d => d.method === 'save');
 const patch = save.parameters[0].codec.schema.parse({ providerId: 'kimi-coding', keyUpdate: { action: 'keep' } });
 assert.equal(patch.providerId, 'kimi-coding');
+assert.throws(() => save.parameters[0].codec.schema.parse({ providerId: 'xai-oauth', keyUpdate: { action: 'keep' } }), /managed by the provider plugin/, 'xai-oauth 凭据由提供方插件管理');
 assert.throws(() => save.parameters[0].codec.schema.parse({ providerId: 'not-supported' }));
 // Client 规范化后必须能被 Host 的最终 Cookie Header 校验接受。
 const clientSource = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');

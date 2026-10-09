@@ -33,7 +33,7 @@ vm.runInNewContext(code, context);
 const { SubusageSection, UsagePill, createCommandCodeAccounts, zh } = moduleSpec.factory(name => {
   if (name !== 'react') throw new Error('Unexpected module'); return react;
 }).__preview;
-const ids = ['zai-coding-cn', 'kimi-coding', 'xiaomi-token-plan-cn', 'opencode-go', 'commandcode', 'minimax', 'minimax-cn'];
+const ids = ['zai-coding-cn', 'kimi-coding', 'xiaomi-token-plan-cn', 'opencode-go', 'commandcode', 'minimax', 'minimax-cn', 'xai-oauth'];
 // MiMo 会话 Cookie 24 小时有效期：预览用固定时钟，落在“临近到期”档位以展示提醒样式。
 const mimoLoggedInAt = clock - 22.3 * 3600000;
 const mimoExpiresAt = clock + 95 * 60000;
@@ -48,7 +48,9 @@ const result = {
     ] },
     entry(ids[1], 100, '7d'), entry(ids[2], 47.4), entry(ids[3], 80, 'week'),
     { ...entry(ids[4], 20.2, 'month'), windows: [{ kind: 'month', percent: 20.2, status: 'ok', detail: { used: 14.14, limit: 70, remaining: 55.86, unit: 'credits', limitSource: 'plan-snapshot' } }], extras: [{ kind: 'plan', value: 'individual-goat' }, { kind: 'monthly-balance', value: '55.86 credits' }] },
-    entry(ids[5], 20, '5h'), entry(ids[6], 40, 'week')
+    entry(ids[5], 20, '5h'), entry(ids[6], 40, 'week'),
+    // SuperGrok：统一周池（已用 %），套餐名与已购加量余额走 extras。
+    { ...entry(ids[7], 35, 'week'), keySource: 'auth-file', extras: [{ kind: 'plan', value: 'SuperGrok' }, { kind: 'balance', value: '5.00 USD' }] }
   ]
 };
 const previewQuota = { ...entry(providerId, 25, 'day'), windows: [{ kind: 'day', percent: 25, status: 'ok', detail: { used: 250000, limit: 1000000, unit: 'tokens' } }, { kind: 'week', percent: 40, status: 'ok' }] };

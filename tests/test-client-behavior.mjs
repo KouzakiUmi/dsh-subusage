@@ -2,7 +2,9 @@
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import assert from "node:assert/strict";
-const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go", "commandcode", "minimax", "minimax-cn"];
+const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go", "commandcode", "openai-codex", "xai-oauth", "minimax-cn", "deepseek"];
+// 默认关闭的厂商：在提供商管理里可见开关、但不产生 tab。新增厂商时同步这里。
+const defaultOff = ["zai-coding", "synthetic", "nanogpt", "ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm"];
 const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
 let spec, clock = Date.parse("2026-10-01T10:00:00Z"), nextTimer = 0;
 const intervals = new Map(), timeouts = new Map(), events = new Map();
@@ -123,13 +125,16 @@ const uiStore = { getSnapshot: () => uiSnapshot, subscribe: () => () => {}, read
 const uh = new Hooks(), props = { usageStore: uiStore, t, getLocale: () => "zh" };
 tree = uh.render(api.SubusageSection, props);
 let tabs = nodes(tree).filter((n) => n.props.role === "tab");
-assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "MiniMax", "MiniMax CN"]);
+assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Codex", "SuperGrok", "MiniMax CN", "DeepSeek"]);
 assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
 assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + 4); assert.ok(!textOf(tree).includes("保存设置"));
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + defaultOff.length + 1); assert.ok(!textOf(tree).includes("保存设置"));
 let focused; tabs[0].props.onKeyDown({ key: "End", preventDefault() {}, currentTarget: { parentElement: { querySelectorAll: () => tabs.map((_, i) => ({ focus() { focused = i; } })) } } });
 assert.equal(focused, ids.length - 1); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids.at(-1));
-assert.ok(textOf(tree).includes("MINIMAX_CN_API_KEY"));
+// End 键跳到最后一个 tab，其技术信息应显示该 provider 的继承变量名。
+assert.ok(textOf(tree).includes(`${ids.at(-1).replace(/-/g, "_").toUpperCase()}_API_KEY`));
+// MiniMax 的技术信息要说明「需要订阅 Key 而不是按量 Key」：显式点开该 tab，不依赖它是第几个/是否在末尾。
+nodes(tree).find(n => n.props.role === "tab" && n.props.id === "subusage-tab-minimax-cn").props.onClick(); tree = uh.render(api.SubusageSection, props);
 assert.ok(textOf(tree).includes("订阅 Key"));
 tabs = nodes(tree).filter((n) => n.props.role === "tab"); tabs[4].props.onClick(); tree = uh.render(api.SubusageSection, props);
 assert.ok(textOf(tree).includes("直接拉取"), "Command Code 标签展示只读说明");
@@ -325,7 +330,7 @@ const management = tree.children.at(-1);
 assert.equal(management.type, "details", "管理区为设置页末尾的折叠菜单");
 assert.equal(management.props.id, "subusage-provider-management"); assert.notEqual(management.props.open, true, "默认折叠");
 assert.equal(management.children[0].type, "summary"); assert.equal(management.children[0].children[0], "提供商管理");
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + 4, "所有关闭/隐藏提供商保留管理开关");
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + defaultOff.length + 1, "所有关闭/隐藏提供商保留管理开关");
 assert.deepEqual(nodes(tree).filter(n => n.props.role === "tab").map(n => n.props.id), ids.filter(id => ![ids[1], ids[3]].includes(id)).map(id => `subusage-tab-${id}`));
 assert(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick({ preventDefault() {} }); tree = ch.render(api.SubusageSection, cp);
@@ -335,19 +340,20 @@ assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"
 assert(!nodes(nodes(tree).find(n => n.props.role === "tabpanel")).some(n => n.type === "fieldset" || n.type === "input"), "上方详情只展示用量");
 assert(!nodes(tree).some(n => n.type === "button" && n.children.includes("配置")), "移除跨区域配置跳转按钮");
 await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax CN").props.onClick(); tree = ch.render(api.SubusageSection, cp);
-assert.equal(controlPatches.at(-1).visibility.providers[ids[6]], false); assert.equal(controlPatches.at(-1).expectedRevision, "1");
-assert(!nodes(tree).some(n => n.props.role === "tab" && n.props.id === `subusage-tab-${ids[6]}`));
+assert.equal(controlPatches.at(-1).visibility.providers["minimax-cn"], false); assert.equal(controlPatches.at(-1).expectedRevision, "1");
+assert(!nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-minimax-cn"));
 await nodes(tree).find(n => n.props["aria-label"] === "没有检测到API的默认隐藏").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.hideWithoutApi, false); assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === `subusage-tab-${ids[1]}`));
 await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax CN").props.onClick(); tree = ch.render(api.SubusageSection, cp);
-assert.equal(controlPatches.at(-1).visibility.providers[ids[6]], true); assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), [ids[6]], "手工重新开启立即刷新");
-assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === `subusage-tab-${ids[6]}`));
+assert.equal(controlPatches.at(-1).visibility.providers["minimax-cn"], true); assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), ["minimax-cn"], "手工重新开启立即刷新");
+assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-minimax-cn"));
 nodes(tree).find(n => n.type === "button" && n.children.includes("更换")).props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert(nodes(tree).filter(n => n.props.role === "switch").every(n => n.props.disabled), "凭据脏草稿期间只锁定即时开关");
 assert.equal(nodes(kimiEditor).find(n => n.type === "fieldset").props.disabled, false, "行内凭据不能被开关锁定误禁用");
 const editedKey = nodes(tree).find(n => n.type === "input" && n.props.type === "password"); editedKey.props.onChange({ target: { value: "fixture-inline-draft" } }); tree = ch.render(api.SubusageSection, cp);
-nodes(tree).find(n => n.props.id === `subusage-tab-${ids[5]}`).props.onClick(); tree = ch.render(api.SubusageSection, cp);
-assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"] === "MiniMax (International)"), "用量切换与编辑厂商独立");
+// 切到 MiniMax CN（国际版现为默认关闭，不可见）。
+nodes(tree).find(n => n.props.id === "subusage-tab-minimax-cn").props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"] === "MiniMax (CN)"), "用量切换与编辑厂商独立");
 assert.equal(nodes(tree).find(n => n.type === "input" && n.props.type === "password").props.value, "fixture-inline-draft", "切换用量不丢失行内草稿");
 assert.equal(nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[1]}`).props.open, true);
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 MiniMax").props.onClick({ preventDefault() {} }); tree = ch.render(api.SubusageSection, cp);
@@ -356,7 +362,7 @@ const beforeToggle = controlPatches.length; await nodes(tree).find(n => n.props[
 ch.unmount();
 controlSnapshot = withPrefs(result(controlSnapshot.entries), preferences(Object.fromEntries(ids.map(id => [id, false]))));
 const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSection, cp);
-assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 11);
+assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + defaultOff.length + 1);
 assert.equal(nodes(tree).find(n => n.props.id === "subusage-provider-management").props.open, true, "空状态展开配置入口");
 assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.role === "tabpanel"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick({ preventDefault() {} }); tree = emptyControls.render(api.SubusageSection, cp);

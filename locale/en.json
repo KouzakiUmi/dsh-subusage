@@ -1,4 +1,4 @@
 {
   "name": "Subscription usage",
-  "description": "Shows subscription quota for Z.ai, Kimi, MiMo, OpenCode Go, Command Code, MiniMax, Synthetic and NanoGPT, with new providers disabled by default, shared refresh and credential management."
+  "description": "Shows subscription quota for Z.ai, Kimi, MiMo, OpenCode Go, Command Code, SuperGrok, MiniMax, Synthetic and NanoGPT, with shared refresh and credential management. Z.ai International, Synthetic and NanoGPT are disabled by default."
 }

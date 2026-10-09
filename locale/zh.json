@@ -1,4 +1,4 @@
 {
   "name": "订阅用量显示",
-  "description": "显示 Z.ai / Kimi / MiMo / OpenCode Go / Command Code / MiniMax / Synthetic / NanoGPT 订阅余量；新增提供商默认关闭、共享刷新与凭据管理。"
+  "description": "显示 Z.ai / Kimi / MiMo / OpenCode Go / Command Code / SuperGrok / MiniMax / Synthetic / NanoGPT 订阅余量；共享刷新与凭据管理，Z.ai 国际 / Synthetic / NanoGPT 默认关闭。"
 }

@@ -166,6 +166,13 @@ assert.equal(api.CommandCodeAccountSwitch({ cc: null, ccState: null, t }), null,
 	const texts = buttons.map((b) => JSON.stringify(b.children));
 	assert.ok(texts[1].includes("默认账户"), "默认账户用本地化文案");
 	assert.ok(texts[2].includes("工作号"), "额外账户显示其 label");
+	// 账户多时不该把上方的额度顶出视野：整块折进 details，summary 直接给出当前账户与数量，
+	// 展开后的列表自身限高滚动 —— 弹层高度不随账户数增长。
+	assert.equal(tree.type, "details", "账户区折进 details");
+	const summary = flat.find((n) => n.type === "summary");
+	assert.ok(JSON.stringify(summary.children).includes("工作号"), "summary 显示当前账户");
+	assert.ok(JSON.stringify(summary.children).includes("3"), "summary 显示选项数量");
+	assert.equal(flat.find((n) => n.props?.style?.overflowY === "auto")?.props?.style?.maxHeight, 240, "展开后列表限高滚动");
 	cc.dispose();
 }
 {
@@ -175,6 +182,8 @@ assert.equal(api.CommandCodeAccountSwitch({ cc: null, ccState: null, t }), null,
 	const tree = api.CommandCodeAccountSwitch({ cc, ccState: cc.getSnapshot(), t });
 	const flat = nodes(tree);
 	assert.ok(flat.some((n) => typeof n.children?.[0] === "string" && n.children[0].includes("账户列表不可用")), "降级显示不可用文案");
+	assert.equal(tree.type, "details", "不可用时同样折叠，不额外占版面");
+	assert.ok(JSON.stringify(flat.find((n) => n.type === "summary").children).includes("账户列表不可用"), "summary 直接说明不可用");
 	cc.dispose();
 }
 

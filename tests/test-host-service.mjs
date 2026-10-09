@@ -56,7 +56,7 @@ result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equa
 await h.service.save({ providerId: Z, keyMode: "inherit" }); delete h.credential[Z];
 h.respond(() => zBody); result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equal(result.entries[0].keySource, "env");
 const isolated = harness(); isolated.service.credentials = async id => { if (id === Z) throw new Error("DO NOT LEAK"); return undefined; };
-result = await isolated.service.read(); assert.equal(result.entries.length, 10); assert.equal(result.entries[0].errorCode, "subusage/credentials"); assert(!JSON.stringify(result).includes("DO NOT LEAK")); assert.equal(isolated.calls.length, 0);
+result = await isolated.service.read(); assert.equal(result.entries.length, 26); assert.equal(result.entries[0].errorCode, "subusage/credentials"); assert(!JSON.stringify(result).includes("DO NOT LEAK")); assert.equal(isolated.calls.length, 0);
 await assert.rejects(h.service.refresh({ providerIds: ["bad"], force: false })); await assert.rejects(h.service.refresh({ providerIds: [Z] }));
 for (const cookie of ["userId=1", "api-platform_serviceToken=x; userId=1\r\nX-Evil: y", "api-platform_serviceToken=x; userId=1; bad", "api-platform_serviceToken=x; userId=1; userId=2"]) await assert.rejects(h.service.save({ providerId: M, cookieUpdate: { action: "replace", value: cookie } }));
 const cookies = await h.service.save({ providerId: M, cookieUpdate: { action: "replace", value: 'api-platform_serviceToken="dummy"; userId=1; optional=' } }); assert.equal(cookies.settings.xiaomi.hasCookie, true); assert(!JSON.stringify(cookies).includes("dummy"));

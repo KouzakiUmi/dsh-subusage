@@ -11,6 +11,8 @@
 | 文件 | 职责 |
 |---|---|
 | `lib/index.js` | 提供商适配、凭据解析、持久化、缓存与 Host RPC |
+| `lib/volcengine.js` | 火山方舟 AK/SK 签名与 Coding / Agent Plan 窗口解析（纯函数、零依赖，可单独测试） |
+| `docs/provider-coverage.md` | 提供商覆盖与**不接入**的决策记录：已支持清单、评估后不做的厂商与理由、用户决策跳过的厂商 |
 | `lib/client.js` | Client 模块、共享 store、设置页与模型药丸；内含界面中英文文案 |
 | `lib/mimo-login.js` | 隔离 Chrome 登录、Cookie 提取与任务生命周期 |
 | `locale/zh.json`、`locale/en.json` | 插件元数据与配置文案 |
@@ -41,7 +43,7 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 
 - `read(request?)`：request 在 wire 层可选（两端描述符声明 `acceptsUndefined`，网关对缺参放行、service 直调无参同样兜底），缺参/undefined 等价于全量 `refresh({ providerIds: 全部, force: false })`（默认账户）；也可传入与 refresh 相同的查询（Client 初始读取会携带 `commandCodeAccount`）。
 - `refresh(request)`：`request = { providerIds: string[], force: boolean, commandCodeAccount?: string }`，只读取指定厂商；`commandCodeAccount` 仅对 commandcode 生效（空串/缺省 = 默认账户，额外账户 id 即其凭据引用名）；返回的 entries 由 Client 合并。
-- `save(settings)`：provider patch，包含 `providerId`、`expectedRevision`、来源模式、凭据保持/替换/清除动作与可选 Z.ai 参数。凭据由提供方插件管理的厂商（`managedByPlugin`，现即 commandcode）拒绝一切凭据补丁，只接受裸 patch。
+- `save(settings)`：provider patch，包含 `providerId`、`expectedRevision`、来源模式、凭据保持/替换/清除动作与可选 Z.ai 参数。凭据由提供方插件管理的厂商（`managedByPlugin`，现即 commandcode 与 xai-oauth）拒绝一切凭据补丁，只接受裸 patch。
 - 检测开关使用独立补丁 `{ expectedRevision, visibility: { providers?, hideWithoutApi? } }`，不得混入凭据字段；provider 开关增量合并，不重置未提交条目。
 - 公共 settings 只含 revision、非秘密参数、hasKeys、keyModes 与 xiaomi 的 `hasCookie`、`loginAt`、`expiresAt`。后两项是本地计时元数据（ISO 串或 null），不是秘密，也不参与凭据有效性判断。
 - 保存与验证分离。保存失败和保存后在线验证失败必须有不同反馈。
@@ -57,13 +59,15 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 - Z.ai 百分比为 0–100；MiMo `percent` 为 0–1；OpenCode Go 三窗通常包裹于 `usage`。
 - Kimi `/coding/v1/usages` 的窗口集合按账户下发：`usages` 比例池可能只有 `limit_5h` + `limit_month_total`（`limit_7d` 仅在部分套餐出现，不能当必需字段），旧账户则只有顶层 `usage` + `limits[]` 绝对计数，同一 Key 连续请求形态稳定。归一化按实际下发的窗口名产出窗口；`limit_month_code` 是月池的 Code 份额而非独立预算，不单独成窗；无任何比例池时，用 `limits[]` 中 `duration=300 / TIME_UNIT_MINUTE` 项的 `limit`/`remaining` 反推 5 小时窗口，再用顶层 `usage` 的 `limit`/`remaining` 反推周额度。未知结构仍报错，不猜测额度。
 - Command Code 并行直连 `/alpha/billing/credits` 与 `/alpha/billing/subscriptions`（请求头对齐提供方插件的 accountHeaders：Bearer、accept-encoding: identity、x-command-code-version、x-cli-environment）。absent 窗口是未报告上限（不画额度行）；`cap: 0` 是报告过的无上限，按 0% 不受限展示；`exceeded` 或原始比例达 100% 即限流；已出现的窗口块缺 `used`/`cap` 或非数值一律报错，不当作零用量。月余额 `credits.monthlyCredits` 是剩余金额，使用已知套餐表快照计算 `max(0, total - remaining)`，不是接口直接报告的月cap；未知套餐或缺月余额时 coverage=partial，不猜测百分比。planId优先 subscriptions.data.planId、回退 credits.planId，重置取 subscriptions.data.currentPeriodEnd（ISO或毫秒），非法日期不输出。月池耗尽不参与短窗级联（额外购买/赠送池可能仍可用）；周/5小时保持现有级联。余额只显示真正报告过的月剩余/已购/赠送字段。用量显示跟随药丸弹层选择的账户：默认账户（含自动轮换）走 `COMMANDCODE_API_KEY` 凭据链，额外账户按其凭据引用名（`apiKeyEnv`）从凭据服务 → 启动环境解析（对齐提供方插件 `slots()`/`resolveRef`），缓存指纹计入账户选择，entry 带 `account` 字段；自动轮换不跟随实际服务账户，自定义 apiBase 不跟随。
-- 单厂商凭据、网络、解析异常不影响其它厂商条目。
-- 按厂商共享 TTL 缓存与 in-flight 请求；配置/凭据变化使旧账号缓存失效。
+- SuperGrok 并行直连官方 Grok CLI 计费代理 `/v1/billing?format=credits` 与 `/v1/settings`（请求头对齐官方 CLI：Bearer、`X-XAI-Token-Auth: xai-grok-cli`、`x-userid`、`x-grok-client-version`）。`creditUsagePercent` 是统一用量池的**已用**百分比（0–100，剩余 = 100 − 已用），周期取 `currentPeriod`（周/月枚举名，未知或缺失类型归通用订阅池 `sub`），重置取 `currentPeriod.end`，非法日期不输出；旧形态按 `monthlyLimit`/`used`（美分）折算比例并归月账期窗口，`{}`（proto3 零值）解码为 0，无上限（limit≤0）不折算。套餐名取 `/v1/settings` 的 `subscription_tier_display`（失败回退 billing 响应的 `subscription_tier`），已购加量余额 `prepaidBalance` 美分转美元显示；未报告的字段不冒充 0，无任何比例来源时报错不猜额度。
+- 单厂商凭据、网络、解析异常不影响其它厂商条目。- 按厂商共享 TTL 缓存与 in-flight 请求；配置/凭据变化使旧账号缓存失效。
 - TTL 为 60 秒。Client 仅订阅活跃、开启的提供商，隐藏页面暂停定时读取，回到可见状态再检查；不要把所有厂商做成独立全局轮询。
 - 新增厂商须同步 Host 的 PROVIDERS、Client 的 PROVIDER_META / PROVIDER_ORDER、帮助文案、README 和默认值测试。未获明确需求的新订阅商保持 `defaultEnabled: false`；原有偏好通过存储合并保留。
 - 允许保留的临时错误返回 stale 标记、上次成功时间与结构化错误；认证失效不保留旧额度。
 - 429/临时错误使用退避，倒计时本地更新，重置后有界刷新而不制造请求循环。
 - Retry-After / retryAt 优先于强制刷新和重置到期。已知本地配置修改只失效受影响厂商；未知外部 revision 修改保守失效所有条目。
+- 火山方舟（`ark-coding-plan-cn` / `ark-agent-plan-cn` / `ark-coding-plan-byteplus`）：provider id 必须与官方插件 `@volcengine/ark-plan-api` 注册的路由**逐字一致**，否则选中方舟模型时药丸不会出现（该插件未安装时 `configured` 为 false，条目仍可配置）。额度走管控面 OpenAPI：`POST https://open.volcengineapi.com/?Action=X&Version=2024-01-01`（BytePlus 走 `ark.ap-southeast-1.byteplusapi.com`），Action 与 Version 放在 query 串并参与签名。签名是火山通用 HMAC-SHA256 V4：CanonicalHeaders 块尾换行后与 SignedHeaders 行之间**有一个空行**；Credential 首段是 **8 位日期**（不是完整 X-Date）；`host` 必须与实际请求域名一致（两个接入域名混用必然 401）；query 用 RFC3986 严格转义（`! ' ( ) *` 必须转义）。凭据是 IAM 的 AK/SK 配对，与这些路由的推理 API Key（`ARK_*_API_KEY`）是两套；三家共用 `settings.volc`，继承变量为 `VOLC_ACCESSKEY` / `VOLC_SECRETKEY`。AK 与 SK 必须**同源配对**，`source` 只取 `credentials` / `env` / `manual` / `none` 之一，禁止跨来源拼接（否则 401 且看不出根因）。补丁形如 `volc: { accessKeyId | secretAccessKey: { action, value } }`，两个字段各自 keep/replace/clear：`replace` 不接受空串（SK 不回显，空串不是清空指令），`clear` 写空字符串而**不是 delete**（`publicSettings` 依赖字段存在）。共享凭据变化要让全部 `credentialKind === "volc"` 的条目一起失效，不能只失效当前标签页。
+- 火山方舟窗口语义：Coding Plan 的 `Result.QuotaUsage[].Level ∈ {session, weekly, monthly}`、`Percent` 是**已用百分数 0–100**（不套用「≤1 视为小数」规则，否则 0.39% 会被放大成 39%）、`ResetTimestamp` 是**秒**；Agent Plan 的 `AFPFiveHour/AFPDaily/AFPWeekly/AFPMonthly` 里 `Quota`/`Used` 是字符串绝对值、`ResetTime` 是**毫秒**、`Quota=0` 表示该窗口不适用（不产出行、不当 0%）；接口不返回 Coding Plan 的绝对量，`Cap` 字段未在任何来源证实存在，因此不产出 detail。**HTTP 200 且窗口为空是「未订阅」而不是 0% 用量**，界面显式说明。错误按业务信封 `ResponseMetadata.Error.Code` 分三类：401 类（`SignatureDoesNotMatch` / `InvalidAccessKey` 等）提示需要 AK/SK 而非推理 Key，403 类（`AccessDenied` / `OperationDenied` / 欠费）提示权限与订阅，`InvalidActionOrVersion` 提示接口可能已变更。
 - MiMo 会话 Cookie 自签发起 24 小时有效。Host 在凭据写入的同一刻记录 `xiaomi.loginAt` / `xiaomi.expiresAt`（毫秒，清除凭据时归零），并把 `cookieExpiresAt` 挂到该厂商的每条 entry 上；自动登录经 `MimoLogin` 回调传入浏览器观测到的 Cookie 过期时刻，取 `min(24h 上限, 观测值)`——该回调必须透传第 4 个实参，少声明形参会静默退化成 24 小时上限。计时只在真正写入凭据（`cookieUpdate` 为 `replace`）时重置，`keep` 不得续满倒计时。解析存储只接受安全整数正数，损坏字段按未记录处理。Client 侧到期档位由 `cookieExpiry()` 单点判定：>2h 正常、≤2h 提醒、≤30min 紧急、已过期。**倒计时只用于展示**：归零不改凭据可用性，真实失效仍由官方接口返回决定；接口已判定凭据失效（`state: "error"`）时倒计时不得抢占主文案，但「已过期」本身仍优先，因为它就是重新登录的行动项。Client 合并/失效条目时保留 `cookieExpiresAt`，否则保存或登录后倒计时会短暂消失；但凭据被 `clear` / `replace` 时必须丢弃旧值，否则已删除的 Cookie 仍显示过期倒计时。
 
 ## 5. 凭据与 MiMo
@@ -71,6 +75,8 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 当前仍兼容旧本机 JSON 存储，并非加密凭据库；不输出真实 Key/Cookie到日志、测试、截图或读取结果。新建目录 mode 为 0700、临时文件为 0600，重命名前再收紧临时文件权限；不 chmod 已有共享配置目录。Windows chmod 不等同于 ACL 管理，部署者仍需保证目录 ACL 仅授权合适用户。
 
 Command Code 不提供本地凭据编辑：沿用提供方插件（@mars-sea/dsh-commandcode-provider）的凭据来源链——凭据服务 `COMMANDCODE_API_KEY` → 启动环境 → `~/.commandcode/auth.json` 兜底（解析对齐其 resolveAuthFileApiKey：`apiKey` / `commandcode` 字符串、`commandcode`/`command-code` 凭据记录的 key/access）。
+
+SuperGrok（`xai-oauth`）同样不提供本地凭据编辑，但只认 dsh-grok-kit / Grok CLI 共享的 OAuth 登录文件：优先 `~/.grok/auth.json`（槽位 map，槽位名含 `auth.x.ai` 优先、旧签发方 `accounts.x.ai` 次之、最后任意槽位；取 `key`/`access` 与 `user_id`，缺 `user_id` 时回退 JWT `sub`），回退 dsh-grok-kit 旧版 `~/.dsh/.xai-oauth-auth.json` 信封（`credential.access` / `credential.accountId`）。**只读不写、不自行刷新 token**：access token 短命轮换且 refresh-token 轮换由两端（Grok CLI / dsh-grok-kit）各自的锁协议管理，第三端刷新会互相顶掉轮换导致登录失效；因此也不走凭据服务/启动环境链（环境副本必然过期顶掉新 token）。API Key（`XAI_API_KEY`）路线取不到订阅周池，不支持。
 
 Client 不填回已保存秘密。Cookie 解析支持多行 KV、成对文本、JSON 与 TAB Name/Value；JSON 域规则按目标站点匹配。Netscape 格式先识别七列数据再跳过普通注释，`#HttpOnly_` 只作为域前缀处理；普通 TAB 中合法的 `#` 开头 Cookie 名不能误删。TAB 解析使用原始分行，不能用整串/整行 trim 丢失末列空值。输入错误必须保留原文，Host 再做 header 安全及必需条目验证。
 
@@ -113,7 +119,7 @@ foreach ($theme in @('dark', 'light')) {
 node scripts/check-browser-runtime.mjs
 ```
 
-浏览器检查需要工作区可解析 `playwright-core` 且已安装 Google Chrome；不会下载浏览器。它检查 Cookie 域/路径隔离、十个提供商开关加一个默认隐藏开关、三项默认关闭、七个可见标签、无下拉列表和横向溢出，并将 PNG 写到 `debug/ui-preview/`。
+浏览器检查需要工作区可解析 `playwright-core` 且已安装 Google Chrome；不会下载浏览器。它检查 Cookie 域/路径隔离、二十六个提供商开关加一个默认隐藏开关、十七项默认关闭、十个可见标签、无下拉列表和横向溢出，并将 PNG 写到 `debug/ui-preview/`。
 
 单独生成浅色药丸弹层 HTML：
 
@@ -128,6 +134,29 @@ node --input-type=module -e "import {chromium} from 'playwright-core'; import {r
 ```
 
 预览页面包括布局示意，不完全复刻 DSH 外壳。市场所用设置截图来自 `settings-530-xiaomi-token-plan-cn-dark-credentials.png`，弹层来自 `settings-530-nanogpt-light-pill.png`。人工检查后将 PNG 复制到 `assets/screenshots/` 的相应文件，保留离线标记并同步 [截图声明](../screenshots.json) 与 README。市场只需 GitHub 仓库图片，当前 npm 白名单不包含这些 PNG。
+
+### 0.9.0 验证记录：火山方舟 Ark 与 SiliconFlow 接入
+
+- `node tests/run-all.mjs` 全部通过（新增 `tests/test-volcengine.mjs` 与 `tests/test-siliconflow.mjs`），`node scripts/check-manifest.mjs` 与四个 `node --check` 通过。
+- 签名：把官方 demo `volc-openapi-demos/signature/nodejs/sign.js` 的函数**逐字复制**进来与 `lib/volcengine.js` 对同一输入对拍，确认本实现与官方文档 cURL 示例所用的签名集合（`content-type;host;x-content-sha256;x-date`）逐字节一致。注意官方 demo 的默认路径会按 `needSignHeaderKeys=[]` 过滤成 `host;x-date`，**不能照抄它的 header 黑名单**。
+- **没有权威固定向量可用**：官方 demo 的 AK/SK 是占位符，官方文档示例里的凭据被打码，因此 `test-volcengine.mjs` 里的签名期望值是本仓库自算并钉住的回归基线（已在测试文件头部注明来源与核对方式），不是官方公布的向量。一次调研中由子代理"自行计算"的向量（`39fee0d0…`）经复算与其自身给出的 CanonicalRequest 自相矛盾，已弃用，不作为基线。
+- 回归覆盖：签名中间串与 Authorization 模板（8 位日期、SignedHeaders 顺序、64 位 hex）、host/SK/Action 参与签名、RFC3986 转义、Coding Plan 三窗口与百分比不放大、`ResetTimestamp` 秒级、Agent Plan 四窗口与字符串绝对值、`Quota=0` 不产出行、未订阅（200 + 空窗口）不画 0%、401/403/404 三类错误映射、AK/SK 独立 keep/replace/clear、半份凭据按未配置、共享凭据变化使全部 Ark 条目失效且 TTL 内仍命中缓存、Client 侧注册与补丁语义。
+- 过程中由测试抓到的两个真实缺陷：①`commitMimoLogin` 的缓存指纹在 `provider()` 增加 secret 段后未同步，导致 MiMo 登录后首次刷新重复拉取（与 0.8.0 记录过的同类缺陷同源）；②清除火山凭据时用 `delete` 删掉 `stored.volc` 字段，使随后的 `publicSettings` 抛 `TypeError`——现改为置空字符串。
+- **未做**：真实 AK/SK 的在线调用验证（本机没有可用的火山 IAM 凭据，测试全部使用虚构凭据与桩网络）；`ark-coding-plan-byteplus` 的 BytePlus 管控面域名与 `ap-southeast-1` 区域未实测（按官方地域域名表实现，该 provider 默认关闭）；`GetCodingPlanUsage` 无官方文档，接口变更风险无法通过文档消除；真实 DSH 中与 `@volcengine/ark-plan-api` 一同加载后的药丸显示未验收。
+- SiliconFlow：`tests/test-siliconflow.mjs` 覆盖余额归一化（`totalBalance` 优先、`balance` 兜底、0 余额合法、两位小数、非法值报错）、Host 端到端（默认关闭不请求、开启后 Bearer 直连 `/v1/user/info`、不产出窗口、密钥不回显）与 Client 注册。**这是首个纯余额型 provider**：余额没有上限也就没有百分比，因此不产出窗口，靠新增的余额兜底文案显示——无窗口有余额时药丸显示「余额 X CNY」，无窗口无余额（或只有套餐名）时仍回落到「暂无额度数据」；`tests/test-client-render.mjs` 的对应断言已按新语义更新并补了反向用例（此前那条断言要求空额度一律显示占位）。同样**未做**真实 Key 的在线验证。
+- LiteLLM：`tests/test-litellm.mjs` 覆盖地址规范化（去尾斜杠与 `/v1`、保留自建子路径、`file://`/`ftp://`/非法输入一律按未配置）、归一化两条分支（有预算 → 窗口 + `budget_reset_at`；无上限或 `max_budget: 0` → 只给 `spend` 金额，不编造百分比）、user/team 视图优先与 scoped 403 降级、缺代理地址归到 `subusage/credentials` 并给出指引、端点落在 proxy 根、Client 的地址回填与补丁提交。**这是第一个引入「用户可配置端点」的 provider**：`settings.litellm.baseUrl` 是非秘密字段（原样回显），合法性在请求前用 `URL` 解析把关。**未做**真实自建网关的在线验证（本机没有 LiteLLM proxy）。
+- ZenMux 与 NanoGPT 余额：`tests/test-aggregators.mjs` 覆盖 ZenMux 的 0–1 小数换算、flows 明细、ISO `resets_at`、仅余额时 `partial`、两端点全空才报错，以及 Host 端「两端点各一次 + Management Key + 余额 403 降级后仍 `ok`」；NanoGPT 覆盖余额作为增量条目、缺失/非法不影响配额、零余额照实显示。`tests/test-new-providers.mjs` 的请求次数从 3 改到 4 并断言余额端点用 `POST` + `x-api-key`（不是 Bearer）。**注意**：`windowRow` 统一把百分比收敛到**一位小数**，所以 0.3938 → 39.4；这会让极小百分比（如 0.05%）显示成 0，是既有设计而非本次引入，若要改需连同所有 provider 一起评估。**未做**真实 Management Key 的在线验证。
+- UX 三改：`tests/test-commandcode-accounts.mjs` 钉住账户区折叠（details + summary 显示当前账户与数量 + 列表限高 240 滚动 + 降级同样折叠）；`tests/test-client-render.mjs` 钉住待处理排序（出错项排第一、其余保持登记顺序、全正常时顺序不变）与顶部计数按钮（可点/禁用/无障碍名提到目标 provider）。排序权重里**「未配置凭据」刻意不计入**，否则关闭默认隐藏后每个未配置的厂商都会排到前面。测试注意：`PROVIDER_ORDER` 来自 vm realm，跨 realm 数组不能直接 `deepStrictEqual`，涉及它的比较统一用 JSON。
+- 额度查询 API：`tests/test-quota-api.mjs` 覆盖 `quota()` 视图形状、`providerIds` 过滤与未知 id 忽略、**「不泄露内部状态」**（视图里搜不到 `settings` / `keySource` / `apiDetected` / `envName` 与 Key 本身）、单家失败只影响自己的条目，以及工具契约（`defineTool` 的 object 根 schema、`providers`/`refresh` 映射、`render` 文案含未配置/已关闭/限流+重置/缓存/失败原因）。`tests/smoke-host.mjs` 增加「`subusage_quota` 已注册且参数为 providers/refresh」断言。DSH 侧 API 已核实：`defineTool` 由 `@deepseek-ai/dsh-tools` 导出（`textRender` **未**导出，`render` 自己返回 `[{type:"text",text}]`）；`defineTool` 的 `execute(args, exec)`、`output.schema` 用 DSH 的「属性内 `required: true`」写法。**未做**：真实 host 上工具被模型调用的端到端验证（需要重启 DSH）。
+- 用量面板内联行动条（UX）：`tests/test-usage-action.mjs` 钉住判定（缺凭据/凭据被拒/已过期 → 重新登录/2 小时与 30 分钟档/正常倒计时不打扰/计时不可解析不编造），`tests/test-client-render.mjs` 钉住渲染（MiMo 失效时面板出现行动条与按钮，正常状态没有）。行动条只负责「把入口送到眼前」，凭据编辑复用同一份编辑器，避免两套字段与校验漂移（沿用本仓库既有的「两入口共用同一渲染」约定）。
+- 余额型聚合商六家：`tests/test-aggregators.mjs` 逐个钉住单位换算（Novita 1/10000、Hyperbolic 美分、DeepInfra 取负、Chutes 绝对量、Ollama 0–1 小数、Vercel 十进制字符串）与边界（`{quota:0}` 不猜比例、Ollama 缺层跳过、DeepInfra 欠款分支），并在 Host 端逐一断言端点与鉴权头（**Ollama Cloud 是裸 `Authorization`**）。**未做**任何真实 Key 的在线验证。
+- MiniMax 国际版改为默认关闭（用户要求：实际使用少）。`tests/test-minimax.mjs` 补上默认值断言并在用例前显式开启两家，`tests/test-client-behavior.mjs` 的可见 tab 列表改用 MiniMax CN。至此默认关闭 15 项、默认开启 9 项。
+- OpenRouter：`tests/test-openrouter.mjs` 覆盖限额窗口与 `limit_reset` 映射、免费档日窗口、**余额端点 403 的静默降级**（只少余额，条目仍 `ok`）、`limit_remaining` 越界不产生负用量、无可用信息才报错、Host 端到端两请求与 Client 注册。**未做**真实 Key 的在线验证（无凭据）。
+- DeepSeek 官方余额：`tests/test-deepseek.mjs` 覆盖归一化（不产窗口、字符串金额、多币种取第一条可解析项、货币码不合规时只显示金额、`is_available=false` 提示充值、非法值报错）、Host 端到端（默认开启、Bearer 与推理同 Key、密钥不回显）与 Client 注册。**未做**真实 Key 的在线验证。
+- 顺序约定：新 provider 一律**追加在 `PROVIDER_ORDER` 末尾**。本轮把 Codex 插在中间时，测试里三处按位置写的 `ids[N]` 断言全部错位（改用 id 字面量断言后恢复）；追加在末尾则不影响既有索引。
+- **真机验证（2026-10-09，Codex）**：用本机 `~/.codex/auth.json` 的真实 ChatGPT 登录向 `GET https://chatgpt.com/backend-api/wham/usage` 发一次只读请求，**HTTP 200**，实测 `primary_window.window_seconds=18000`、`secondary_window.window_seconds=604800`、`plan_type="plus"`、`credits={has_credits:false,balance:"0"}`。由此发现并修正两处只有真机才暴露的问题：**① `resets_at` 是 Unix 秒数而实现只接受字符串，导致重置时间被静默丢弃**（桩测试喂的是 ISO 串，所以一直是绿的）；② `plan_type` 未显示。教训：**桩测试里的字段类型必须来自真实响应**，否则"解析正确"只是自洽。验证脚本在 `debug/verify-codex-live.mjs`（debug/ 不入库）。
+- Codex 订阅用量：`tests/test-codex.mjs` 覆盖登录文件解析（`auth_mode` 门禁、`account_id` 可选、缺失/损坏不抛错、`CODEX_HOME` 覆盖路径）、窗口归一化（主/次窗口回退命名、`window_seconds` 判 30 天档、100% 判限流、单窗口 partial、`credits` 四类不显示、`plan_type` 档位、秒级与 ISO 两种重置时间、哨兵 0、非法百分比报错）、Host 端到端（默认开启即读取、Bearer 是 OAuth token 而非 API Key、响应不回显 token、拒绝本地凭据补丁、无登录文件时 no-key 文案点名 `codex login` 与 API Key 模式限制）与 Client 注册。**这是首个"凭据完全由外部 CLI 登录文件提供且默认开启"的 provider**；`tests/test-client-render.mjs` 里原先把 `openai-codex` 当"不支持的路由"的断言改用 `vrtx-gemini`，保留了那条覆盖。
+- 离线预览：已重新生成设置页 HTML 与 `ark-coding-plan-cn` 凭据页 HTML，逐项核对到 25 个开关（24 家 + 默认隐藏）、10 个可见标签、Ark 三家标签与 `VOLC_ACCESSKEY` / `VOLC_SECRETKEY` 继承提示。**浏览器像素验收未做**：本次沙箱拒绝 `chromium.launch`（`spawn EPERM`，无法创建 `--remote-debugging-pipe` 命名管道），`scripts/check-browser-runtime.mjs` 因此未执行；该脚本里的计数已按新厂商数先行更新（25 个开关 / 10 个标签 / 15 家默认关闭），需在可启动 Chrome 的环境复跑确认。
 
 ### 0.8.3 验证记录：Kimi 月度窗口与响应形态兼容
 

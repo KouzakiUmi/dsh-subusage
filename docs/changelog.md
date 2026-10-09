@@ -2,6 +2,110 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.9.0：火山方舟 Ark 套餐额度接入
+
+- 新增三个 provider：`ark-coding-plan-cn`、`ark-agent-plan-cn`、`ark-coding-plan-byteplus`。**id 必须与官方插件 `@volcengine/ark-plan-api` 注册的路由逐字一致**（否则选中方舟模型时药丸不会出现），三者一律 `defaultEnabled: false`，需手动开启。
+- 额度走管控面 OpenAPI：`POST https://open.volcengineapi.com/?Action=X&Version=2024-01-01`（BytePlus 走 `ark.ap-southeast-1.byteplusapi.com`）。Coding Plan 走 `GetCodingPlanUsage`（未收录于官方 API 概览，由官方 ark-cli 与多个第三方实现确证可用），Agent Plan 走有官方文档的 `GetAFPUsage`。
+- 鉴权是火山通用 HMAC-SHA256 V4 签名，**与这些路由的推理 API Key 不是同一套凭据**：AK 与 SK 必须来自同一个 IAM 用户，三家共用一组 `settings.volc`，继承变量为 `VOLC_ACCESSKEY` / `VOLC_SECRETKEY`。签名要点：CanonicalHeaders 块尾换行后与 SignedHeaders 行之间有一个空行、Credential 首段是 8 位日期（不是完整 X-Date）、`host` 必须与实际域名一致、query 用 RFC3986 严格转义（`! ' ( ) *` 必须转义）。
+- 窗口语义：Coding Plan 的 `Level ∈ {session, weekly, monthly}`、`Percent` 是**已用百分数 0–100**（0.39% 不会被放大成 39%）、`ResetTimestamp` 是**秒**；Agent Plan 的四个滚动窗口（5 小时 / 日 / 周 / 月）给 AFP 绝对值与 `PlanType`，`ResetTime` 是**毫秒**。Coding Plan 不返回绝对量，`Cap` 字段未在任何来源证实存在，故不显示明细。
+- **HTTP 200 且窗口为空是「未订阅」而不是 0% 用量**，界面显式说明；401（签名/凭据）、403（权限或未订阅）、接口不存在三类失败分别给出不同行动项，401 的文案点名「要 IAM AK/SK，不是推理用的方舟 API Key」。
+- 设置页新增 AK/SK 双字段凭据编辑（SK 为 password 且从不回显）：两个字段各自「留空表示不修改该项」，清除必须显式确认；只有一半凭据时按未配置处理，不拿半个签名去请求。共享凭据变化会让全部 Ark 条目一起失效，而不只是当前标签页。
+- 测试：新增 `tests/test-volcengine.mjs`（签名固定向量与 Authorization 模板、host/SK/Action 绑定、严格转义、两种套餐的窗口解析与未订阅判定、401/403/404 错误映射、AK/SK keep/replace/clear 与半份凭据、共享凭据失效与 TTL 命中、Client 注册与补丁语义）与 `lib/volcengine.js`（零依赖纯函数）。`tests/helpers.mjs` 的子模块绝对路径重写改为遍历列表——否则临时目录里解析不到新增的 `lib` 子模块。`node tests/run-all.mjs` 与 `node scripts/check-manifest.mjs` 全部通过。
+
+### 同版本：Codex 真机验证（并修正两处只有真机才暴露的问题）
+
+- 用本机 `~/.codex/auth.json` 的真实 ChatGPT 登录向 `GET https://chatgpt.com/backend-api/wham/usage` 发了一次**只读**请求：**HTTP 200**（token 已 9 天但未过期），`plan_type: "plus"`，`primary_window.window_seconds = 18000`、`secondary_window.window_seconds = 604800`——端点路径、鉴权与窗口命名全部对上。
+- **修正 ①（真实缺陷）**：实测 `resets_at` 是 **Unix 秒数**，而实现只接受字符串，导致窗口解析正确、**重置时间被静默丢弃**。现两种形态都认（ISO 串与秒级数字，`reset_at` 同样处理），哨兵 `0` 仍不输出。桩测试用 ISO 串喂数据，所以此前一直是绿的。
+- **修正 ②**：响应里的 `plan_type`（套餐档位，实测 `"plus"`）此前没有显示，现作为 `plan` 明细呈现。
+- 真机还确认了 `credits: {has_credits: false, unlimited: false, balance: "0"}` 这类形态会被正确门禁掉（不显示成 0 余额）。
+- 验证脚本放在 `debug/`（该目录被 gitignore，不入库）；`tests/test-codex.mjs` 增加秒级时间戳、`reset_at`、哨兵 0、`plan_type` 与真机响应形态的回归断言。
+
+### 同版本：提供商覆盖与取舍记档
+
+- 新增 [提供商覆盖与取舍](provider-coverage.md)：列出已支持的 26 家（含额度类型、鉴权与默认开关），并首次把**评估后不接入**的厂商与理由写成决策记录——避免同一个候选在没有新证据时被反复评估。
+- 不接入的取舍：**Requesty**（只有花费、GET 带 body 属非标准调用、文档 host 不一致）、**Portkey**（单一花费端点且响应结构未证实）、**Groq**（普通 key 查不到，只有浏览器 Cookie 或 Enterprise 路径，与"只用凭据不抓会话"的架构冲突）、**Together / Cerebras**（未发现公开接口）、以及讯飞 / SCNet / CodeBuddy / 无问芯穹 / LongCat / 京东云（官方只有控制台）与已停服的潞晨云。
+- 同时记档**已由用户决策跳过**的 Anthropic：接口本身可接入（`/api/oauth/usage` + Claude Code OAuth 登录文件），跳过的理由是地缘政治导致实际用户少——将来用户群变化时这是最值得回头做的一家。
+
+### 同版本：LiteLLM（自建网关）接入
+
+- 新增 `litellm`：`GET {proxyRoot}/key/info` 取 key 自身的预算与花费，再按响应里的 `team_id` / `user_id` 拉 `GET /team/info?team_id=` 或 `GET /user/info?user_id=` 拿更完整的预算视图。鉴权是虚拟 Key 的 Bearer，**与推理同一把**。
+- **新增「用户可配置端点」能力**：LiteLLM 的地址是用户自己的 proxy，所以 `settings` 增加 `litellm.baseUrl`（非秘密字段，原样回显与回填），设置页在该 provider 的凭据区多一个「代理地址」输入框。地址经 `litellmRoot()` 规范化：**只接受 http(s)**（`file://`、`ftp://` 等一律按未配置处理），去掉尾部斜杠与常见的 `/v1` 后缀——管理端点在 proxy 根，不处理会拼成 `/v1/key/info` 直接 404；自建子路径（如 `/litellm`）保留。
+- 缺地址按**凭据不完整**处理（`subusage/credentials`），给出「在设置里填写代理地址」的指引，并复用既有的行动条入口——而不是静默失败。
+- **没有预算上限时不编造百分比**：`max_budget` 缺失或为 0（LiteLLM 用 0 表示不限）时只产出 `extras`，新增 `spend` 类别（标签「已用」/「Spent」）如实显示已用金额。接口不给 `budget_reset_at` 时不显示重置，不把金额渲染成倒计时（沿用调研里 CodexBar 的约定）。
+- scoped 视图被拒（403）不影响整体：退回 key 自身的 `info`。
+- 测试：新增 `tests/test-litellm.mjs`（地址规范化含 `file://`/非法输入/自建子路径、归一化的预算与无上限两条分支、user/team 优先与 scoped 降级、缺地址的凭据指引、端点落在 proxy 根、Client 的地址回填与补丁提交）。
+
+### 同版本：ZenMux 与 NanoGPT 余额增强
+
+- 新增 `zenmux`：订阅配额走 `GET /api/v1/management/subscription/detail`（`quota_5_hour.usage_percentage` 是 **0–1 小数**，另附 `used_flows`/`max_flows` 与 `resets_at`），PAYG 余额走 `GET /api/v1/management/payg/balance`（`total_credits` + `currency`）。
+- **两个端点都只认 Management API Key**，推理 key 不适用——因此继承变量单独命名 `ZENMUX_MANAGEMENT_API_KEY`，并在 README 里给出创建入口，避免用户把推理 key 填进来。两个端点各拿各的：**余额被拒（403）不影响订阅配额**，条目仍是 `ok`；只有余额没有配额时标 `partial`。
+- `nanogpt` 余额增强：在原配额请求之外追加 `POST https://nano-gpt.com/api/check-balance`（`{usd_balance}`）作为**增量条目**。注意它的鉴权头是 **`x-api-key` 而不是 `Bearer`**；余额端点失败或字段非法一律静默降级，既不给配额判定添乱，也不显示成 0。
+- 测试：`tests/test-aggregators.mjs` 增加 ZenMux 归一化（0–1 小数、flows 明细、ISO 重置、仅余额时 partial、两端点全空才报错）与 Host 端到端（两请求、Management Key、余额 403 降级后仍 `ok`），以及 NanoGPT 余额为增量、缺失/非法不影响配额；`tests/test-new-providers.mjs` 同步 NanoGPT 的请求次数（多一次余额）与「余额端点用 POST + x-api-key」断言。
+
+### 同版本：UX 三改（账户区折叠、待处理排序、计数跳转）
+
+- **药丸里的 Command Code 账户区折叠**：账户多时账户列表会把上方的额度顶出视野。整块改为 `<details>`：标题行直接显示**当前账户 + 选项数量**，展开后的列表 `maxHeight: 240` + `overflowY: auto` 自行滚动——弹层高度不再随账户数增长。降级（提供方插件未运行）同样折起，只留一行说明。
+- **待处理的 provider 排到 tab 前面**：读取失败与 Cookie 已过期权重最高（3），额度用尽与即将到期次之（2），数据不完整再次（1）。**「未配置凭据」刻意不计入**——那是用户自己的取舍，默认隐藏就是为收起它们，算进去会让每个还没配的厂商都来抢位置。同档内按登记顺序（显式比较索引），顺序不会自己抖动。排序只影响设置页的 tab 顺序，药丸匹配仍靠 provider id。
+- **顶部「X/Y 家数据获取成功」变成跳转入口**：原来是个不可点的 `span`，现在是一枚按钮，点一下切到第一家没读成功的 provider；`aria-label` 说明会跳到哪家、共几家待处理；全部正常时禁用。它仍只表示**数据获取成功**，不代表还有额度。
+- 测试：`tests/test-commandcode-accounts.mjs` 增加「账户区折进 details / summary 显示当前账户与数量 / 列表限高 240 滚动 / 降级同样折叠」断言；`tests/test-client-render.mjs` 增加「出错的那家排到最前 + 其余保持登记顺序 + 全部正常时顺序不变 + 计数按钮可点/禁用与无障碍名」断言。跨 realm 的 `PROVIDER_ORDER` 数组不能直接 `deepStrictEqual`（vm 上下文里创建的对象原型不同），这几处统一改用 JSON 比较。
+
+### 同版本：额度查询 API（Agent 工具 + Host 服务）与用量面板内联行动条
+
+- **新增 Agent 工具 `subusage_quota`**：模型可以直接查询各厂商剩余额度与余额，参数 `providers`（限定厂商）与 `refresh`（绕过最多 60 秒缓存）。经 `ctx.inject(["tools"], c => c.tools.register(defineTool({...})))` 注册，`execute` 里取 `ctx.get("subUsage")` 调服务。`package.json` 的 peerDependencies 增加 `@deepseek-ai/dsh-tools`。
+- **新增对外只读方法 `quota(request)`**：`SubUsageService` 本来就 `extends TypertRemoteService extends cordis Service`（服务 key `subUsage`），其他插件直接 `ctx.get("subUsage").quota(...)` 即可，不必自己逐个厂商请求。返回 `{ updatedAt, providers: [{ providerId, label, state, windows, extras, coverage, freshness, lastSuccessAt, error? }] }`。
+- **刻意不返回 settings 与内部状态**：`keySource` / `apiDetected` / 继承变量名一概不出现——第三方消费者只需要额度，不该知道本机配了哪些凭据。未知 `providerIds` 被忽略；单家失败只影响自己的条目（有测试断言视图里搜不到 `settings` / `keySource` / `apiDetected` 与 Key 本身）。
+- **用量面板内联行动条（UX）**：设置页原本「状态在上、操作在下」，出错时得先展开底部「提供商管理」、找到那一家、再展开「连接与凭据」。现在面板在**真正需要处理时**给出行动条：MiMo 未登录/被拒 → 「登录并自动导入」；已过期或 2 小时内到期 → 「重新登录」；其它厂商缺凭据/被拒 → 「配置凭据」（展开该厂商编辑器并滚动过去）。**正常状态不显示**（还有几小时的倒计时不算事件），且凭据编辑仍复用下面那一份，不存在两套字段与两套校验。
+- 测试：新增 `tests/test-quota-api.mjs`（视图形状与「不泄露内部状态」、未知 id 忽略、单家失败隔离、工具契约与参数映射、render 文案含未配置/已关闭/限流/缓存/失败原因）与 `tests/test-usage-action.mjs`（行动条判定：缺凭据、凭据被拒、已过期、2 小时/30 分钟档、正常倒计时不打扰、计时不可解析时不编造）；`tests/smoke-host.mjs` 断言 `subusage_quota` 已注册且带 object 根 schema；`tests/test-client-render.mjs` 断言 MiMo Cookie 失效时面板出现行动条、正常状态没有。
+
+### 同版本：六家余额型聚合商与 MiniMax 国际版默认关闭
+
+- 新增六家**余额型** provider（单体 GET + 一个余额数字，与各自推理同一把 Key）：`novita`、`hyperbolic`、`deepinfra`、`chutes`、`ollama-cloud`、`vercel-ai-gateway`。
+- **各家单位与形状都不同，逐个显式换算，不做通用折算**：Novita 是 1/10000 USD（`10000` = $1.00）、Hyperbolic 是美分、DeepInfra 的可用余额是 `−stripe_balance`（接口用**负数**表示预付资金，正值代表欠款）、Chutes 给 `{quota, used}` 绝对量、Ollama Cloud 的 `limits.*.usage` 是 **0–1 小数**、Vercel 是十进制字符串。DeepInfra 欠款时单独提示「欠款 X USD」，不把负余额直接画出来。
+- **Ollama Cloud 的鉴权是裸 `Authorization`**（不加 `Bearer `），实现里显式覆盖通用 Bearer——照抄别家实现时最容易漏这一点。
+- 不编造重置时间：Chutes 与 OpenRouter 的接口都不给重置时刻，因此不输出 `resetsAt`，UI 也不显示倒计时。
+- **MiniMax 国际版（`minimax`）改为默认关闭**（中国版保持默认开启）。用户要求：国际版实际使用少，默认收起。至此默认关闭共 15 项、默认开启 9 项。
+- 测试：新增 `tests/test-aggregators.mjs`（六家单位换算与边界、`{quota:0}` 不猜比例、Ollama 缺层跳过、DeepInfra 欠款分支、六家端点与鉴权头逐一断言，含 Ollama 的裸 Authorization）。`tests/test-minimax.mjs` 补上「国际版默认关闭 / 中国版默认开启」断言并在测前显式开启；`tests/test-client-behavior.mjs` 的可见 tab 列表移除 MiniMax 国际版，改用 MiniMax CN。
+
+### 同版本：OpenRouter 接入
+
+- 新增 `openrouter`：`GET /api/v1/key` 拿 key 级限额与日/周/月用量（**任意 key 可读**），`GET /api/v1/credits` 拿账户余额（`total_credits − total_usage`，**只对 management / provisioning key 开放**）。
+- **余额端点被拒必须静默降级**：普通推理 key 调 `/credits` 会 403（上游文案 `Only management keys can perform this operation`），此时只显示限额与用量，条目仍是 `ok`——不因为附加信息拿不到就把整个 provider 判失败。
+- 窗口：`limit − limit_remaining` 算已用比例，窗口名跟随 `limit_reset`（monthly / weekly / daily，未知归通用限额）；免费档没有 key 限额，但 `free_model_daily_requests` 是真实窗口，同样产出日窗口。`limit_reset` 只是周期名而**不是重置时刻**，因此不显示 `resetsAt`，不编造倒计时。
+- 默认关闭（新增厂商约定）。
+- 测试：新增 `tests/test-openrouter.mjs`（限额窗口与周期名映射、免费档日窗口、余额降级为空 extras、`limit_remaining` 越界不产生负用量、无可用信息才报错、Host 端到端两请求与 403 降级后仍 ok、Client 注册与"追加在末尾"的顺序约定）。
+
+### 同版本：DeepSeek 官方余额
+
+- 新增 `deepseek`：`GET https://api.deepseek.com/user/balance`，Bearer **与推理同一把 API Key**（[官方文档](https://api-docs.deepseek.com/zh-cn/api/get-user-balance)）。这是当前唯一"主线 provider 也能查余额"的条目，默认开启。
+- 余额型（不产出窗口）：金额是**字符串十进制**，取第一条可解析的 `balance_infos` 条目；货币码不合规时只显示金额而不编造单位。`is_available` 为 false 时额外提示"余额不足，请充值"——这是行动项，不是 0 元余额的展示问题。
+- 非法或缺失一律报错，不当作 0。
+- 测试：新增 `tests/test-deepseek.mjs`（归一化、余额不足提示、多币种与非法值、Host 端到端 Bearer 同 Key 与密钥不回显、Client 注册与余额兜底文案）。
+- 顺带把 `PROVIDER_ORDER` 的顺序影响面收敛：新条目一律**追加在末尾**，避免插入位置移动既有索引（本轮插入 Codex 时正是这一点导致三处 `ids[N]` 断言错位，已改为按 id 字面量断言）。
+
+### 同版本：OpenAI Codex（ChatGPT 订阅）接入
+
+- 新增 `openai-codex`：`GET https://chatgpt.com/backend-api/wham/usage`，凭据是 **Codex CLI 的 ChatGPT 登录**（`$CODEX_HOME/auth.json` 或 `~/.codex/auth.json`），不是 `OPENAI_API_KEY`。
+- 凭据门禁：`auth_mode` 必须是 `chatgpt`；API Key 模式（或只有 `OPENAI_API_KEY` 的文件）按**未配置**处理并给出 `codex login` 指引——API Key 取不到订阅额度，不拿它冒充订阅凭据。与 Grok 一致：**只读、不保存、不刷新 token**（token 由 Codex CLI 轮换，第三端刷新会互相顶掉），并拒绝一切本地凭据补丁。
+- 窗口：`rate_limit.primary_window`（5 小时）/ `secondary_window`（7 天；免费档是 30 天，按 `window_seconds` 判断窗口名），各含 `used_percent` 与 `resets_at`。HTTP 200 但无窗口显示「未检测到订阅额度窗口」，不画成 0%。`credits` 只在真正报告可用余额时显示（`has_credits=false`、`unlimited`、余额 0 都不显示）。
+- 默认**开启**：它对齐的是 DSH 内置的 `openai-codex` 路由，没登录时会被「没有检测到 API 的默认隐藏」自动收起，不会干扰未使用 Codex 的用户。
+- 测试：新增 `tests/test-codex.mjs`（登录文件解析门禁与 `CODEX_HOME` 覆盖、窗口命名与限流、credits 门禁、Host 端到端 Bearer 请求与拒写凭据、no-key 指引、Client 注册）。`tests/test-client-render.mjs` 里原先把 `openai-codex` 当作"不支持的路由"的用例改用 `vrtx-gemini`（本机存在但本插件不覆盖），保留该覆盖意图。
+
+### 同版本：SiliconFlow（硅基流动）余额型接入
+
+- 新增 `siliconflow`：`GET https://api.siliconflow.cn/v1/user/info`，**与推理是同一把 API Key**（Bearer），返回账户余额（取 `totalBalance`，缺省回落 `balance`，两位小数，单位按该平台的人民币计价标为 CNY）。
+- 这是本插件第一个**纯余额型** provider：余额没有上限也就没有百分比，因此**不产出额度窗口**，只产出 `extras` 的 `balance`。为此给药丸加了余额兜底文案——无窗口但有余额时显示「余额 X CNY」，而不是此前一律显示的「暂无额度数据」；既无窗口也无余额（或只有套餐名）时仍回落到明确占位，不出现空白药丸。
+- 非法或缺失余额一律报错，不当作 0。
+- 默认关闭（新增厂商约定）。
+- 测试：新增 `tests/test-siliconflow.mjs`（归一化兜底与非法值报错、Host 端到端 Bearer 直连与密钥不回显、Client 注册与余额兜底文案）；`tests/test-client-render.mjs` 的药丸断言按新语义更新并补上「无窗口无余额仍占位」的反向用例。
+
+### 同版本：SuperGrok 订阅用量接入
+
+- 新增 `xai-oauth`（SuperGrok / X Premium 订阅）：经 dsh-grok-kit / Grok CLI 共享的 OAuth 登录直连官方 Grok CLI 计费代理 `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits`（转发后端 `GetGrokCreditsConfig`），显示统一用量池已用百分比（`creditUsagePercent`，剩余 = 100 − 已用）、周期与重置时间（`currentPeriod`，通常每周）、套餐名与已购加量余额（美元，`prepaidBalance`）。
+- 请求头对齐官方 CLI：`X-XAI-Token-Auth: xai-grok-cli`（`GrokComConfig.token_header` 的取值是字符串而非布尔）、`x-userid`（登录文件 `user_id`，缺失时回退 JWT `sub`）、`x-grok-client-version`；套餐名并行拉取 `GET /v1/settings` 的 `subscription_tier_display`（失败回退 billing 响应的 `subscription_tier`）。
+- 凭据只读共享登录文件：优先 `~/.grok/auth.json`（槽位 `https://auth.x.ai::…`），回退 dsh-grok-kit 旧版 `~/.dsh/.xai-oauth-auth.json` 信封；不保存凭据、不自行刷新 token（避免与两端的 refresh-token 轮换互相顶掉），不接受手动 Key（API Key 路线取不到订阅周池）。缺凭据时提示在 Grok Kit 登录或运行 `grok login`。
+- 响应两代形态兼容：新形态 `creditUsagePercent` + `currentPeriod`；旧形态按 `monthlyLimit`/`used`（美分）折算比例并归月账期窗口；`{}`（proto3 零值）解码为 0，无上限不折算。未知结构报错不猜额度。
+- 测试：新增 `tests/test-supergrok.mjs`（归一化两代形态/周期归类/套餐两级回退/余额边界、登录文件各形态与槽位优先级、请求头、并行拉取、错误映射、缓存与 token 轮换失效、managed 边界）；`tests/test-contract.mjs` 补 `xai-oauth` 刷新契约与 managed 拒写断言；`tests/test-client-render.mjs` / `tests/test-client-behavior.mjs` / `tests/test-host-service.mjs` 同步提供商计数与索引。`node tests/run-all.mjs` 全部通过。
+
 ## 0.8.3：Kimi 月度窗口与响应形态兼容
 
 - 修复「Invalid Kimi usage response」：`/coding/v1/usages` 的窗口集合按账户下发，部分账户只返回 `usages.limit_5h` + `limit_month_total`（无 `limit_7d`），而旧代码把 `limit_7d` 当必需字段，对这类 Key 一律判为结构非法。现在 `limit_5h` / `limit_7d` / `limit_month_total` 各自按下发内容成窗；`limit_month_code` 是月池的 Code 份额而非独立预算，不单独成窗。月池是最外层窗口，耗尽时连坐 5 小时与 7 天窗口。

@@ -14,14 +14,18 @@ const HOST_STUBS = [
 		"class RemoteError extends Error { constructor(code, message, details) { super(message); this.code = code; this.details = details; } }\nclass TypertRemoteService { constructor(ctx, key) { if (typeof key !== 'string' || !key) throw new Error('bad serviceKey'); this.ctx = ctx; } }"
 	],
 	[/import \{ credentialRef, isCredentialRefName \} from "@deepseek-ai\/dsh-credentials";/, "const credentialRef = (name) => ({ kind: 'env', name });\nconst isCredentialRefName = (value) => typeof value === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);"],
-	[/import \{ launchEnvironmentOf \} from "@deepseek-ai\/dsh-launch-environment";/, "const launchEnvironmentOf = (ctx) => ({ get: (k) => ctx.__env?.[k] });"]
+	[/import \{ launchEnvironmentOf \} from "@deepseek-ai\/dsh-launch-environment";/, "const launchEnvironmentOf = (ctx) => ({ get: (k) => ctx.__env?.[k] });"],
+	// defineTool 在真实核心包里有校验；测试只需要它原样返回定义，才能核对工具契约。
+	[/import \{ defineTool \} from "@deepseek-ai\/dsh-tools";/, "const defineTool = (spec) => spec;"]
 ];
 
 /** 载入 host 模块（核心包 import 打桩）。 */
 export async function loadHostModule() {
 	let code = readFileSync(join(ROOT, "lib", "index.js"), "utf8");
 	for (const [pattern, stub] of HOST_STUBS) code = code.replace(pattern, stub);
- code = code.replace('from "./mimo-login.js"', `from ${JSON.stringify(pathToFileURL(join(ROOT, "lib", "mimo-login.js")).href)}`);
+ // 子模块按绝对路径重写：临时目录里的副本必须仍解析到工作区的真实模块，
+ // 否则新增的 lib 子模块（如 volcengine.js）在临时目录里找不到。
+ for (const mod of ["mimo-login.js", "volcengine.js"]) code = code.replace(`from "./${mod}"`, `from ${JSON.stringify(pathToFileURL(join(ROOT, "lib", mod)).href)}`);
 	const file = join(tmpdir(), `dsh-subusage-host-${process.pid}.mjs`);
 	writeFileSync(file, code, "utf8");
 	return import(pathToFileURL(file).href);
