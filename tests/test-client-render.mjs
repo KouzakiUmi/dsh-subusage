@@ -188,4 +188,38 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   const healthyCounter = flattenNodes(healthy).find(n => n.type === "button" && JSON.stringify(n.children).includes("家数据获取成功"));
   assert.equal(healthyCounter.props.disabled, true, "全部正常时不可点");
   assert.equal(JSON.stringify(flattenNodes(healthy).filter(n => n.props?.role === "tab").map(n => n.props.id)), JSON.stringify(order.map(id => `subusage-tab-${id}`)), "没有待处理项时保持登记顺序");}
-console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/提供商开关/无下拉布局、用量面板内联行动条、待处理排序与计数跳转");
+// 按「本机实际装了什么路由」判定默认可见性 + 管理列表把已启用的排到前面。
+{
+  const order = plugin.__test.PROVIDER_ORDER, meta = plugin.__test.PROVIDER_META;
+  // 用户只持有 Agent Plan：arkcli helper 不会为没订阅的套餐写路由，所以本机没有 Coding Plan 路由。
+  const configured = { ...Object.fromEntries(order.map(id => [id, true])), "arkcli-coding-plan": false, "arkcli-coding-plan-team": false };
+  // 靠前的两家设为关闭，用来检验管理列表的排序确实把已启用项提前、关闭项后置。
+  const off = new Set(["zai-coding-cn", "kimi-coding"]);
+  const settings = { revision: "r", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: true }, visibility: { hideWithoutApi: true, providers: Object.fromEntries(order.map(id => [id, !off.has(id)])) } };
+  const entries = order.map(id => ({ providerId: id, state: "ok", apiDetected: true, keySource: "env", windows: [], extras: [], coverage: "complete", freshness: "fresh", lastAttemptAt: "2026-10-09T00:00:00.000Z" }));
+  const render = (over) => { stateValues = []; stateIndex = 0; return plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => ({ settings, configured, entries, ...over }) }, t: (key) => key, getLocale: () => "zh" }); };
+  const tabIds = (node) => flattenNodes(node).filter(n => n.props?.role === "tab").map(n => n.props.id.replace("subusage-tab-", ""));
+
+  const allOn = { ...settings, visibility: { ...settings.visibility, providers: Object.fromEntries(order.map(id => [id, true])) } };
+  const tabs = tabIds(render({ settings: allOn }));
+  assert.ok(!tabs.includes("arkcli-coding-plan"), "本机没有该路由时不显示 Coding Plan 标签");
+  assert.ok(!tabs.includes("arkcli-coding-plan-team"), "团队版同理");
+  assert.ok(tabs.includes("arkcli-agent-plan"), "实际持有的 Agent Plan 照常显示");
+  assert.equal(tabs.length, order.length - 2, `只收起缺路由的两条：${tabs.length} vs ${order.length - 2}`);
+  // 两个套餐**可以共存**（用户明确提醒过）：本机两条路由都在时两条都要显示，不能做成二选一。
+  const both = tabIds(render({ settings: allOn, configured: Object.fromEntries(order.map(id => [id, true])) }));
+  assert.ok(both.includes("arkcli-agent-plan") && both.includes("arkcli-coding-plan"), "Agent Plan 与 Coding Plan 共存时都显示");
+  assert.equal(both.length, order.length, "共存时一条都不收起");
+  // 关掉「没有检测到 API 的默认隐藏」= 用户要看全部，连缺路由的也不再收起。
+  assert.equal(tabIds(render({ settings: { ...allOn, visibility: { ...allOn.visibility, hideWithoutApi: false } } })).length, order.length, "关掉默认隐藏后连缺路由的也显示");
+  // 拿不到路由表时按「未知」放行：绝不能谎报「全都没装」而把标签清空。
+  assert.equal(tabIds(render({ settings: allOn, configured: undefined })).length, order.length, "路由表未知时不收起任何条目");
+
+  // 管理列表：已启用的在前，关闭项沉到末尾，组内各自保持既有顺序。
+  const listed = flattenNodes(render()).filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("启用 ")).map(n => String(n.props["aria-label"]).slice("启用 ".length));
+  assert.equal(listed.length, order.length, "管理列表仍然列出全部提供商");
+  assert.equal(listed.at(-2), meta["zai-coding-cn"].short, "关闭的 Z.ai 沉到末尾组");
+  assert.equal(listed.at(-1), meta["kimi-coding"].short, "关闭项在组内保持既有顺序");
+  assert.ok(listed.slice(0, -2).every(short => !off.has(order.find(id => meta[id].short === short))), "前面的都是已启用的");
+}
+console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/提供商开关/无下拉布局、用量面板内联行动条、待处理排序与计数跳转、路由缺失收起与已启用前置");

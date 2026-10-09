@@ -59,12 +59,22 @@ for (const id of ['zai-coding', 'synthetic', 'nanogpt']) for (const contract of 
 }
 assert.deepEqual(refresh.parameters[0].codec.schema.parse({ providerIds: ['commandcode'], force: false }).providerIds, ['commandcode'], 'commandcode 在刷新契约内');
 assert.deepEqual(refresh.parameters[0].codec.schema.parse({ providerIds: ['xai-oauth'], force: false }).providerIds, ['xai-oauth'], 'xai-oauth 在刷新契约内');
-assert.throws(() => refresh.parameters[0].codec.schema.parse({ providerIds: ['not-supported'], force: true }));
+// 未知 provider id 在 parse 层**过滤而不是拒绝**：Host 要重启、Client 刷新即生效，版本窗口期里必然
+// 出现客户端带着新 id 过来的情况。整体拒绝会让用户一片空白，这里只把不认识的挑出来（由 refresh
+// 回一条可读原因）。形状错误照旧拒绝。
+const unknownQuery = refresh.parameters[0].codec.schema.parse({ providerIds: ['not-supported'], force: true });
+assert.deepEqual(unknownQuery.providerIds, [], '未知 id 不进 providerIds');
+assert.deepEqual(unknownQuery.unknown, ['not-supported'], '未知 id 单独列出，交给 refresh 说明原因');
+assert.throws(() => refresh.parameters[0].codec.schema.parse({ providerIds: 'not-an-array', force: true }), 'providerIds 形状错误仍拒绝');
+assert.throws(() => refresh.parameters[0].codec.schema.parse({ providerIds: ['kimi-coding'] }), '缺 force 仍拒绝');
 const save = host.subUsageRemote.descriptors.find(d => d.method === 'save');
 const patch = save.parameters[0].codec.schema.parse({ providerId: 'kimi-coding', keyUpdate: { action: 'keep' } });
 assert.equal(patch.providerId, 'kimi-coding');
 assert.throws(() => save.parameters[0].codec.schema.parse({ providerId: 'xai-oauth', keyUpdate: { action: 'keep' } }), /managed by the provider plugin/, 'xai-oauth 凭据由提供方插件管理');
-assert.throws(() => save.parameters[0].codec.schema.parse({ providerId: 'not-supported' }));
+// 未知 provider 的 save：parse 只校验形状，真正的拒绝在 persist 里（见 test-host-service），
+// 这样用户拿到的是可读原因，而不是网关的 "boundary validation" 通用报错。
+assert.equal(save.parameters[0].codec.schema.parse({ providerId: 'not-supported' }).providerId, 'not-supported', '未知 id 的形状合法，交由 persist 拒绝');
+assert.throws(() => save.parameters[0].codec.schema.parse({ providerId: '' }), '空 providerId 仍拒绝');
 // Client 规范化后必须能被 Host 的最终 Cookie Header 校验接受。
 const clientSource = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 const cookieFunction = clientSource.match(/function normalizeCookieText\(raw\) \{[\s\S]*?\n\t\t\}/);

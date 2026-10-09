@@ -57,7 +57,14 @@ await h.service.save({ providerId: Z, keyMode: "inherit" }); delete h.credential
 h.respond(() => zBody); result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equal(result.entries[0].keySource, "env");
 const isolated = harness(); isolated.service.credentials = async id => { if (id === Z) throw new Error("DO NOT LEAK"); return undefined; };
 result = await isolated.service.read(); assert.equal(result.entries.length, 30); assert.equal(result.entries[0].errorCode, "subusage/credentials"); assert(!JSON.stringify(result).includes("DO NOT LEAK")); assert.equal(isolated.calls.length, 0);
-await assert.rejects(h.service.refresh({ providerIds: ["bad"], force: false })); await assert.rejects(h.service.refresh({ providerIds: [Z] }));
+// 未知 provider id 不再整体拒绝（客户端已更新、Host 未重启时必然出现）：过滤掉它，并回一条可读的
+// unknown-provider 条目，好过让用户只看到网关的 boundary validation。形状错误（缺 force）仍拒绝。
+const unknownResult = await h.service.refresh({ providerIds: ["bad"], force: false });
+assert.equal(unknownResult.entries.length, 1);
+assert.equal(unknownResult.entries[0].providerId, "bad");
+assert.equal(unknownResult.entries[0].errorCode, "subusage/unknown-provider");
+assert.ok(unknownResult.entries[0].error.includes("重启 DSH"));
+await assert.rejects(h.service.refresh({ providerIds: [Z] }));
 for (const cookie of ["userId=1", "api-platform_serviceToken=x; userId=1\r\nX-Evil: y", "api-platform_serviceToken=x; userId=1; bad", "api-platform_serviceToken=x; userId=1; userId=2"]) await assert.rejects(h.service.save({ providerId: M, cookieUpdate: { action: "replace", value: cookie } }));
 const cookies = await h.service.save({ providerId: M, cookieUpdate: { action: "replace", value: 'api-platform_serviceToken="dummy"; userId=1; optional=' } }); assert.equal(cookies.settings.xiaomi.hasCookie, true); assert(!JSON.stringify(cookies).includes("dummy"));
 h.respond(url => url.endsWith("/balance") ? { data: { balance: "1", currency: "CNY" } } : { data: {} });

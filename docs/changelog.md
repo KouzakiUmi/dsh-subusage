@@ -117,6 +117,15 @@
 - 响应两代形态兼容：新形态 `creditUsagePercent` + `currentPeriod`；旧形态按 `monthlyLimit`/`used`（美分）折算比例并归月账期窗口；`{}`（proto3 零值）解码为 0，无上限不折算。未知结构报错不猜额度。
 - 测试：新增 `tests/test-supergrok.mjs`（归一化两代形态/周期归类/套餐两级回退/余额边界、登录文件各形态与槽位优先级、请求头、并行拉取、错误映射、缓存与 token 轮换失效、managed 边界）；`tests/test-contract.mjs` 补 `xai-oauth` 刷新契约与 managed 拒写断言；`tests/test-client-render.mjs` / `tests/test-client-behavior.mjs` / `tests/test-host-service.mjs` 同步提供商计数与索引。`node tests/run-all.mjs` 全部通过。
 
+## 0.10.1：RPC 版本窗口期兼容、按路由判定默认可见性、设置页排序
+
+- **症状**：升级插件后只刷新页面（没重启 DSH）会看到 `typert gateway: subUsage/refresh: wire field "request" failed boundary validation`，界面一片空白，看不出该做什么。
+- **根因**：Client bundle 刷新即生效，而 Host 要重启才换代码。新版 Client 会带着 Host 还不认识的 provider id（例如本批次新增的 `arkcli-*`）调用 `refresh`，而 Host 的 `parseQuery` 对未知 id **整体拒绝**；`save` 的 `providerId` 同样如此。于是「客户端已更新、Host 未重启」这个窗口期**必然**报错，且报错来自网关的边界校验，信息对用户毫无用处。
+- **修法**：`refresh` 的未知 id 改为**过滤并单独列出**，由 `refresh` 回一条可读的 `subusage/unknown-provider` 条目（「本机运行中的 Host 版本较旧，不认识该提供商；重启 DSH 后生效」），其它提供商照常刷新；`save` 的未知 provider 放宽到 `persist` 里拒绝，让用户拿到同样的可读原因。**形状**错误（`providerIds` 非数组、缺 `force`、空 `providerId`）仍照旧拒绝。
+- 契约测试同步更新：`tests/test-contract.mjs` 断言过滤行为与 `unknown` 列表，`tests/test-host-service.mjs` 断言那条可读条目。
+- **默认可见性改为按「本机实际装了什么路由」判定**：provider id 就是路由 id，而路由由提供方插件/CLI 按你**实际持有的东西**写入——`arkcli helper` 只会为真正订阅的套餐写路由。所以只持有 Agent Plan 的账号不再看到默认开启的 Coding Plan。**两种套餐可以共存**，本机两条路由都在时两条都显示，不做二选一。判定是逐个 provider 进行的，且 `configured` 缺失（拿不到路由表）时按「未知」放行，不再谎报「全都没装」把所有标签清空；用户关掉「没有检测到 API 的默认隐藏」时同样不再按路由收起。
+- **设置页的提供商管理把已启用的排到最前面**（组内保持登记顺序），不必每次往下翻找自己开了哪几家。
+
 ## 0.8.3：Kimi 月度窗口与响应形态兼容
 
 - 修复「Invalid Kimi usage response」：`/coding/v1/usages` 的窗口集合按账户下发，部分账户只返回 `usages.limit_5h` + `limit_month_total`（无 `limit_7d`），而旧代码把 `limit_7d` 当必需字段，对这类 Key 一律判为结构非法。现在 `limit_5h` / `limit_7d` / `limit_month_total` 各自按下发内容成窗；`limit_month_code` 是月池的 Code 份额而非独立预算，不单独成窗。月池是最外层窗口，耗尽时连坐 5 小时与 7 天窗口。

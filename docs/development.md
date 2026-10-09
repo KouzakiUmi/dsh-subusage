@@ -135,7 +135,12 @@ node --input-type=module -e "import {chromium} from 'playwright-core'; import {r
 
 预览页面包括布局示意，不完全复刻 DSH 外壳。市场所用设置截图来自 `settings-530-xiaomi-token-plan-cn-dark-credentials.png`，弹层来自 `settings-530-nanogpt-light-pill.png`。人工检查后将 PNG 复制到 `assets/screenshots/` 的相应文件，保留离线标记并同步 [截图声明](../screenshots.json) 与 README。市场只需 GitHub 仓库图片，当前 npm 白名单不包含这些 PNG。
 
-### 0.10.0 验证记录：火山方舟全面覆盖、额度查询 API 与 UX 三改
+### 0.10.0 → 0.10.1 验证记录：火山方舟全面覆盖、额度查询 API、RPC 版本窗口期与设置页排序
+
+- **默认可见性按「本机实际装了什么路由」判定（`providerRoutable`）**：provider id 就是路由 id，而路由由提供方插件/CLI 按账号**实际持有的东西**写入——`arkcli helper` 只为真正订阅的套餐写路由。因此只用常量 `defaultEnabled` 会出现「只买了 Agent Plan，却默认把 Coding Plan 也点亮」的假象。现在的判定链是：显式设置 > `defaultEnabled` > `configured[id] !== false`。三点必须守住：①**逐个判定，两种套餐可以共存**（本机两条路由都在就两条都显示，不做二选一）；②`configured` 缺失时按「未知」放行——`detectConfigured` 拿不到路由表时返回 `undefined` 而**不是** `false`，否则会谎报「全都没装」把每条标签都清空；③用户关掉「没有检测到 API 的默认隐藏」时不再按路由收起（那是「我要看全部」的明确表达）。
+- 设置页的提供商管理列表把**已启用的排到最前面**（`sort` 稳定，组内保持 `PROVIDER_ORDER` 顺序），避免每次往下翻找自己开了哪几家。
+
+- **wire 契约的兼容性约定（这条踩过一次真实故障）**：Client bundle 刷新页面即生效，而 Host 要**重启 DSH** 才换代码，因此「客户端已更新、Host 还没重启」是一个**必然出现**的窗口期。凡是**随版本演进的枚举**（首当其冲是 provider id）都不能在 RPC 的 `parse` 层做整体拒绝——否则新版 Client 带着新 id 过来时，用户只会看到网关的 `typert gateway: ... wire field "request" failed boundary validation`，既不知道原因也不知道该做什么。现在的做法是：`refresh` **过滤**未知 id 并单独列出，由 `refresh` 回一条 `subusage/unknown-provider` 的可读条目，其它提供商照常刷新；`save` 的未知 provider 放宽到 `persist` 里拒绝（同样给可读原因）；只有**形状**错误（非数组、缺 `force`、空 `providerId`）才在 `parse` 层拒绝。新增 provider 时不需要同步改动校验逻辑。
 
 - 火山方舟企业版/团队版席位（arkcli 路线的 `arkcli-agent-plan-team` / `arkcli-coding-plan-team`）：`tests/test-volcengine.mjs` 增加席位解析与 Host 流程两段——SeatID 列表（trim、忽略无 ID 行、非数组或缺失返回空）、AFP 四窗口与 `Quota=0` 跳过、`ResetTime` 毫秒、Coding 三字段与缺字段跳过、超 100 收敛到 100；Host 端断言**两步调用**（`ListSeatInfos` → `GetSeatAFPUsage`）、档位与席位标注、无席位时的说明、不回显 SK。**未做**真实企业版账号的在线验证（本机没有团队版席位）。
 - 席位接口已按**官方 API 契约**核实（`https://api.volcengine.com/api/common/explorer/api-swagger?ServiceCode=ark&Version=2024-01-01&APIVersion=2024-01-01&ActionName=<Action>` 无需凭据即返回完整 JSON-Schema）：`Filter` 是契约层面的**必填**字段（空对象 `{}` 合法）、`Scene` 枚举为 `coding_plan_enterprise`（默认）/`agent_plan_enterprise`、`PageSize` 上限 100（默认 20）、SeatID 路径为 `Result.Data[].SeatID`、四个 AFP 窗口名与 `SeatAFPUsages[]` 路径均与实现一致。**据此修正了两处**：`GetSeatInfoUsage` 带 `Scene`（Coding Plan 企业版传空串，传错会静默返空 SeatID）、其响应按站点双路径容错（国际站 `Result.SeatInfoUsage.*`、中国站 `Result.*` 直挂）。
