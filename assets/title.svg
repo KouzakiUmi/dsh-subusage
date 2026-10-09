@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-labelledby="title desc" font-family="'Segoe UI','Microsoft YaHei','PingFang SC','Noto Sans SC','Hiragino Sans GB','Helvetica Neue',Arial,sans-serif">
+  <title id="title">dsh-subusage —— DeepSeek Harness 订阅用量显示</title>
+  <desc id="desc">深色标题图。左侧为项目名 dsh-subusage 与中文副标题「DeepSeek Harness 订阅用量显示」，下方为两个余量药丸示例（余 87%、7 天余 12%）。右侧为三行额度窗口示意，进度条分别填充 87%、12% 与 100%，分别标注「余 87%」「余 12%」与「已达限额」。</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a1120"/>
+      <stop offset="0.55" stop-color="#101c31"/>
+      <stop offset="1" stop-color="#0b2233"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="gOk" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22c55e"/>
+      <stop offset="1" stop-color="#4ade80"/>
+    </linearGradient>
+    <linearGradient id="gWarn" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#fbbf24"/>
+    </linearGradient>
+    <linearGradient id="gBad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ef4444"/>
+      <stop offset="1" stop-color="#f97316"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="320" fill="url(#bg)"/>
+  <circle cx="1150" cy="36" r="190" fill="#22d3ee" opacity="0.07"/>
+  <circle cx="860" cy="308" r="150" fill="#6366f1" opacity="0.08"/>
+  <rect x="0" y="0" width="10" height="320" fill="url(#edge)"/>
+
+  <text x="64" y="88" font-size="18" letter-spacing="3" fill="#38bdf8">DSH PLUGIN · SUBSCRIPTION USAGE</text>
+  <text x="64" y="154" font-size="62" font-weight="700" fill="#f8fafc">dsh-subusage</text>
+  <text x="64" y="198" font-size="26" fill="#cbd5e1">DeepSeek Harness 订阅用量显示</text>
+  <text x="64" y="230" font-size="17" fill="#8aa0b8">模型选择器余量药丸 · 提供商开关与凭据 · 只读额度 API</text>
+
+  <rect x="64" y="250" width="168" height="40" rx="20" fill="#123524" stroke="#22c55e" stroke-width="2"/>
+  <text x="88" y="276" font-size="20" fill="#4ade80">✓ 余 87%</text>
+  <rect x="246" y="250" width="206" height="40" rx="20" fill="#3a2a10" stroke="#f59e0b" stroke-width="2"/>
+  <text x="270" y="276" font-size="20" fill="#fbbf24">⚠ 7d 余 12%</text>
+
+  <rect x="700" y="44" width="516" height="232" rx="22" fill="#0d1728" stroke="#22314a" stroke-width="1.5"/>
+  <text x="728" y="86" font-size="18" fill="#e2e8f0">额度窗口</text>
+  <text x="1188" y="86" font-size="15" fill="#64748b" text-anchor="end">缓存 60 秒</text>
+
+  <text x="728" y="124" font-size="15" fill="#94a3b8">5 小时</text>
+  <text x="1188" y="124" font-size="17" fill="#4ade80" text-anchor="end">余 87%</text>
+  <rect x="728" y="132" width="460" height="12" rx="6" fill="#1e293b"/>
+  <rect x="728" y="132" width="400" height="12" rx="6" fill="url(#gOk)"/>
+
+  <text x="728" y="170" font-size="15" fill="#94a3b8">7 天</text>
+  <text x="1188" y="170" font-size="17" fill="#fbbf24" text-anchor="end">余 12%</text>
+  <rect x="728" y="178" width="460" height="12" rx="6" fill="#1e293b"/>
+  <rect x="728" y="178" width="55" height="12" rx="6" fill="url(#gWarn)"/>
+
+  <text x="728" y="216" font-size="15" fill="#94a3b8">月额度</text>
+  <text x="1188" y="216" font-size="17" fill="#f87171" text-anchor="end">已达限额</text>
+  <rect x="728" y="224" width="460" height="12" rx="6" fill="#1e293b"/>
+  <rect x="728" y="224" width="460" height="12" rx="6" fill="url(#gBad)"/>
+
+  <text x="728" y="262" font-size="14" fill="#64748b">多窗口取最差一窗；读取失败与缓存状态在药丸与设置页分别标注</text>
+</svg>

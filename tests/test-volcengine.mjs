@@ -10,10 +10,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { loadHostModule } from "./helpers.mjs";
-import { parseVolcAgentPlan, parseVolcCodingPlan, volcEscape, volcSignature } from "../lib/volcengine.js";
+import { parseVolcAgentPlan, parseVolcCodingPlan, parseVolcSeatAfp, parseVolcSeatCoding, parseVolcSeatIds, volcEscape, volcSignature } from "../lib/volcengine.js";
 
 const { SubUsageService, subUsageRemote } = await loadHostModule();
 const CODING = "ark-coding-plan-cn", AGENT = "ark-agent-plan-cn", BYTEPLUS = "ark-coding-plan-byteplus";
+const TEAM = "arkcli-agent-plan-team";
+const TEAM_CODING = "arkcli-coding-plan-team";
 const AK = "AKLTTestAccessKeyId0000", SK = "TestSecretAccessKey0000000000000000";
 
 // ── [1] 签名 ─────────────────────────────────────────────────────────────
@@ -149,7 +151,11 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 		: codingBody));
 	await enable(h, [CODING, AGENT]);
 	const result = await h.service.refresh({ providerIds: [CODING, AGENT], force: true });
-	assert.deepEqual(h.calls.map(c => c.url.match(/Action=(\w+)/)[1]).sort(), ["GetAFPUsage", "GetCodingPlanUsage"], "两个 provider 各调自己的 Action");
+	// enable() 里的 read() 会把**默认开启**的其它 volc provider（arkcli 两家）一并带上，
+	// 所以这里断言「两种 Action 都出现过」，而不是精确的调用条数。
+	const actions = h.calls.map(c => c.url.match(/Action=(\w+)/)[1]);
+	assert.ok(actions.includes("GetCodingPlanUsage"), "Coding Plan 走 GetCodingPlanUsage");
+	assert.ok(actions.includes("GetAFPUsage"), "Agent Plan 走 GetAFPUsage");
 	const agent = result.entries.find(e => e.providerId === AGENT);
 	assert.equal(agent.state, "ok");
 	assert.equal(agent.windows[0].percent, 25);
@@ -274,6 +280,107 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 	assert.equal(flat(clear.volc), flat({ accessKeyId: { action: "clear" }, secretAccessKey: { action: "clear" } }), "清除两个字段");
 	assert.equal(client.__test.settingsPatch(CODING, draft, "rev").volc, undefined, "什么都没填就不发 volc 补丁");
 	console.log("PASS Client：Ark 三家注册、默认关闭、草稿与 AK/SK 补丁语义");
+}
+
+// ── [10] 企业版/团队版席位：先 ListSeatInfos 取 SeatID，再查该席位 ────────
+{
+	assert.deepEqual(parseVolcSeatIds({ Result: { Data: [{ SeatID: "seat-a" }, { SeatID: " seat-b " }] } }), ["seat-a", "seat-b"], "取 SeatID 并 trim");
+	assert.deepEqual(parseVolcSeatIds({ Result: { Data: [{ SeatName: "无 ID" }, null, { SeatID: "   " }] } }), [], "无 ID 的行被忽略");
+	assert.deepEqual(parseVolcSeatIds({ Result: { Data: [] } }), []);
+	assert.deepEqual(parseVolcSeatIds({}), []);
+	assert.deepEqual(parseVolcSeatIds({ Result: { Data: "nope" } }), []);
+
+	// Agent Plan 企业版：四窗口，Quota=0 的不产出行。
+	const afp = parseVolcSeatAfp({ Result: { SeatAFPUsages: [{ SeatID: "seat-a", PlanType: "Large",
+		AFPFiveHour: { Quota: "50.0", Used: "12.5", ResetTime: 1778806800000 },
+		AFPDaily: { Quota: "0", Used: "0" },
+		AFPWeekly: { Quota: "500.0", Used: "150.0", ResetTime: 1779062400000 } }] } });
+	assert.deepEqual(afp.windows.map(w => w.kind), ["5h", "week"], "Quota=0 的窗口不产出");
+	assert.equal(afp.windows[0].percent, 25);
+	assert.equal(afp.windows[0].resetsAt, new Date(1778806800000).toISOString(), "ResetTime 是毫秒");
+	assert.equal(afp.plan, "Large");
+	assert.equal(afp.seatId, "seat-a");
+	assert.equal(parseVolcSeatAfp({ Result: { SeatAFPUsages: [] } }).subscribed, false);
+	assert.equal(parseVolcSeatAfp({}).subscribed, false);
+	assert.throws(() => parseVolcSeatAfp({ Result: { SeatAFPUsages: [{ AFPWeekly: { Quota: "x", Used: "1" } }] } }), "非法额度报错");
+
+	// Coding Plan 企业版：三个已用百分比字段，各带一个同族的重置时刻（毫秒）。
+	const coding = parseVolcSeatCoding({ Result: { SeatInfoUsage: { SeatID: "seat-c", ShortTermUsage: "12.5", WeeklyUsage: "120.8", MonthlyUsage: "460.4", ShortTermResetMilestone: 1785492000000, WeeklyResetMilestone: 1785686400000, MonthlyResetMilestone: -1 } } });
+	assert.deepEqual(coding.windows.map(w => w.kind), ["5h", "week", "month"]);
+	assert.equal(coding.windows[0].percent, 12.5);
+	assert.equal(coding.windows[1].percent, 100, "超过 100 收敛到 100");
+	assert.equal(coding.windows[0].resetsAt, new Date(1785492000000).toISOString(), "重置时刻是毫秒");
+	assert.equal(coding.windows[1].resetsAt, new Date(1785686400000).toISOString());
+	assert.equal(coding.windows[2].resetsAt, undefined, "哨兵 -1 不输出");
+	assert.equal(coding.seatId, "seat-c");
+	assert.deepEqual(parseVolcSeatCoding({ Result: { SeatInfoUsage: { SeatID: "s", WeeklyUsage: "10" } } }).windows.map(w => w.kind), ["week"], "缺字段不产出行、不当作 0");
+	// 站点间结构不同：国际站是 Result.SeatInfoUsage.*，中国站契约是 Result.* 直挂——两条都要认。
+	const flatResult = parseVolcSeatCoding({ Result: { SeatID: "seat-d", ShortTermUsage: 42.5, WeeklyUsage: 18.3, MonthlyUsage: 66.7 } });
+	assert.deepEqual(flatResult.windows.map(w => w.kind), ["5h", "week", "month"], "中国站：Result 直挂");
+	assert.equal(flatResult.windows[0].percent, 42.5, "数值型（契约 number）也要认");
+	assert.equal(flatResult.seatId, "seat-d");
+	assert.equal(parseVolcSeatCoding({ Result: {} }).subscribed, false);
+	assert.equal(parseVolcSeatCoding({}).subscribed, false);
+	console.log("PASS 席位解析：SeatID 列表、AFP 四窗口与零配额跳过、Coding 三字段与缺字段跳过");
+}
+
+// ── [11] 席位类 provider 的 Host 流程 ───────────────────────────────────
+{
+	const h = harness();
+	h.credentials.set("VOLC_ACCESSKEY", { value: AK });
+	h.credentials.set("VOLC_SECRETKEY", { value: SK });
+	h.setRespond(url => {
+		if (url.includes("ListSeatInfos")) return json({ Result: { Data: [{ SeatID: "seat-x" }] } });
+		if (url.includes("GetSeatAFPUsage")) return json({ Result: { SeatAFPUsages: [{ SeatID: "seat-x", PlanType: "Medium", AFPWeekly: { Quota: "500", Used: "125", ResetTime: 1779062400000 } }] } });
+		return json({ Result: {} });
+	});
+	await enable(h, [TEAM]);
+	const result = await h.service.refresh({ providerIds: [TEAM], force: true });
+	const entry = result.entries[0];
+	assert.equal(entry.state, "ok");
+	const actions = h.calls.map(c => c.url.match(/Action=(\w+)/)[1]);
+	assert.ok(actions.includes("ListSeatInfos"), "先取席位列表");
+	assert.ok(actions.includes("GetSeatAFPUsage"), "再查该席位额度");
+	assert.equal(entry.windows[0].percent, 25);
+	assert.equal(entry.extras[0].value, "Medium", "显示档位");
+	assert.ok(entry.extras[1].value.includes("seat-x"), "标注席位 ID");
+	assert.ok(!JSON.stringify(result).includes(SK), "响应不回显 SK");
+	// 两处请求体都要钉住：Scene 随产品而变（改错会静默返回空 SeatID），SeatIDs 必须是数组。
+	const agentListBody = JSON.parse(h.calls.find(c => c.url.includes("ListSeatInfos")).init.body);
+	assert.equal(agentListBody.Scene, "agent_plan_enterprise", "Agent Plan 团队版用 agent_plan_enterprise");
+	const agentSeatBody = JSON.parse(h.calls.find(c => c.url.includes("GetSeatAFPUsage")).init.body);
+	assert.equal(JSON.stringify(agentSeatBody.SeatIDs), JSON.stringify(["seat-x"]), "GetSeatAFPUsage 传 SeatIDs 数组");
+	// 账号下没有可读席位：明确说明，而不是报错或画 0%。
+	h.setRespond(url => url.includes("ListSeatInfos") ? json({ Result: { Data: [] } }) : json({ Result: {} }));
+	const empty = (await h.service.refresh({ providerIds: [TEAM], force: true })).entries[0];
+	assert.equal(empty.state, "ok");
+	assert.deepEqual(empty.windows, []);
+	assert.ok(empty.extras[0].value.includes("没有可读的席位"), "说明情况");
+	h.service.dispose();
+
+	// Coding Plan 团队版：GetSeatInfoUsage **必须带 Scene**——传错值（如 "coding_plan"）会静默返回空 SeatID。
+	const hc = harness();
+	hc.credentials.set("VOLC_ACCESSKEY", { value: AK });
+	hc.credentials.set("VOLC_SECRETKEY", { value: SK });
+	hc.setRespond(url => {
+		if (url.includes("ListSeatInfos")) return json({ Result: { Data: [{ SeatID: "seat-c" }] } });
+		if (url.includes("GetSeatInfoUsage")) return json({ Result: { SeatID: "seat-c", ShortTermUsage: "12.5", WeeklyUsage: "18.3", MonthlyUsage: "66.7" } });
+		return json({ Result: {} });
+	});
+	await enable(hc, [TEAM_CODING]);
+	const codingEntry = (await hc.service.refresh({ providerIds: [TEAM_CODING], force: true })).entries[0];
+	assert.equal(codingEntry.state, "ok");
+	assert.deepEqual(codingEntry.windows.map(w => w.kind), ["5h", "week", "month"]);
+	assert.equal(codingEntry.windows[0].percent, 12.5);
+	const infoCall = hc.calls.find(c => c.url.includes("GetSeatInfoUsage"));
+	const infoBody = JSON.parse(infoCall.init.body);
+	assert.equal(infoBody.Scene, "", "GetSeatInfoUsage 带 Scene（Coding Plan 企业版=空串）");
+	assert.equal(infoBody.SeatID, "seat-c", "带单个 SeatID");
+	const listBody = JSON.parse(hc.calls.find(c => c.url.includes("ListSeatInfos")).init.body);
+	assert.equal(listBody.Scene, "coding_plan_enterprise", "ListSeatInfos 用 coding_plan_enterprise");
+	assert.deepEqual(listBody.Filter, {}, "Filter 必填，即便为空对象");
+	hc.service.dispose();
+	console.log("PASS 席位类 Host：两步调用、档位与席位标注、无席位时的说明、Scene 取值正确");
 }
 
 console.log("\n火山方舟适配测试全部通过 ✅");

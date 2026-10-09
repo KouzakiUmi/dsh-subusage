@@ -2,7 +2,9 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
-## 0.9.0：火山方舟 Ark 套餐额度接入
+## 0.10.0：扩展至 30 条提供商、额度查询 API 与 UX 三改
+
+> `0.9.0`（火山方舟首次接入与 SiliconFlow，npm 已发布）之后累积的改动都记在本节；火山方舟这一条线上后续做的扩展也并入本节。
 
 - 新增三个 provider：`ark-coding-plan-cn`、`ark-agent-plan-cn`、`ark-coding-plan-byteplus`。**id 必须与官方插件 `@volcengine/ark-plan-api` 注册的路由逐字一致**（否则选中方舟模型时药丸不会出现），三者一律 `defaultEnabled: false`，需手动开启。
 - 额度走管控面 OpenAPI：`POST https://open.volcengineapi.com/?Action=X&Version=2024-01-01`（BytePlus 走 `ark.ap-southeast-1.byteplusapi.com`）。Coding Plan 走 `GetCodingPlanUsage`（未收录于官方 API 概览，由官方 ark-cli 与多个第三方实现确证可用），Agent Plan 走有官方文档的 `GetAFPUsage`。
@@ -11,6 +13,15 @@
 - **HTTP 200 且窗口为空是「未订阅」而不是 0% 用量**，界面显式说明；401（签名/凭据）、403（权限或未订阅）、接口不存在三类失败分别给出不同行动项，401 的文案点名「要 IAM AK/SK，不是推理用的方舟 API Key」。
 - 设置页新增 AK/SK 双字段凭据编辑（SK 为 password 且从不回显）：两个字段各自「留空表示不修改该项」，清除必须显式确认；只有一半凭据时按未配置处理，不拿半个签名去请求。共享凭据变化会让全部 Ark 条目一起失效，而不只是当前标签页。
 - 测试：新增 `tests/test-volcengine.mjs`（签名固定向量与 Authorization 模板、host/SK/Action 绑定、严格转义、两种套餐的窗口解析与未订阅判定、401/403/404 错误映射、AK/SK keep/replace/clear 与半份凭据、共享凭据失效与 TTL 命中、Client 注册与补丁语义）与 `lib/volcengine.js`（零依赖纯函数）。`tests/helpers.mjs` 的子模块绝对路径重写改为遍历列表——否则临时目录里解析不到新增的 `lib` 子模块。`node tests/run-all.mjs` 与 `node scripts/check-manifest.mjs` 全部通过。
+
+### 同版本：火山方舟全面覆盖（arkcli 官方 CLI 路由 + 企业版席位）
+
+- **provider id 对齐官方 CLI**：`arkcli helper configure deepseek-harness` 把 provider 写成 `arkcli-<planType>`（本机实测 `arkcli-agent-plan`，凭据引用 `ARKCLI_AGENT_PLAN_API_KEY`），与旧插件 `@volcengine/ark-plan-api` 的 `ark-coding-plan-cn` / `ark-agent-plan-cn` / `ark-coding-plan-byteplus` 是**两套 id**。现在两条路线并存：`arkcli-agent-plan` / `arkcli-coding-plan` **默认开启**（对齐使用人数最多的安装方式；没配 AK/SK 时会被「没有检测到 API 的默认隐藏」收起），旧的三个保留兼容、label 标注 `legacy plugin` 且默认关闭。`short` 也做了区分（`ARK Plan` / `ARK Code` vs `Ark Agent` / `Ark Coding` / `Ark BytePlus`），避免设置页标签重名。
+- **企业版/团队版席位覆盖**：新增 `arkcli-agent-plan-team` 与 `arkcli-coding-plan-team`（默认关闭）。额度挂在席位上，因此是**两步调用**：先 `ListSeatInfos`（带 `Scene`，Agent Plan 企业版 `agent_plan_enterprise`、Coding Plan 企业版 `coding_plan_enterprise`）取 `Result.Data[].SeatID`，再 `GetSeatAFPUsage` 或 `GetSeatInfoUsage` 查该席位。**多个席位时只读第一个，但如实标注总数**（`席位 <id>（共 N 个）`）——不假装看全；账号下没有可读席位时返回明确说明，而不是报错或画成 0%。
+- 解析要点：AFP 席位的 `Quota=0` 表示该窗口不适用（不产出行）、`ResetTime` 是**毫秒**；Coding 席位的三个 usage 字段是**已用百分比**字符串、缺字段不产出行。`ShortTermUsage` 的语义在国内文档（"近 5 分钟用量"）与国际站英文文档（"5-hour usage percentage"）之间**冲突**，实现按短周期窗口处理，存疑记在 development.md。
+- **按官方 API 契约核实后修正两处（原实现确有缺陷）**：①`GetSeatInfoUsage` **确实带 `Scene` 参数**，Coding Plan 企业版必须传**空字符串**——官方契约 schema、官方 ark-cli 源码与第三方实现三方一致，且传错值（如 `coding_plan`，不带 `_enterprise`）会**静默返回空 SeatID 而不报错**；②它的响应结构**站点间不同**（国际站 `Result.SeatInfoUsage.*`，中国站契约是 `Result.*` 直挂），原实现只认前者，在中国站会读不到数据——现两条路径都试。顺带确认并已兼容：`Quota`/`Used` 在契约里是 number、文档示例里是 string（双解析），`ResetTime` 零用量时可能是 `-1`/`0`（哨兵不输出）。
+- 顺带把 volc 分支的签名请求抽成 `call(action, payload)`，个人版与席位版共用同一套签名与错误映射；`ListSeatInfos` 显式带 `PageNum`/`PageSize`（`Filter` 是契约层面的必填字段，即便为空对象也要发）。
+- 测试：`tests/test-volcengine.mjs` 增加两段——席位解析（SeatID 列表 trim 并忽略无 ID 行、AFP 四窗口与零配额跳过、Coding 三字段与缺字段跳过、超 100 收敛到 100）与 Host 流程（两步调用、档位与席位标注、无席位时的说明、不回显 SK）。
 
 ### 同版本：Codex 真机验证（并修正两处只有真机才暴露的问题）
 
@@ -22,7 +33,7 @@
 
 ### 同版本：提供商覆盖与取舍记档
 
-- 新增 [提供商覆盖与取舍](provider-coverage.md)：列出已支持的 26 家（含额度类型、鉴权与默认开关），并首次把**评估后不接入**的厂商与理由写成决策记录——避免同一个候选在没有新证据时被反复评估。
+- 新增 [提供商覆盖与取舍](provider-coverage.md)：列出**当时**已支持的 26 家（含额度类型、鉴权与默认开关；现已扩到 30 条），并首次把**评估后不接入**的厂商与理由写成决策记录——避免同一个候选在没有新证据时被反复评估。
 - 不接入的取舍：**Requesty**（只有花费、GET 带 body 属非标准调用、文档 host 不一致）、**Portkey**（单一花费端点且响应结构未证实）、**Groq**（普通 key 查不到，只有浏览器 Cookie 或 Enterprise 路径，与"只用凭据不抓会话"的架构冲突）、**Together / Cerebras**（未发现公开接口）、以及讯飞 / SCNet / CodeBuddy / 无问芯穹 / LongCat / 京东云（官方只有控制台）与已停服的潞晨云。
 - 同时记档**已由用户决策跳过**的 Anthropic：接口本身可接入（`/api/oauth/usage` + Claude Code OAuth 登录文件），跳过的理由是地缘政治导致实际用户少——将来用户群变化时这是最值得回头做的一家。
 
@@ -63,7 +74,7 @@
 - **各家单位与形状都不同，逐个显式换算，不做通用折算**：Novita 是 1/10000 USD（`10000` = $1.00）、Hyperbolic 是美分、DeepInfra 的可用余额是 `−stripe_balance`（接口用**负数**表示预付资金，正值代表欠款）、Chutes 给 `{quota, used}` 绝对量、Ollama Cloud 的 `limits.*.usage` 是 **0–1 小数**、Vercel 是十进制字符串。DeepInfra 欠款时单独提示「欠款 X USD」，不把负余额直接画出来。
 - **Ollama Cloud 的鉴权是裸 `Authorization`**（不加 `Bearer `），实现里显式覆盖通用 Bearer——照抄别家实现时最容易漏这一点。
 - 不编造重置时间：Chutes 与 OpenRouter 的接口都不给重置时刻，因此不输出 `resetsAt`，UI 也不显示倒计时。
-- **MiniMax 国际版（`minimax`）改为默认关闭**（中国版保持默认开启）。用户要求：国际版实际使用少，默认收起。至此默认关闭共 15 项、默认开启 9 项。
+- **MiniMax 国际版（`minimax`）改为默认关闭**（中国版保持默认开启）。用户要求：国际版实际使用少，默认收起。至此默认关闭共 15 项、默认开启 9 项（该批次时点；**当前**为 19 / 11，以 `lib/index.js` 的 `PROVIDERS` 为准）。
 - 测试：新增 `tests/test-aggregators.mjs`（六家单位换算与边界、`{quota:0}` 不猜比例、Ollama 缺层跳过、DeepInfra 欠款分支、六家端点与鉴权头逐一断言，含 Ollama 的裸 Authorization）。`tests/test-minimax.mjs` 补上「国际版默认关闭 / 中国版默认开启」断言并在测前显式开启；`tests/test-client-behavior.mjs` 的可见 tab 列表移除 MiniMax 国际版，改用 MiniMax CN。
 
 ### 同版本：OpenRouter 接入

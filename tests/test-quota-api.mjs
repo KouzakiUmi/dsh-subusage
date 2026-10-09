@@ -50,7 +50,7 @@ const okFetch = calls => async (url, options) => {
 	for (const leak of ["settings", "keySource", "apiDetected", "envName", "sk-fixture", "sk-or-fixture"]) assert.ok(!raw.includes(leak), `视图不得包含 ${leak}`);
 	// 未知 id 被忽略而不是报错；缺省则读全部登记的 provider。
 	assert.deepEqual((await h.service.quota({ providerIds: ["nope", DEEPSEEK] })).providers.map(p => p.providerId), [DEEPSEEK]);
-	assert.equal((await h.service.quota()).providers.length, 26, "缺省读全部 26 家");
+	assert.equal((await h.service.quota()).providers.length, 30, "缺省读全部 30 家");
 	h.service.dispose();
 	console.log("PASS quota 只读视图：形状、过滤、未知 id 忽略与不泄露内部状态");
 }

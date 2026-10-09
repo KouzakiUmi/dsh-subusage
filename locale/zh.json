@@ -1,4 +1,4 @@
 {
   "name": "订阅用量显示",
-  "description": "显示 Z.ai / Kimi / MiMo / OpenCode Go / Command Code / SuperGrok / MiniMax / Synthetic / NanoGPT 订阅余量；共享刷新与凭据管理，Z.ai 国际 / Synthetic / NanoGPT 默认关闭。"
+  "description": "显示 30 家 AI 提供商（DeepSeek、火山方舟 Ark、Z.ai、Kimi、MiMo、Codex、MiniMax、OpenRouter、SiliconFlow、LiteLLM 等）的订阅余量与余额；统一管理检测开关与凭据，并提供只读额度查询接口。"
 }

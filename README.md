@@ -1,257 +1,289 @@
-# dsh-subusage —— DeepSeek Harness 订阅用量显示
+# dsh-subusage
 
-在模型选择器旁显示当前提供商的订阅余量，点击查看各周期用量、重置时间和套餐信息。设置页集中管理二十六个提供商/区域的检测开关与凭据。
+![dsh-subusage](assets/title.svg)
 
-支持 **DeepSeek 官方（余额）/ Z.ai Coding（中国与国际）/ Kimi Coding / Xiaomi MiMo / OpenCode Go / Command Code / SuperGrok（xAI Grok OAuth 订阅）/ Codex（ChatGPT Plus/Pro/Team 订阅）/ MiniMax（国际与中国）/ Synthetic / NanoGPT（配额 + 余额）/ 火山方舟 Ark（Coding Plan 中国、Agent Plan 中国、Coding Plan BytePlus）/ SiliconFlow / OpenRouter / Novita / Hyperbolic / DeepInfra / Chutes / Ollama Cloud / Vercel AI Gateway / ZenMux / LiteLLM（自建网关）**。
+**DeepSeek Harness 订阅用量显示插件。** 在模型选择器旁显示当前模型商的订阅余量药丸，点开可看各周期用量、重置时间与套餐；设置页集中管理 30 条提供商 / 区域路由的检测开关与凭据；并以只读额度 API 供其他插件与 Agent 查询。
 
-## 安装与快速开始
+> **English.** dsh-subusage shows subscription quota and balance for the AI providers you already use, as a pill next to the model selector in DeepSeek Harness. Provider switches and credentials live in one settings page, and other plugins or agents can read the same snapshot through a read-only quota API.
 
-当前仓库版本 **0.9.0**，可从 GitHub Release 获取。npm 自动发布采用 Trusted Publishing（GitHub OIDC）；可用版本见 [npm](https://www.npmjs.com/package/dsh-subusage)。安装时使用目标 DSH 部署提供的插件管理器或 CLI，并启用本 bundle：
+[![npm version](https://img.shields.io/badge/npm-0.10.0-blue)](https://www.npmjs.com/package/dsh-subusage)
+[![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
+[![DSH](https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.1%20%3C0.3.0--0-informational)](#compatibility--兼容性)
 
-| 来源 | 安装标识或下载地址 |
-|---|---|
-| npm | `dsh-subusage`；支持 npm 源的插件管理器可使用该包名 |
-| GitHub | `https://github.com/KouzakiUmi/dsh-subusage` |
-| 安装包 | [最新 GitHub Release 安装包](https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz) |
+## Overview / 功能
 
-只需取得 npm 最新压缩包时可运行 `npm pack dsh-subusage`；指定版本前可用 `npm view dsh-subusage version` 核对发布结果。普通 `npm install` 或下载压缩包并不等于已经在 DSH 中启用插件；具体安装参数以目标部署的帮助信息为准。
+| 能力 | 解决什么问题 | 入口 |
+|---|---|---|
+| 余量药丸 | 不用切到各家控制台，选中模型就知道这家还剩多少 | 模型选择器左侧，槽位 `conversation.input.right` |
+| 设置页 | 开关与凭据集中管理；缺凭据、Cookie 过期时把修复入口直接送到卡片上 | 设置 → 订阅用量 → 提供商管理 |
+| 只读额度 API | 其他插件与 Agent 复用同一份额度数据，不必各自对接各家接口 | Agent 工具 `subusage_quota`、Host 服务 `subUsage.quota()` |
 
-开发目标是 **DeepSeek Harness 0.2.0-rc.2**。核心 peer 范围为 `>=0.2.0-rc.1 <0.3.0-0`，允许该范围内的预发布版本；声明范围不代表所有版本均已实机验证。
+药丸示例：`✓ 余 87%`、`⚠ 7d 余 12%`、`✕ 7d 已达限额`。多窗口取最差一窗，点击查看完整明细；成功结果按提供商缓存 **60 秒**，手动刷新可跳过普通 TTL（仍遵守上游限流退避与 `Retry-After`）。
 
-1. 安装并启用 bundle，按部署方式重载或重启，使 Host、Client 与依赖一起生效。
-2. 打开 **设置 → 订阅用量 → 提供商管理**，为需要的订阅配置凭据。
-3. **Z.ai 国际、Synthetic、NanoGPT、火山方舟 Ark 三家、SiliconFlow、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、MiniMax 国际版、ZenMux、LiteLLM**默认关闭，必须手动开启（共十七项）。其余九项默认开启；升级保留已保存的开关。
-4. 点击「刷新当前」检查结果；选中对应提供商的模型后，输入区显示余量药丸。
+本插件**不注册模型路由**，药丸按 provider id 匹配；因此使用哪个插件提供该模型路由不影响匹配，id 对不上时才不显示。
 
-「没有检测到API的默认隐藏」默认开启。首次没有可见条目时，管理区自动展开；关闭的提供商仍可配置凭据，但不会请求用量。插件不注册模型路由，药丸按提供商 ID 匹配，配置表见下文。
+## 支持的数据 / Supported data
 
-## 使用
+共 **30 条 provider id**：新安装**默认开启 11 条、默认关闭 19 条**（数字与清单取自 [`lib/index.js`](lib/index.js) 顶部的 `PROVIDERS`，展示顺序与短名取自 [`lib/client.js`](lib/client.js) 顶部的 `PROVIDER_META` / `PROVIDER_ORDER`）。
 
-### 药丸
+| 提供商 | provider id | 额度类型 | 鉴权 | 默认 |
+|---|---|---|---|---|
+| DeepSeek | `deepseek` | 余额（账户） | Bearer，与推理同一把 Key | 开 |
+| Z.ai（中国） | `zai-coding-cn` | 订阅窗口 | Bearer（团队档另加组织 / 项目请求头） | 开 |
+| Kimi Coding | `kimi-coding` | 订阅窗口 | Bearer | 开 |
+| Xiaomi MiMo | `xiaomi-token-plan-cn` | 周期额度池 | 官方平台 Cookie（含登录流程） | 开 |
+| OpenCode Go | `opencode-go` | 订阅窗口 | Bearer | 开 |
+| Command Code | `commandcode` | 5 小时 / 周 / 月额度池 | 提供方插件的凭据链 | 开 |
+| SuperGrok | `xai-oauth` | 周期池 | 只读 Grok CLI 的 OAuth 登录文件 | 开 |
+| Codex (ChatGPT) | `openai-codex` | ChatGPT 订阅窗口 | 只读 Codex CLI 的 OAuth 登录文件 | 开 |
+| MiniMax（中国） | `minimax-cn` | 短周期 / 周 | Bearer | 开 |
+| ARK Agent Plan (arkcli) | `arkcli-agent-plan` | 订阅窗口（AFP） | IAM AK/SK 签名 | 开 |
+| ARK Coding Plan (arkcli) | `arkcli-coding-plan` | 订阅窗口 | IAM AK/SK 签名 | 开 |
+| Z.ai（国际） | `zai-coding` | 订阅窗口 | 裸 `authorization`，区域凭据独立 | 关 |
+| Synthetic | `synthetic` | 滚动订阅池 | Bearer | 关 |
+| NanoGPT | `nanogpt` | 日 / 周配额 + 余额 | Bearer（余额端点用 `x-api-key`） | 关 |
+| MiniMax（国际） | `minimax` | 短周期 / 周 | Bearer | 关 |
+| ARK Agent Plan Team (arkcli) | `arkcli-agent-plan-team` | 席位额度（AFP） | IAM AK/SK 签名 | 关 |
+| ARK Coding Plan Team (arkcli) | `arkcli-coding-plan-team` | 席位额度 | IAM AK/SK 签名 | 关 |
+| Ark Coding Plan（中国，旧插件路由） | `ark-coding-plan-cn` | 订阅窗口 | IAM AK/SK 签名 | 关 |
+| Ark Agent Plan（中国，旧插件路由） | `ark-agent-plan-cn` | 订阅窗口（AFP） | IAM AK/SK 签名 | 关 |
+| Ark Coding Plan（BytePlus，旧插件路由） | `ark-coding-plan-byteplus` | 订阅窗口 | IAM AK/SK 签名 | 关 |
+| SiliconFlow | `siliconflow` | 余额 | Bearer，与推理同一把 Key | 关 |
+| OpenRouter | `openrouter` | 限额窗口 + 余额 | 推理 Key（余额需 management / provisioning key） | 关 |
+| Novita AI | `novita` | 余额 | Bearer | 关 |
+| Hyperbolic | `hyperbolic` | 余额 | Bearer | 关 |
+| DeepInfra | `deepinfra` | 余额 | Bearer | 关 |
+| Chutes | `chutes` | 通用限额窗口 | Bearer | 关 |
+| Ollama Cloud | `ollama-cloud` | session / 周 / 月 | 裸 `Authorization`（不加 `Bearer`） | 关 |
+| Vercel AI Gateway | `vercel-ai-gateway` | 余额 | Bearer | 关 |
+| ZenMux | `zenmux` | 5 小时滚动窗口 + PAYG 余额 | **Management API Key** | 关 |
+| LiteLLM | `litellm` | 预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
 
-选中已开启且未被默认隐藏的模型商时显示，例如 `✓ 余 87%`、`⚠ 7d 余 12%`、`✕ 7d 已达限额`。多窗口取最差一窗，点击看完整详情。Command Code 药丸弹层底部可切换提供方插件的服务账户（自动轮换 / 默认账户 / 各额外账户，与其设置页同一开关，即时生效）；切换后药丸与弹层上方的用量同步改为所选账户的额度（自动轮换时仍显示默认账户/顶层 Key 的用量，弹层有标注说明）。关闭默认隐藏后，缺凭据时显示配置指引；可保留的临时网络错误会明确标注缓存，而非冒充当前成功。
+- 各家的**窗口语义、明细字段与单位换算**（例如 ZenMux / Ollama 的 0–1 小数、Novita 的 1/10000 USD、Kimi 随套餐变化的窗口集合）见 [提供商清单与额度语义](docs/providers.md)。
+- 评估过但**不接入**的厂商与理由见 [提供商覆盖与取舍](docs/provider-coverage.md)（含已由用户决策跳过的 Anthropic）。
 
-### 设置
+非公开控制台接口可能变更；缺失或非法百分比不会被当作零用量；「读取成功」只表示接口读取健康度，不保证仍有额度。
 
-设置 → **订阅用量**：
+## Compatibility / 兼容性
 
-1. 在「提供商管理」逐家开启/关闭，按需切换「没有检测到API的默认隐藏」；开关即时保存。
-2. 上方按钮标签仅切换用量视图，窄屏自动换行；查看百分比、额度明细、重置时间与套餐。
-3. 展开底部「提供商管理」，在目标厂商卡片展开「连接与凭据」，无需跳转即可编辑隐藏或关闭的厂商。
-4. 更改来源、替换或清除凭据；MiMo 登录与 Cookie 导入也在本行完成。切换用量不影响编辑，切换另一家编辑器须先保存或取消，空输入不会清除原值。
-5. 凭据保存先确认持久化，再独立验证。检测关闭的厂商只保存凭据，不发起用量验证；验证失败不意味着保存失败。
+| 项目 | 值 | 来源 |
+|---|---|---|
+| 核心 peer 范围 | `@deepseek-ai/dsh` 及各核心包均为 `>=0.2.0-rc.1 <0.3.0-0`（允许该范围内的预发布版本） | [`package.json`](package.json) 的 `peerDependencies` |
+| 开发目标版本 | DeepSeek Harness `0.2.0-rc.2` | [开发与验证说明](docs/development.md) |
+| 最后验证日期 | `2026-10-09` | 同上 |
 
-顶部 `X/Y 家数据获取成功` 仅表示接口读取健康度。厂商图标/颜色表达额度与异常情况；例如读取成功后仍可能显示「已达限额」。未获取额度的部分数据不能视为可用。
+声明范围不代表范围内所有版本都已实机验证；实际验证范围（在线接口、真实账号、浏览器像素验收等）见 [开发与验证说明](docs/development.md)。这是树外 Host / Client bundle，通过 `cordis.patch.yml` 插入，不修改 DSH 核心、安装树或 ASAR。
 
-### 出错时直接在卡片上修
+## Install / 安装
 
-设置页原本是「状态在上、操作在下」：用量面板告诉你 Cookie 已过期，但修复入口在底部收起的「提供商管理」里，要先展开、再找到那一家、再展开「连接与凭据」。现在用量面板会在**真正需要处理时**内联一条行动条：
+| 来源 | 标识 | 说明 |
+|---|---|---|
+| npm | `dsh-subusage` | 已发布版本见 [npm](https://www.npmjs.com/package/dsh-subusage) |
+| GitHub Release tarball | `https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz` | 资产名固定不带版本号 |
+| 本地开发目录 | 仓库路径 | 以链接方式使用工作副本 |
 
-| 情形 | 卡片上给出的动作 |
-|---|---|
-| MiMo 未登录 / Cookie 被拒 | 「登录并自动导入」+「手动填写」 |
-| MiMo Cookie 已过期或 2 小时内到期 | 「重新登录」+「手动填写」 |
-| 其它厂商缺凭据或凭据被拒 | 「配置凭据」——展开该厂商的编辑器并滚动过去 |
+```console
+# npm 包名
+dsh plugin --profile <profile> add dsh-subusage
 
-**正常状态不显示行动条**：还有几小时的倒计时不算事件，避免它变成常驻噪音。行动条只是「把入口送到眼前」，凭据编辑仍然复用下面那一份编辑器，不存在两套字段或两套校验。
+# GitHub Release tarball（尚未经市场收录时的完整 URL）
+dsh plugin --profile <profile> add https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz
 
-同一类问题的另外两处也一起处理了：
+# 本地开发目录（link 工作副本）
+dsh plugin --profile <profile> add D:\src\dsh-subusage
+```
 
-- **待处理的排到 tab 前面**：读取失败、Cookie 已过期最急，额度用尽与即将到期次之，数据不完整再次；**「未配置凭据」刻意不算**（那是用户自己的取舍，默认隐藏就是为收起它们），否则每个还没配的厂商都会来抢位置。同档内保持登记顺序，所以顺序不会自己抖动。
-- **顶部「X/Y 家数据获取成功」是可点击的**：一下就切到第一家没读成功的；全部正常时按钮禁用，不做无意义的跳转。
+升级与卸载：
 
-### 药丸里的 Command Code 账户区
+```console
+dsh plugin --profile <profile> update dsh-subusage
+dsh plugin --profile <profile> update dsh-subusage@https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz
+dsh plugin --profile <profile> remove dsh-subusage
+```
 
-账户多的时候，账户列表会把上方的额度顶出视野。现在整块折进一个可展开区：标题行直接显示**当前账户与选项数量**，展开后的列表自身限高滚动（240px），弹层高度不再随账户数增长。降级状态（提供方插件未运行）同样折起，只留一行说明。
+- `<profile>` 换成目标 profile；**Desktop 请使用随包 DSH CLI 或应用内插件管理页**，PATH 上的 npm 全局 `dsh` 不一定是它。参数与 profile 名以目标部署的 `dsh plugin --help` 为准；桌面插件页同样接受包名、GitHub 地址或本地目录。
+- 安装只把包放进 profile，**不等于已启用**；按部署方式重载或重启，让 Host 与 Client 一起生效（只刷新页面不保证 Host 升级）。
+- 只取压缩包：`npm pack dsh-subusage`；核对发布结果：`npm view dsh-subusage version dist-tags`。
 
-### 凭据与环境
+## Quick start / 快速开始
+
+1. 安装并启用 bundle，按部署方式重载或重启。
+2. 打开 **设置 → 订阅用量 → 提供商管理**，开启需要的提供商（默认关闭的 19 条需手动开启）。
+3. 为它配置凭据：在卡片里展开「连接与凭据」填 Key / AK-SK，或把 Key 放进凭据服务 / 启动环境；MiMo 用「登录并自动导入」。
+4. 回到会话，选中该提供商的模型：输入区左侧出现余量药丸（绿色成功 / 红色失败），点开看窗口明细。
+5. 排障顺序：点「立即刷新」→ 看设置页顶部 `X/Y 家数据获取成功`（可点击，跳到第一家没读成功的）。
+
+可复现的最小示例（DeepSeek，余额型，默认开启，与推理同一把 Key）：
+
+```powershell
+# 任选一种凭据来源
+$env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需按部署方式重启
+# 或在 设置 → 订阅用量 → DeepSeek →「连接与凭据」里手动填写
+```
+
+重启后在会话中选中 DeepSeek 模型，药丸显示账户余额；也可以直接让 Agent 调用 `subusage_quota(providers: ["deepseek"])` 验证（无需界面）。
+
+## Configuration / 配置
+
+- **设置页路径**：设置 → **订阅用量** → 提供商管理。「没有检测到API的默认隐藏」默认开启；首次没有可见条目时管理区自动展开。关闭的提供商仍可配置凭据，只是不会发起用量请求。
+- **默认开关策略**：新安装默认开启 11 条、默认关闭 19 条；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
+- **凭据来源优先级**（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；切到自定义（`manual`）模式时只使用保存的手动 Key。界面会区分这三种来源。
+- **不接受本地 Key 的提供商**：`commandcode`（凭据链属提供方插件）、`xai-oauth`、`openai-codex`（只读各自 CLI 的登录文件），以及 MiMo（Cookie 会话）。
+- **保存与验证分离**：凭据先确认持久化，再独立做在线验证；检测关闭的提供商只保存凭据、不发起验证，验证失败不代表保存失败。
+- **出错时在卡片上修**：MiMo 未登录 / Cookie 被拒 → 「登录并自动导入」；Cookie 临近到期或已过期 → 「重新登录」；其他家缺凭据 → 「配置凭据」（展开该厂商编辑器并滚动过去）。正常状态不显示行动条。
+
+<details>
+<summary>凭据与环境：各家默认继承变量与说明（取自 <code>PROVIDERS[id].envName</code>）</summary>
+
+「默认继承变量」指凭据服务 / 启动环境的默认引用名；留空表示不使用继承变量（凭据来自登录文件或官方平台会话）。
 
 | 模型商 | 默认继承变量 | 说明 |
 |---|---|---|
 | DeepSeek | `DEEPSEEK_API_KEY` | 余额型：`GET /user/balance` 返回账户余额，**与推理是同一把 Key** |
-| Z.ai | `ZAI_CODING_CN_API_KEY` | 团队套餐另填组织、项目 ID |
-| Z.ai 国际 | `ZAI_CODING_API_KEY` | `zai-coding`，默认关闭，独立国际 Coding Plan Key |
-| Synthetic | `SYNTHETIC_API_KEY` | `synthetic`，默认关闭，模型订阅请求额度 |
-| NanoGPT | `NANOGPT_API_KEY` | `nanogpt`，默认关闭；也可手动填写 Usage only 管理令牌。配额之外还会读一次账户余额（余额端点用 `x-api-key` 而不是 Bearer；拿不到就静默降级，不影响配额） |
+| Z.ai（中国） | `ZAI_CODING_CN_API_KEY` | 团队套餐另填组织、项目 ID（作为 `bigmodel-organization` / `bigmodel-project` 请求头） |
+| Z.ai（国际） | `ZAI_CODING_API_KEY` | 独立国际 Coding Plan Key，鉴权用裸 `authorization`，不带 `Bearer` |
+| Kimi | `KIMI_CODING_API_KEY` | 需要 Kimi Coding Key，不是 Moonshot 开放平台 Key |
+| Xiaomi MiMo | 界面不使用继承 Key | 通过官方平台 Cookie 会话读取（`envName` 只作为服务侧引用名保留） |
+| OpenCode Go | `OPENCODE_API_KEY` | OpenCode Go Key |
+| MiniMax（国际） | `MINIMAX_API_KEY` | `minimax` 路由；国际站订阅 Key |
+| MiniMax（中国） | `MINIMAX_CN_API_KEY` | `minimax-cn` 路由；中国站订阅 Key |
+| Command Code | `COMMANDCODE_API_KEY` | 凭据由提供方插件管理，本页只读继承；兜底读取 `~/.commandcode/auth.json`（`cmd login`） |
+| SuperGrok | 无 | `xai-oauth` 路由；只读 dsh-grok-kit / Grok CLI 共享的 OAuth 登录文件 `~/.grok/auth.json`（旧版 `~/.dsh/.xai-oauth-auth.json`），不保存、不刷新 token；API Key（`XAI_API_KEY`）取不到订阅周池 |
+| Codex | 无 | `openai-codex` 路由；只读 Codex CLI 的 ChatGPT 订阅登录文件（`$CODEX_HOME/auth.json` 或 `~/.codex/auth.json`，要求 `auth_mode` 为 `chatgpt`），不保存、不刷新 token |
+| 火山方舟 Ark（7 条路由） | `VOLC_ACCESSKEY` + `VOLC_SECRETKEY` | 额度查询要 **IAM Access Key 的 AK/SK 配对**，与推理 API Key（`ARKCLI_*_API_KEY` / `ARK_*_API_KEY`）**不是同一套**；7 条路由共用一组 AK/SK |
+| SiliconFlow | `SILICONFLOW_API_KEY` | 余额型：`GET /v1/user/info` 返回账户余额，**与推理是同一把 Key** |
+| OpenRouter | `OPENROUTER_API_KEY` | key 限额与用量用推理 key 即可；**账户余额需要 management / provisioning key**，普通 key 会被 403 拒——此时静默降级为只显示限额，不判失败 |
+| Synthetic | `SYNTHETIC_API_KEY` | 模型订阅请求额度 |
+| NanoGPT | `NANOGPT_API_KEY` | 也可手动填写 Usage only 管理令牌；配额之外还会读一次账户余额（余额端点用 `x-api-key` 而不是 Bearer；拿不到就静默降级，不影响配额） |
+| Novita AI | `NOVITA_API_KEY` | 余额型，与推理同一把 Key；金额单位 **1/10000 USD** |
+| Hyperbolic | `HYPERBOLIC_API_KEY` | 余额型；金额单位是**美分** |
+| DeepInfra | `DEEPINFRA_API_KEY` | 余额型 |
+| Chutes | `CHUTES_API_KEY` | 通用限额窗口 |
+| Ollama Cloud | `OLLAMA_API_KEY` | 余额型；鉴权是**裸 `Authorization`**（本插件已按其要求发送） |
+| Vercel AI Gateway | `AI_GATEWAY_API_KEY` | 余额型；金额是**十进制字符串** |
 | ZenMux | `ZENMUX_MANAGEMENT_API_KEY` | 额度端点**只认 Management API Key**（推理 key 不适用），所以变量名单独区分。在 <https://zenmux.ai/platform/management> 创建该 key |
 | LiteLLM | `LITELLM_API_KEY` + 代理地址 | 自建网关：除虚拟 Key（**与推理同一把**）还要在凭据区填写自己的 proxy 地址。管理端点在 **proxy 根**——填了 `/v1` 也会被去掉，不会拼成 `/v1/key/info` |
-| Kimi | `KIMI_CODING_API_KEY` | 需要 Kimi Coding Key，不是 Moonshot 开平台 Key；窗口集合按套餐体系下发（老套餐 5 小时 + 7 天，新套餐 Go / Plus 为 5 小时 + 月度） |
-| MiMo | 不使用 API Key | 通过控制台 Cookie 会话读取 |
-| OpenCode Go | `OPENCODE_API_KEY` | OpenCode Go Key |
-| MiniMax 国际 | `MINIMAX_API_KEY` | `minimax` 路由；国际站订阅 Key |
-| MiniMax 中国 | `MINIMAX_CN_API_KEY` | `minimax-cn` 路由；中国站订阅 Key |
-| Command Code | `COMMANDCODE_API_KEY` | 凭据由提供方插件管理，本页只读继承；也兜底读取 `~/.commandcode/auth.json`（`cmd login`） |
-| SuperGrok | 不使用 API Key | `xai-oauth` 路由；只读 dsh-grok-kit / Grok CLI 共享的 OAuth 登录文件 `~/.grok/auth.json`（旧版 `~/.dsh/.xai-oauth-auth.json`），不保存、不刷新 token |
-| 火山方舟 Ark | `VOLC_ACCESSKEY` + `VOLC_SECRETKEY` | 三个路由由**官方插件** [`@volcengine/ark-plan-api`](https://www.npmjs.com/package/@volcengine/ark-plan-api) 注册（`ark-coding-plan-cn` / `ark-agent-plan-cn` / `ark-coding-plan-byteplus`）；额度查询要 **IAM Access Key 的 AK/SK 配对**，与这里的推理 API Key（`ARK_*_API_KEY`）**不是同一套**，三家共用一组 AK/SK |
-| SiliconFlow | `SILICONFLOW_API_KEY` | 余额型：`GET /v1/user/info` 返回账户余额，**与推理是同一把 Key** |
-| Codex | 不使用 API Key | `openai-codex` 路由由 DSH 内置或 `dsh-codex-connect` 等插件提供；只读 Codex CLI 的 ChatGPT 订阅登录文件（`$CODEX_HOME/auth.json` 或 `~/.codex/auth.json`，要求 `auth_mode` 为 `chatgpt`），不保存、不刷新 token。**API Key 模式（`auth_mode` 不是 `chatgpt`）取不到订阅额度**，此时按未配置处理 |
-| OpenRouter | `OPENROUTER_API_KEY` | key 限额与用量用推理 key 即可；**账户余额需要 management / provisioning key**，普通 key 会被 403 拒——此时静默降级为只显示限额，不判失败 |
-| Novita / Hyperbolic / DeepInfra / Chutes / Ollama Cloud / Vercel AI Gateway | `NOVITA_API_KEY` / `HYPERBOLIC_API_KEY` / `DEEPINFRA_API_KEY` / `CHUTES_API_KEY` / `OLLAMA_API_KEY` / `AI_GATEWAY_API_KEY` | 余额型聚合商，**与各自推理同一把 Key**。注意 Ollama Cloud 的鉴权是**裸 `Authorization`**（本插件已按其要求发送），且各家金额单位不同（见下表） |
 
-Z.ai（中国与国际）/ Kimi / OpenCode Go / MiniMax / Synthetic / NanoGPT 的继承模式按凭据服务 → 启动环境 → 旧手动配置兜底解析；自定义模式仅使用保存的手动 Key。Command Code 仅沿用提供方凭据来源链，不接受本插件的手动 Key；MiMo 仅使用 Cookie；SuperGrok 仅使用共享 OAuth 登录文件（API Key 路线取不到订阅周池）。界面区分凭据服务、启动环境和自定义来源。修改启动环境后是否需要重启取决于目标部署，不能把用户环境即时变化当作已经被运行进程读到。
+按 provider id 的字面映射（补齐上表按语义分组、未逐条列出的 7 条火山路由，逐条对应 `PROVIDERS[id].envName`）：
 
-### MiMo 登录与 Cookie
+```text
+deepseek                 DEEPSEEK_API_KEY
+zai-coding-cn            ZAI_CODING_CN_API_KEY
+zai-coding               ZAI_CODING_API_KEY
+kimi-coding              KIMI_CODING_API_KEY
+xiaomi-token-plan-cn     XIAOMI_TOKEN_PLAN_CN_API_KEY   （界面走官方平台 Cookie）
+opencode-go              OPENCODE_API_KEY
+commandcode              COMMANDCODE_API_KEY
+xai-oauth                —                              （OAuth 登录文件）
+openai-codex             —                              （OAuth 登录文件）
+minimax                  MINIMAX_API_KEY
+minimax-cn               MINIMAX_CN_API_KEY
+synthetic                SYNTHETIC_API_KEY
+nanogpt                  NANOGPT_API_KEY
+siliconflow              SILICONFLOW_API_KEY
+openrouter               OPENROUTER_API_KEY
+novita                   NOVITA_API_KEY
+hyperbolic               HYPERBOLIC_API_KEY
+deepinfra                DEEPINFRA_API_KEY
+chutes                   CHUTES_API_KEY
+ollama-cloud             OLLAMA_API_KEY
+vercel-ai-gateway        AI_GATEWAY_API_KEY
+zenmux                   ZENMUX_MANAGEMENT_API_KEY
+litellm                  LITELLM_API_KEY                （另需自填 proxy 地址）
+arkcli-agent-plan        ARKCLI_AGENT_PLAN_API_KEY      （额度用 VOLC_ACCESSKEY / VOLC_SECRETKEY）
+arkcli-coding-plan       ARKCLI_CODING_PLAN_API_KEY
+arkcli-agent-plan-team   ARKCLI_AGENT_PLAN_TEAM_API_KEY
+arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
+ark-coding-plan-cn       ARK_CODING_PLAN_CN_API_KEY
+ark-agent-plan-cn        ARK_AGENT_PLAN_CN_API_KEY
+ark-coding-plan-byteplus ARK_CODING_PLAN_BYTEPLUS_API_KEY
+```
 
-推荐使用 MiMo「登录与凭据」中的 **登录并自动导入**：
+解析顺序（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；自定义（`manual`）模式只使用保存的手动 Key。Cookie 与登录文件型凭据不走这条链，见 [MiMo 登录与 Cookie](docs/providers.md#mimo-登录与-cookie) 与 [Codex ChatGPT 订阅凭据](docs/providers.md#codex-chatgpt-订阅凭据)。修改启动环境后是否需要重启取决于目标部署，不能把「我已经改了环境变量」当作运行进程已经读到。
 
-1. 先保存或取消当前编辑，再开始登录。
-2. 插件调用 `playwright-core`，打开**独立临时 Chrome 会话**的官方平台；密码、验证码由你在官方页面自行输入，插件不读取这些字段，也不读取日常 Chrome 配置。
-3. Host 从该会话获取适用于官方 API 的 `api-platform_serviceToken` 和 `userId`（包括 HttpOnly Cookie），先验证账户接口，再保存并更新用量；Cookie 不通过 RPC 返回页面。
-4. 可随时取消或关闭登录窗口；五分钟未完成会超时并关闭。取消、认证失败、网络验证未完成或同一 MiMo 配置已被外部修改时不覆盖凭据。
-5. 账户验证成功但无订阅额度时可以保存登录，界面明确显示「额度未知」，不冒充有额度。
+</details>
 
-需要已安装 **Google Chrome**。新增依赖仅 `playwright-core`，不下载浏览器；缺少 Chrome 时显示错误。当前实现针对 Host 所在机器的可见浏览器，远程/无桌面环境请使用手动导入；真正账号登录与平台接口仍需由用户验收。
+## Permissions & data / 权限与数据
 
-备用 **手动导入**：打开 <https://platform.xiaomimimo.com> 自行登录，从 DevTools → Application → Cookies 获取 Name/Value 或导出 JSON，再粘贴并保存。必须包含上述两个字段。导入错误会显示原因并保留原文，认证过期时重新登录。界面的「仅打开官网」链接不会自动导入日常浏览器的 Cookie。
+**读取 / 写入的文件**
 
-JSON 中有域名的条目按 `platform.xiaomimimo.com` 的 Cookie 域规则过滤，无关站点的 Cookie 不导入。TAB 清单只读取 Name/Value，不把 Domain/Path 混入值；Netscape 导出支持注释和 `#HttpOnly_` 域前缀，并保留可选 Cookie 的空值（两个必需字段仍须非空）。
-
-### Cookie 有效期与到期提醒
-
-官方会话 Cookie **自签发起 24 小时有效**。无论自动登录还是手动导入，保存凭据的同一刻开始计时，并记录在 `~/.dsh/dsh-subusage.json` 的 `xiaomi.loginAt` 与 `xiaomi.expiresAt`（毫秒时间戳，**只是计时元数据，不是秘密**，不参与凭据有效性判断）。
-
-| 剩余时间 | 用量药丸 | 设置页「登录与凭据」 |
+| 路径 | 用途 | 读写 |
 |---|---|---|
-| 超过 2 小时 | 保持原余量文案 | 显示登录时间与剩余时间 |
-| 2 小时内 | ⚠ 黄色药丸，文案「Cookie N 小时后到期」 | 黄色提示剩余时间 |
-| 30 分钟内 | ⚠ 橙色药丸，同文案 | 橙色提示 |
-| 已到期 | ✕ 红色药丸，文案「Cookie 已过期，请重新登录」 | 红色提示 |
-| 额度已用尽 | 仍优先显示额度告警 | — |
+| `~/.dsh/dsh-subusage.json` | 本插件自己的配置：开关、手动 Key、MiMo Cookie、Z.ai 组织 / 项目、LiteLLM 地址、火山 AK/SK、计时元数据 | 读写；POSIX 上新建目录 `0700`、临时文件 `0600`，替换前再收紧 |
+| `~/.codex/auth.json`（或 `$CODEX_HOME/auth.json`） | Codex CLI 的 ChatGPT 登录（要求 `auth_mode: chatgpt`） | **只读**，不保存、不刷新 |
+| `~/.grok/auth.json`（回退 `~/.dsh/.xai-oauth-auth.json`） | Grok CLI / dsh-grok-kit 的 OAuth 登录 | **只读**，不保存、不刷新 |
+| `~/.commandcode/auth.json` | Command Code CLI（`cmd login`）的 Key | **只读**兜底 |
 
-药丸弹层常驻显示剩余时间与到期时刻。到期只是**提醒**：插件不会因为倒计时归零就停用 Cookie，是否真的失效仍以官方接口返回为准（失效时按认证错误处理，重新登录即可）。倒计时也永远不会盖过接口的判定——官方已判定凭据失效时，药丸显示的是失效原因而非剩余时间（唯一例外是「已过期」本身，因为它就是重新登录的提示）。若浏览器报告的 Cookie 过期时间早于 24 小时，以更早者为准；旧版本保存的 Cookie 没有计时记录，界面会明确说明「未记录登录时间」而不是编造倒计时。
+**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`chatgpt.com/backend-api`、火山管控面 `open.volcengineapi.com` / `ark.ap-southeast-1.byteplusapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](docs/providers.md#网络端点)。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。
 
-**安全说明**：Key/Cookie 不再通过用量读取接口回传，界面不回填已保存的秘密；但本版仍兼容原本机 JSON 配置存储，**不是加密凭据库**。该配置位于 `~/.dsh/dsh-subusage.json`，新建目录/临时文件在 POSIX 上按 `0700`/`0600` 创建，替换前再次收紧文件权限；Windows 的实际访问权限仍取决于目录 ACL，`chmod` 不能替代 ACL 或加密库。请勿上传、分享或写入日志。隔离浏览器仅用于你主动发起的官方登录；它不是后台扫描或导入日常浏览器全部凭据的工具。加密凭据存储通道仍未实施。
+**密钥如何处理**
 
-### 火山方舟 Ark 凭据
+- Key 与 Cookie **不回传页面**：读取接口不返回凭据本身，界面不回填已保存的秘密（Cookie 只在需要替换时输入）；公开设置只有 `hasKeys` / `hasCookie` 这类布尔状态与来源标记。
+- **日志与产物不落盘**：真实 Key / Cookie 不会写进日志、测试、截图或读取结果；MiMo 响应在返回前做字段级 Cookie 脱敏。
+- MiMo 自动登录使用**独立临时 Chrome 会话**：不读取日常 Chrome 配置，不读取密码 / 验证码字段，Cookie 不通过 RPC 返回页面；五分钟未完成自动超时。
+- 计时元数据（`xiaomi.loginAt` / `xiaomi.expiresAt`）只是本地时间戳，不是秘密，也不参与凭据有效性判断。
+- **这不是加密凭据库**：本版仍兼容本机 JSON 配置存储，凭据以明文落盘；加密凭据存储通道尚未实施。Windows 上的实际访问权限取决于目录 ACL，`chmod` 不能替代 ACL 或加密库。请不要上传、分享该配置文件，也不要把它写进日志或工单。
 
-火山方舟的套餐额度走**管控面 OpenAPI**（`open.volcengineapi.com`，HMAC-SHA256 签名），只能用 **IAM Access Key**（AK/SK 配对）：推理用的方舟 API Key 交给上游会被拒绝，两者是两套凭据。三个 Ark 路由共用这一组 AK/SK。
+## 额度查询 API
 
-1. 在火山引擎控制台创建 Access Key，建议用子用户并只授予方舟只读权限（额度接口不接受主账号之外的其它鉴权方式）。
-2. 打开 **设置 → 订阅用量 → 提供商管理**，展开火山方舟任意一家的「连接与凭据」，填入 AccessKey ID 与 SecretAccessKey 并保存。
-3. 或在启动环境里设置 `VOLC_ACCESSKEY` / `VOLC_SECRETKEY`；也可以先把凭据写进 DSH 凭据服务，由「继承凭据 / 环境变量」模式读取。
+**Agent 工具 `subusage_quota`**（模型可直接调用，只读：不写设置、不碰凭据）
 
-AK 与 SK 必须来自同一个 IAM 用户：跨来源拼凑只会得到 401（`SignatureDoesNotMatch`），而报错本身看不出根因。两个字段各自「留空表示不修改该项」，清除要显式点「清除 AK/SK」——只有一半凭据时按未配置显示，不会拿半个签名去请求。
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| `providers` | `string[]`（可选） | 限定 provider id，例如 `["deepseek", "openrouter"]`；省略表示读取全部 |
+| `refresh` | `boolean`（可选） | `true` 绕过最多 60 秒的缓存，仅在确需最新数字时使用 |
 
-额度按 provider 分派 Action：Coding Plan 走 `GetCodingPlanUsage`，Agent Plan 走 `GetAFPUsage`。账号没有对应套餐时接口返回 **HTTP 200 且窗口为空**，界面显示「未检测到该套餐订阅」，不会画成 0% 用量。401（签名/凭据）、403（权限或未订阅）、接口不存在三类失败分别给出不同的行动项。
-
-> `GetCodingPlanUsage` 并未出现在官方 API 概览里（由官方 ark-cli 与多个第三方实现确证可用），存在变更风险；`GetAFPUsage` 有官方文档。
-
-### Codex（ChatGPT 订阅）凭据
-
-Codex 的订阅额度走 ChatGPT 后端的私有接口（`GET https://chatgpt.com/backend-api/wham/usage`），凭据是 **Codex CLI 自己的 ChatGPT 登录**，不是 `OPENAI_API_KEY`：
-
-- 登录文件：`$CODEX_HOME/auth.json`，默认 `~/.codex/auth.json`。
-- 必须 `auth_mode` 为 `chatgpt`。若该文件是 API Key 模式，插件按「未配置」处理并在界面上说明——API Key 取不到订阅额度，不拿它去冒充订阅凭据。
-- 插件**只读**这个文件：不保存、不刷新 token（token 由 Codex CLI 自己轮换，第三端刷新会互相顶掉）。请用 `codex login` 完成登录。
-
-窗口取 `rate_limit.primary_window`（5 小时）与 `secondary_window`（7 天；免费档是 30 天，按 `window_seconds` 判断窗口名）。`resets_at` 实测是 **Unix 秒数**（ISO 串也兼容），`plan_type` 作为套餐档位显示。`credits` 只在接口真正报告了可用余额时显示，`has_credits=false`、`unlimited` 或余额为 0 都不显示，不会把「没有额度」画成 0。接口返回 HTTP 200 但没有任何窗口时显示「未检测到订阅额度窗口」，不当作 0% 用量。
-
-> 这是未公开的私有接口（CodexBar / cc-switch / QuotaRadar 三家实现互相印证），官方没有文档承诺，存在变更风险。
-
-### 额度查询 API（给其他插件与 Agent）
-
-**Agent 工具**：`subusage_quota`。模型可以直接调用它查询各厂商的剩余额度与余额，参数 `providers`（可选，限定厂商 id）与 `refresh`（可选，绕过最多 60 秒的缓存）。工具**只读**：不写设置、不碰凭据。
-
-**Host 侧服务**：本插件的 Host 服务 key 是 `subUsage`（cordis `Service`），其他插件可以直接消费：
+**Host 服务**（Cordis `Service`，key 为 `subUsage`）：
 
 ```js
 const service = ctx.get("subUsage");
 const view = await service.quota({ providerIds: ["deepseek"], force: false });
-// view = { updatedAt, providers: [{ providerId, label, state, windows, extras, coverage, freshness, lastSuccessAt, error? }] }
+// view = {
+//   updatedAt,
+//   providers: [{ providerId, label, state, windows, extras, coverage, freshness, lastSuccessAt, error? }]
+// }
 ```
 
-**只读且刻意精简**：`quota()` 不返回设置，也不返回 `keySource` / `apiDetected` / 继承变量名等内部状态——第三方消费者只需要额度，不需要知道本机配了哪些凭据，更不该碰到任何与 Key 相关的字段。`providerIds` 里的未知 id 会被忽略；单家读取失败只影响它自己的条目，其余照常返回。
+- `state`：`ok` | `no-key` | `no-cookie` | `error` | `disabled`
+- `windows[].percent` 是**已用**百分比（0–100）；`extras` 放余额与套餐名等补充项
+- 视图**刻意精简**：不返回设置，也不返回 `keySource` / `apiDetected` / 继承变量名等内部状态，第三方消费者拿不到任何与 Key 相关的字段
+- `providerIds` 里的未知 id 会被忽略；单家读取失败只影响它自己的条目，其余照常返回
+- 与设置页共用同一份缓存（TTL 60 秒），频繁调用不会反复请求各家接口
 
-数据与设置页共用同一份缓存（TTL 60 秒），所以频繁调用不会反复打各家厂商接口。
-
-## 支持的数据
-
-| 模型商 | 窗口 | 明细 |
-|---|---|---|
-| DeepSeek | 无窗口（余额型） | 账户余额（`balance_infos` 的币种与总额）；余额不可用时提示充值，不显示成 0 元 |
-| Z.ai 中国 | 5 小时、每周（按响应） | Token / Credits 配额、套餐档 |
-| Z.ai 国际 | 5 小时、每周（按响应） | Token / Credits 配额，区域凭据独立 |
-| Synthetic | 滚动订阅池 | 已用/总请求次数、重置时间 |
-| NanoGPT | 每日、每周、试用周期（按响应） | 输入 Token 数、重置时间；不包含图像额度 |
-| Kimi | 5 小时、7 天、月度（按账户下发） | 已用百分比、套餐档 |
-| MiMo | 本周期额度池 | 用量明细、重置时间、套餐与余额 |
-| OpenCode Go | 滚动、每周、每月 | 已用百分比、重置时间 |
-| MiniMax 国际 / 中国 | 短周期（通常 5 小时）、每周 | 通用/编程池已用百分比、可信计数明细、重置时间 |
-| Command Code | 5 小时、每周、月额度池 | 已用/上限（月总额为套餐快照）、重置/账期、套餐（planId）、月剩余、已购 + 赠送余额 |
-| SuperGrok | 周期池（通常每周，旧账户为月账期） | 统一用量池已用百分比（剩余 = 100 − 已用）、重置时间、套餐名（subscription_tier_display）、已购加量余额（美元） |
-| Ark Coding Plan（中国 / BytePlus） | 5 小时、周、月 | 已用百分比、重置时间（接口只给百分比，不返回绝对量） |
-| Ark Agent Plan（中国） | 5 小时、日、周、月 | AFP 已用/配额绝对值与百分比、重置时间、套餐档位（Small / Medium / Large / Max） |
-| SiliconFlow | 无窗口（余额型） | 账户余额（元）。余额没有上限也就没有百分比，药丸直接显示余额，弹层与设置页列出明细 |
-| Codex | 5 小时、7 天（免费档的次窗口是 30 天） | 已用百分比、重置时间；`credits` 只在真正报告了可用余额时显示（`has_credits=false`、`unlimited`、余额为 0 都不显示，不画成 0） |
-| OpenRouter | 按 key 限额周期（月/周/日）；免费档另有每日免费请求窗口 | 已用比例与限额明细；有 management key 时显示账户余额（`total_credits − total_usage`）。接口不给具体重置时刻，故不显示重置时间 |
-| Novita / Hyperbolic / Vercel AI Gateway | 无窗口（余额型） | 账户余额（美元）。单位换算按各家接口：Novita 是 **1/10000 USD**、Hyperbolic 是**美分**、Vercel 是**十进制字符串** |
-| DeepInfra | 无窗口（余额型） | 可用余额＝`−stripe_balance`（接口用负数表示预付资金）；欠款时单独提示，不显示成负余额 |
-| Chutes | 通用限额窗口 | `{quota, used}` 绝对量；接口不给重置时刻，故不显示重置时间 |
-| Ollama Cloud | session / 周 / 月 | `limits.*.usage` 是 **0–1 小数**；缺层跳过该窗口而不判失败 |
-| ZenMux | 5 小时滚动窗口 | `usage_percentage` 是 **0–1 小数**，另附 flows 明细与 `resets_at`；有 Management Key 时显示 PAYG 余额。两个端点各拿各的——余额被拒不影响配额 |
-| NanoGPT | 日 / 周 / 试用周期（按响应） | 输入 Token 数、重置时间、账户状态；另有账户余额（美元） |
-| LiteLLM | 预算周期（`budget_reset_at` 存在时才显示重置） | 已用 / 预算与百分比；**没有预算上限时不编造百分比**，只如实显示已用金额 |
-
-非公开控制台接口可能变更；缺失或非法百分比不会当作零用量。部分数据、未知额度和暂时失败有明确状态，不能据此保证推理接口一定可用。
-
-评估过但未接入的厂商（Requesty / Portkey / Groq / Together / Cerebras 等）及理由见 [提供商覆盖与取舍](docs/provider-coverage.md)，其中包括已由用户决策跳过的 Anthropic。
-
-Kimi 的窗口集合随套餐体系变化：老套餐（节奏命名，如 Allegro）返回 5 小时与 7 天，新套餐（Go / Plus 命名）返回 5 小时与月度总额，因此同一插件在不同账号上显示的窗口数可以不同；月度池里的 Code 份额不是独立预算，不单独成窗。插件按接口实际下发的窗口解析，不要求固定集合。
-
-
-## 常见问题
+## Troubleshooting / 常见问题
 
 | 现象 | 排查方法 |
 |---|---|
+| 药丸不显示 | 依次确认：当前模型的 provider id 是否与上表一致（自定义 id 不会自动映射）→ 该家检测开关是否开启 → 是否被「没有检测到API的默认隐藏」收起（可在设置页临时关掉它）→ 运行中的 Host 与 Client 是否都已重载 |
 | 设置页没有提供商标签 | 展开提供商管理，确认开关和凭据；无凭据的条目默认隐藏，可临时关闭自动隐藏查看指引 |
-| 已配置凭据却没有药丸 | 确认当前模型的提供商 ID 与支持表一致、检测已开启；自定义 ID 可在设置页查看，但不会自动映射 |
-| 显示认证失效 | 检查是否用了对应产品/区域的订阅 Key；MiMo 重新登录或导入 Cookie；旧额度不会当作有效数据保留 |
-| Kimi 缺少 7 天窗口，或提示结构错误 | 窗口集合按套餐体系下发：老套餐（节奏命名，如 Allegro）为 5 小时 + 7 天，新套餐（Go / Plus 命名）为 5 小时 + 月度总额。0.8.3 起按实际下发的窗口解析，不再要求 7 天窗口；升级后仍报「Invalid Kimi usage response」即为未识别的字段结构，插件不会猜测额度，可回报该响应 |
-| 显示缓存、部分数据或额度未知 | 查看更新时间和错误说明；缓存来自之前的成功读取，部分数据不保证有可用额度，余额也不等于订阅余量 |
-| 刷新后数字暂未变化 | 成功结果按提供商缓存 60 秒；手动刷新可跳过普通 TTL，但仍遵守限流退避和 Retry-After |
-| MiMo 自动登录无法启动 | Host 所在机器需安装 Google Chrome 并有桌面环境；远程或无桌面部署使用手动导入 |
-| 药丸提示「Cookie N 小时后到期」 | MiMo 会话 Cookie 自签发起 24 小时有效，按提示重新登录即可续期；手动导入同样重新计时 |
+| 某家读取失败，其他家正常 | 单家失败只影响自己的条目。按文案分类处理：认证类（401 / 凭据被拒）换对应产品与区域的凭据；权限 / 未订阅类（403）检查账号权限与套餐；限流类等待退避后重试 |
+| 显示认证失效 | 检查是否用了对应产品 / 区域的订阅 Key；MiMo 重新登录或导入 Cookie；旧额度不会当作有效数据保留 |
+| MiMo Cookie 过期 | 会话 Cookie 自签发起 24 小时有效。药丸与设置页会在 2 小时内 / 30 分钟内分别变黄、变橙，到期显示「Cookie 已过期，请重新登录」；重新登录或重新导入即重新计时。倒计时只是提醒，真实失效以官方接口返回为准 |
 | 药丸显示「未记录登录时间」 | 凭据由旧版本保存，没有计时元数据；重新登录或重新导入一次后开始计时 |
+| Kimi 缺少 7 天窗口，或提示结构错误 | 窗口集合按套餐体系下发：老套餐（节奏命名，如 Allegro）为 5 小时 + 7 天，新套餐（Go / Plus 命名）为 5 小时 + 月度总额。0.8.3 起按实际下发的窗口解析，不再要求 7 天窗口；升级后仍报 `Invalid Kimi usage response` 即为未识别的字段结构，插件不会猜测额度，可回报该响应 |
+| 显示缓存、部分数据或额度未知 | 查看更新时间和错误说明；缓存来自之前的成功读取，部分数据不保证有可用额度，余额也不等于订阅余量 |
+| 刷新后数字暂未变化 | 成功结果按提供商缓存 60 秒；手动刷新可跳过普通 TTL，但仍遵守限流退避和 `Retry-After` |
+| MiMo 自动登录无法启动 | Host 所在机器需安装 Google Chrome 并有桌面环境；远程或无桌面部署使用手动导入 |
 | 保存成功但验证失败 | 凭据已保存，检查网络、区域或账号后重试；保存与在线验证分别反馈 |
 | 保存提示配置已改变 | 另一窗口或实例更新了设置；重新读取配置后再编辑，避免旧表单覆盖新值 |
 | 升级后仍是旧界面或 RPC 不匹配 | 确认运行中的 Host 和 Client 都已重载；仅刷新页面不能保证 Host 升级 |
-| Command Code 额度与实际账户不同 | 可在药丸弹层切换提供方插件的服务账户（activeAccount），切换后药丸与弹层用量同步显示所选账户的额度；「自动轮换」时仍显示默认账户（顶层 Key）的用量，不跟随轮换中的实际服务账户，提供方自定义 apiBase 也不跟随 |
+| Command Code 额度与实际账户不同 | 可在药丸弹层切换提供方插件的服务账户；「自动轮换」时仍显示默认账户（顶层 Key）的用量，不跟随轮换中的实际服务账户，提供方自定义 `apiBase` 也不跟随 |
 | SuperGrok 提示认证失效 | 登录文件里的 OAuth token 会过期；在 设置 → Grok Kit 重新登录、运行 `grok login`，或让 Grok 侧使用一次以刷新共享登录文件后重试。API Key（`XAI_API_KEY`）取不到订阅周池 |
+| 火山方舟报签名或权限错误 | AK 与 SK 必须来自同一个 IAM 用户（跨来源拼凑只会 401 且看不出根因）；确认用的是 IAM Access Key 而不是方舟推理 API Key；403 多为未订阅或权限不足 |
 
-## 提供商 ID 与默认开关
+## Development / 开发
 
-| 提供商 | ID | 新安装默认值 |
-|---|---|---|
-| Z.ai 中国 | `zai-coding-cn` | 开启 |
-| Kimi Coding | `kimi-coding` | 开启 |
-| MiMo | `xiaomi-token-plan-cn` | 开启 |
-| OpenCode Go | `opencode-go` | 开启 |
-| Command Code | `commandcode` | 开启 |
-| SuperGrok | `xai-oauth` | 开启 |
-| MiniMax 国际 | `minimax` | 开启 |
-| MiniMax 中国 | `minimax-cn` | 开启 |
-| Z.ai 国际 | `zai-coding` | **关闭** |
-| Synthetic | `synthetic` | **关闭** |
-| NanoGPT | `nanogpt` | **关闭** |
+| 路径 | 职责 |
+|---|---|
+| `lib/index.js` | 提供商适配、凭据解析、持久化、缓存、Host RPC 与 `subusage_quota` 工具 |
+| `lib/client.js` | Client 模块、共享 store、设置页与模型药丸（含界面中英文文案） |
+| `lib/volcengine.js` | 火山方舟 AK/SK 签名与窗口解析（纯函数、零依赖） |
+| `lib/mimo-login.js` | 隔离 Chrome 登录、Cookie 提取与任务生命周期 |
+| `cordis.patch.yml`、`package.json` | bundle 注册、入口、依赖与打包白名单 |
+| `tests/`、`scripts/` | 桩网络 / 隔离文件系统回归；清单、打包、离线预览与浏览器检查 |
+| `docs/` | 开发约定、提供商覆盖、UX 设计、发布与更新记录 |
 
-开关只控制本插件的订阅检测与显示，关闭后保留凭据。默认隐藏只影响显示，不自动开启被关闭的提供商。新增三项在旧配置升级时也保持关闭。
-
-## 界面预览
-
-以下为 0.7.0 的离线组件测试截图，使用虚构用量数据，不包含真实账号信息，也不是运行中的 DSH 截图。市场截图由根目录的 `screenshots.json` 声明。
-
-深色设置页：查看订阅用量、管理凭据与提供商；新增三家默认关闭。
-
-![深色订阅设置页（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/settings-dark.png)
-
-浅色用量弹层：查看每日与每周额度、用量明细。
-
-![浅色 NanoGPT 用量弹层（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/usage-popover-light.png)
-
-
-## 开发、发布与文档
-
-基础检查无需安装 DSH 或连接账号：
+没有源码转译步骤，直接维护 `lib/*.js`。基础检查不需要安装 DSH 或连接账号：
 
 ```console
 node tests/run-all.mjs
@@ -261,16 +293,38 @@ node --check lib/client.js
 node --check lib/mimo-login.js
 ```
 
-推送到 `main` 后，GitHub Actions 检查并发布提交对应的 GitHub Release。推送与包版本一致的 `vX.Y.Z` 标签后，受 npm 信任的 `release.yml` 通过 Trusted Publishing 自动发布新 npm 版本；已有版本跳过。发布产物不会自动安装或重启 DSH。
+离线预览（生成 HTML，使用虚构用量与桩 Hook，不连接 DSH、不读取真实凭据）：
 
-- [开发与验证](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md)：RPC、缓存、凭据、离线预览与实机验收。
-- [UX 设计](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/design-ux.md)：导航、状态、编辑保护与弹层行为。
-- [发布与市场收录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/publish.md)：GitHub Release、npm、条目与截图维护。
-- [更新记录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/changelog.md)：各版本功能变化。
-- [0.7.0 审查记录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/code-review.md)：修复、接口来源和验证边界。
+```powershell
+foreach ($theme in @('dark', 'light')) {
+  foreach ($width in @(530, 500, 499, 360)) {
+    node scripts/render-ui-preview.mjs $width xiaomi-token-plan-cn $theme credentials
+  }
+}
+node scripts/render-ui-preview.mjs 530 nanogpt light pill
+node scripts/check-browser-runtime.mjs   # 需要工作区可解析 playwright-core 且本机装有 Google Chrome
+```
 
-测试使用虚构凭据、桩网络和离线组件。真实 DSH Loader、实际账号在线接口与多账户映射尚未验收；截图不代表已通过这些检查。
+文档入口：[开发与验证](docs/development.md)（RPC 契约、缓存与凭据约定、离线预览与实机验收范围）、[提供商清单与额度语义](docs/providers.md)、[提供商覆盖与取舍](docs/provider-coverage.md)、[UX 设计](docs/design-ux.md)、[发布与市场收录](docs/publish.md)、[更新记录](docs/changelog.md)、[审查记录](docs/code-review.md)。
 
-## 许可
+> 打包说明：`package.json` 的 `files` 白名单是 `lib` / `locale` / `cordis.patch.yml` / `README.md`，因此 `assets/title.svg`、`assets/screenshots/` 与 `docs/` **不进 npm 包**——顶部 title 图与下面的界面预览只在 GitHub 页面显示。改动白名单属于发布决策，需单独处理。
 
-MIT。与 DeepSeek Harness 及各服务商无官方关联。
+### 界面预览
+
+以下为 0.7.0 的离线组件测试截图，使用虚构用量数据，不包含真实账号信息，也不是运行中的 DSH 截图。
+
+深色设置页：查看订阅用量、管理凭据与提供商。
+
+![深色订阅设置页（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/settings-dark.png)
+
+浅色用量弹层：查看每日与每周额度、用量明细。
+
+![浅色 NanoGPT 用量弹层（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/usage-popover-light.png)
+
+截图声明见根目录 [`screenshots.json`](screenshots.json)。两张图都是**当前版本**的离线组件预览（虚构用量、桩网络、无凭据），已随本版本重做，底部水印明确标注「非运行中的 DSH 截图」。真实 DSH Loader、实际账号在线接口与多账户映射仍未验收，截图不代表已通过这些检查。
+
+## License & security / 许可与安全
+
+MIT，见 [`package.json`](package.json) 的 `license` 字段。本项目与 DeepSeek Harness 及各服务商**无官方关联**；非公开接口可能随时变更，请以各服务商官方条款为准。
+
+报告安全问题：请**不要**在公开 issue 里粘贴 Key、Cookie 或完整配置文件。优先使用 GitHub 仓库的 **Security → Report a vulnerability** 私有渠道；该入口不可用时，也可以在 issue 中只描述问题与影响范围，凭据一律留空。任何复现步骤请先自行脱敏。

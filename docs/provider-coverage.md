@@ -4,12 +4,12 @@
 
 > 本文件是决策记录，不是接入指引。当前行为、凭据与窗口语义见 [README](../README.md)。
 
-## 已支持（26 家）
+## 已支持（30 条 provider id）
 
 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|
 | `deepseek` | 余额（账户） | Bearer，与推理同 Key | 开 |
-| `zai-coding-cn` / `zai-coding` | 订阅窗口 | 裸 API Key（+ 团队档需 org/project） | 中国开 / 国际关 |
+| `zai-coding-cn` / `zai-coding` | 订阅窗口 | 中国 Bearer（团队档另加组织/项目头）/ 国际裸 `authorization` | 中国开 / 国际关 |
 | `kimi-coding` | 订阅窗口 | Bearer | 开 |
 | `xiaomi-token-plan-cn` | 周期额度池 | 官方平台 Cookie（含登录流程） | 开 |
 | `opencode-go` | 订阅窗口 | Bearer | 开 |
@@ -17,7 +17,10 @@
 | `openai-codex` | ChatGPT 订阅窗口 | 只读 Codex CLI 的 OAuth 登录文件 | 开 |
 | `xai-oauth` | 周期池 | 只读 Grok CLI 的 OAuth 登录文件 | 开 |
 | `minimax-cn` | 短周期 / 周 | Bearer | 开 |
+| `arkcli-agent-plan` / `arkcli-coding-plan` | 订阅窗口（AFP / 按次数） | 管控面 IAM AK/SK 签名 | 开 |
 | `minimax` | 短周期 / 周 | Bearer | 关（国际版实际使用少） |
+| `synthetic` | 滚动订阅池 | Bearer | 关 |
+| `arkcli-agent-plan-team` / `arkcli-coding-plan-team` | 席位额度（AFP / 百分比） | 同 AK/SK，另需查看席位的权限 | 关 |
 | `ark-coding-plan-cn` / `ark-agent-plan-cn` / `ark-coding-plan-byteplus` | 订阅窗口（AFP） | IAM AK/SK 签名 | 关 |
 | `siliconflow` | 余额 | Bearer，与推理同 Key | 关 |
 | `openrouter` | 限额窗口 + 余额 | 推理 Key（余额需 management key） | 关 |
@@ -25,6 +28,9 @@
 | `nanogpt` | 日 / 周配额 + 余额 | 单 Key（余额端点用 x-api-key） | 关 |
 | `zenmux` | 5h 配额 + PAYG 余额 | **Management API Key** | 关 |
 | `litellm` | 预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
+
+> 火山方舟有**两套 provider id**：`arkcli-*` 是官方 CLI（`arkcli helper configure`）写的路由，`ark-*` 是旧插件 `@volcengine/ark-plan-api` 写的路由。哪个 id 生效取决于你用哪种方式安装——**药丸按 id 精确匹配**，装错一边就不会显示。企业版/团队版权限特殊，默认关闭。
+
 
 ## 评估后不接入
 

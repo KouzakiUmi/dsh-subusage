@@ -84,12 +84,12 @@ url: https://github.com/KouzakiUmi/dsh-subusage
 name: KouzakiUmi/dsh-subusage
 category: usage
 description:
-  en: 'Subscription usage for Z.ai, Kimi, MiMo, OpenCode Go, Command Code, MiniMax, Synthetic and NanoGPT, with a model-selector pill and provider settings.'
-  zh: '显示 Z.ai、Kimi、MiMo、OpenCode Go、Command Code、MiniMax、Synthetic 和 NanoGPT 订阅用量，提供模型选择器旁的余量药丸与提供商设置。'
+  en: 'Subscription quota and balance pills for DeepSeek, Z.ai, Kimi, Xiaomi MiMo, OpenCode Go, Command Code, Codex, SuperGrok, MiniMax, Volcengine Ark, SiliconFlow, OpenRouter and other AI providers in DeepSeek Harness, with one settings page for detection switches and credentials and a read-only quota API for other plugins.'
+  zh: '在 DeepSeek Harness 的模型选择器旁为 DeepSeek、Z.ai、Kimi、小米 MiMo、OpenCode Go、Command Code、Codex、SuperGrok、MiniMax、火山方舟 Ark、SiliconFlow、OpenRouter 等提供商显示订阅余量与余额药丸，提供统一管理检测开关与凭据的设置页，并对其他插件开放只读额度查询接口。'
 tarball: https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz
 ```
 
-提交只添加该条目，不修改其他插件条目或手工改写注册表的生成 README。npm 关联由本包的 `repository` 字段自动建立，条目不添加 `npm:` 字段。
+分类维持 `usage`：本插件只**读取并展示**用量/余额，不注册模型路由（`models` 会误导为「提供模型」）。提交只添加该条目，不修改其他插件条目或手工改写注册表的生成 README。npm 关联由本包的 `repository` 字段自动建立，条目不添加 `npm:` 字段。
 
 ### 本仓库核对结果
 

@@ -1,4 +1,4 @@
 {
   "name": "Subscription usage",
-  "description": "Shows subscription quota for Z.ai, Kimi, MiMo, OpenCode Go, Command Code, SuperGrok, MiniMax, Synthetic and NanoGPT, with shared refresh and credential management. Z.ai International, Synthetic and NanoGPT are disabled by default."
+  "description": "Shows subscription quota and balance for 30 AI providers (DeepSeek, Volcengine Ark, Z.ai, Kimi, MiMo, Codex, MiniMax, OpenRouter, SiliconFlow, LiteLLM, ...), with one settings page for detection switches and credentials plus a read-only quota API."
 }

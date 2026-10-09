@@ -134,7 +134,8 @@ const RESET = "2026-11-01T00:00:00.000Z";
 	const api = spec.factory((name) => { assert.equal(name, "react"); return react; }).__test;
 	const flat = (v) => JSON.stringify(v);
 	assert.ok(api.PROVIDER_ORDER.includes(ID), "litellm 在提供商顺序中");
-	assert.equal(api.PROVIDER_ORDER.at(-1), "litellm", "新 provider 追加在末尾");
+	// 追加在既有条目之后即可；用相对顺序断言，避免后续新增把这条打脆。
+	assert.ok(api.PROVIDER_ORDER.indexOf(ID) > api.PROVIDER_ORDER.indexOf("zenmux"), "追加在既有条目之后");
 	assert.equal(api.PROVIDER_META[ID].defaultEnabled, false);
 	// 代理地址不是秘密：草稿回填已存值。
 	const draft = api.draftFor({ keyModes: {}, litellm: { baseUrl: "https://gw.corp" } }, ID);

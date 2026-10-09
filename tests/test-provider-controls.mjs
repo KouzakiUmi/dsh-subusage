@@ -12,7 +12,7 @@ const ctx = { effect() {}, llm: { listProviders: () => [{ id: Z }] } };
 let service = new SubUsageService(ctx, options);
 let result = await service.read();
 assert.equal(result.settings.visibility.hideWithoutApi, true);
-const DEFAULT_OFF = ["zai-coding", "synthetic", "nanogpt", "ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm"];
+const DEFAULT_OFF = ["zai-coding", "synthetic", "nanogpt", "ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "arkcli-agent-plan-team", "arkcli-coding-plan-team"];
 assert(Object.entries(result.settings.visibility.providers).every(([id, on]) => DEFAULT_OFF.includes(id) ? !on : on), "旧厂商保持默认值，新增厂商默认关闭");
 assert.equal(result.configured[Z], true); assert.equal(result.entries.find(e => e.providerId === Z).apiDetected, false, "有路由不代表有 Key");
 assert.equal(result.configured[M], false); assert.equal(result.entries.find(e => e.providerId === M).apiDetected, true, "有手动 Key 即可检测，不依赖路由注册");

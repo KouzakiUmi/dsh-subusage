@@ -2,9 +2,9 @@
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import assert from "node:assert/strict";
-const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go", "commandcode", "openai-codex", "xai-oauth", "minimax-cn", "deepseek"];
+const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go", "commandcode", "openai-codex", "xai-oauth", "minimax-cn", "deepseek", "arkcli-agent-plan", "arkcli-coding-plan"];
 // 默认关闭的厂商：在提供商管理里可见开关、但不产生 tab。新增厂商时同步这里。
-const defaultOff = ["zai-coding", "synthetic", "nanogpt", "ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm"];
+const defaultOff = ["zai-coding", "synthetic", "nanogpt", "ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "arkcli-agent-plan-team", "arkcli-coding-plan-team"];
 const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
 let spec, clock = Date.parse("2026-10-01T10:00:00Z"), nextTimer = 0;
 const intervals = new Map(), timeouts = new Map(), events = new Map();
@@ -125,7 +125,7 @@ const uiStore = { getSnapshot: () => uiSnapshot, subscribe: () => () => {}, read
 const uh = new Hooks(), props = { usageStore: uiStore, t, getLocale: () => "zh" };
 tree = uh.render(api.SubusageSection, props);
 let tabs = nodes(tree).filter((n) => n.props.role === "tab");
-assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Codex", "SuperGrok", "MiniMax CN", "DeepSeek"]);
+assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Codex", "SuperGrok", "MiniMax CN", "DeepSeek", "ARK Plan", "ARK Code"]);
 assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
 assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
 assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, ids.length + defaultOff.length + 1); assert.ok(!textOf(tree).includes("保存设置"));
