@@ -6,7 +6,7 @@
 
 > **English.** dsh-subusage shows subscription quota and balance for the AI providers you already use, as a pill next to the model selector in DeepSeek Harness. Provider switches and credentials live in one settings page, and other plugins or agents can read the same snapshot through a read-only quota API.
 
-[![npm version](https://img.shields.io/badge/npm-0.10.6-blue)](https://www.npmjs.com/package/dsh-subusage)
+[![npm version](https://img.shields.io/badge/npm-0.10.7-blue)](https://www.npmjs.com/package/dsh-subusage)
 [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
 [![DSH](https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.1%20%3C0.3.0--0-informational)](#compatibility--兼容性)
 
@@ -45,8 +45,6 @@
 | MiniMax（国际） | `minimax` | 短周期 / 周 | Bearer | 关 |
 | ARK Agent Plan Team (arkcli) | `arkcli-agent-plan-team` | 席位额度（AFP） | IAM AK/SK 签名 | 关 |
 | ARK Coding Plan Team (arkcli) | `arkcli-coding-plan-team` | 席位额度 | IAM AK/SK 签名 | 关 |
-| Ark Coding Plan（中国，旧插件路由） | `ark-coding-plan-cn` | 订阅窗口 | IAM AK/SK 签名 | 关 |
-| Ark Agent Plan（中国，旧插件路由） | `ark-agent-plan-cn` | 订阅窗口（AFP） | IAM AK/SK 签名 | 关 |
 | Ark Coding Plan（BytePlus，旧插件路由） | `ark-coding-plan-byteplus` | 订阅窗口 | IAM AK/SK 签名 | 关 |
 | SiliconFlow | `siliconflow` | 余额 | Bearer，与推理同一把 Key | 关 |
 | OpenRouter | `openrouter` | 限额窗口 + 余额 | 推理 Key（余额需 management / provisioning key） | 关 |
@@ -142,7 +140,7 @@ $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需
 - **设置页路径**：设置 → **订阅用量** → 提供商管理。「没有检测到API的默认隐藏」默认开启；首次没有可见条目时管理区自动展开。关闭的提供商仍可配置凭据，只是不会发起用量请求。
 - **凭据从哪来**：每一类凭据的**官网入口、环境变量名与界面填入位置**都写在[凭据获取指引](docs/credentials.md)——包括火山的 IAM AK/SK（子用户还要挂 `ArkReadOnlyAccess` 且不限制到项目）、MiMo 的平台会话 Cookie、以及各家 API Key 的对照表。**注意推理 Key 与额度凭据不通用。**
 - **默认开关策略**：新安装默认开启 10 条、默认关闭 20 条（**Codex 默认关闭**——它的提供方插件自带用量药丸）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
-- **火山方舟是一组**：7 条路由共用同一组 IAM AK/SK，所以设置页只呈现**一张卡片、一个开关**（组内最后选的那条作为代表），卡片里写明本机实际装了哪几条。这些 provider id 并没有合并——药丸仍按 id 匹配路由。
+- **火山方舟是一组**：5 条路由共用同一组 IAM AK/SK，所以设置页只呈现**一张卡片、一个开关**（组内最后选的那条作为代表），卡片里写明本机实际装了哪几条。这些 provider id 并没有合并——药丸仍按 id 匹配路由。旧插件 `@volcengine/ark-plan-api` 的两个国内路由（`ark-coding-plan-cn` / `ark-agent-plan-cn`）**已移除**：它们与 arkcli 的路由查同一份订阅，并列显示只会让人以为买了两个套餐；装了旧插件的用户，药丸仍按那两个 id 显示同一份数据（入口归并到 arkcli 路由）。
 - **火山方舟不按路由收起**：它的额度走**账号级管控面**，一组 AK/SK 就能查到名下所有套餐（`GetCodingPlanUsage` 与 `GetAFPUsage` 是同一套协议、同一组凭据）。推理路由装没装只影响模型能不能用，**不影响额度能不能查**——所以只持有 Coding Plan、却没在 DSH 里配 coding-plan 路由时，那条额度照样会显示（前提是配了 AK/SK）。
 - **凭据来源优先级**（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；切到自定义（`manual`）模式时只使用保存的手动 Key。界面会区分这三种来源。
 - **不接受本地 Key 的提供商**：`commandcode`（凭据链属提供方插件）、`xai-oauth`、`openai-codex`（只读各自 CLI 的登录文件），以及 MiMo（Cookie 会话）。
@@ -167,7 +165,7 @@ $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需
 | Command Code | `COMMANDCODE_API_KEY` | 凭据由提供方插件管理，本页只读继承；兜底读取 `~/.commandcode/auth.json`（`cmd login`） |
 | SuperGrok | 无 | `xai-oauth` 路由；只读 dsh-grok-kit / Grok CLI 共享的 OAuth 登录文件 `~/.grok/auth.json`（旧版 `~/.dsh/.xai-oauth-auth.json`），不保存、**不刷新 token**；access token 过期时直接说明过期时间并提示去刷（不代刷——refresh-token 轮换由 Grok CLI / grok-kit 各自的锁协议管理，第三端刷新会把它们的轮换顶掉）。API Key（`XAI_API_KEY`）取不到订阅周池 |
 | Codex | 无 | `openai-codex` 路由；只读 Codex CLI 的 ChatGPT 订阅登录文件（`$CODEX_HOME/auth.json` 或 `~/.codex/auth.json`，要求 `auth_mode` 为 `chatgpt`），不保存、不刷新 token |
-| 火山方舟 Ark（7 条路由） | `VOLC_ACCESSKEY` + `VOLC_SECRETKEY` | 额度查询要 **IAM Access Key 的 AK/SK 配对**，与推理 API Key（`ARKCLI_*_API_KEY` / `ARK_*_API_KEY`）**不是同一套**；7 条路由共用一组 AK/SK。这一组 AK/SK 能**同时**查到 Agent Plan 与 Coding Plan（含团队版席位）——不存在「Coding Plan 专用查询 key」 |
+| 火山方舟 Ark（5 条路由） | `VOLC_ACCESSKEY` + `VOLC_SECRETKEY` | 额度查询要 **IAM Access Key 的 AK/SK 配对**，与推理 API Key（`ARKCLI_*_API_KEY` / `ARK_*_API_KEY`）**不是同一套**；5 条路由共用一组 AK/SK。这一组 AK/SK 能**同时**查到 Agent Plan 与 Coding Plan（含团队版席位）——不存在「Coding Plan 专用查询 key」 |
 | SiliconFlow | `SILICONFLOW_API_KEY` | 余额型：`GET /v1/user/info` 返回账户余额，**与推理是同一把 Key** |
 | OpenRouter | `OPENROUTER_API_KEY` | key 限额与用量用推理 key 即可；**账户余额需要 management / provisioning key**，普通 key 会被 403 拒——此时静默降级为只显示限额，不判失败 |
 | Synthetic | `SYNTHETIC_API_KEY` | 模型订阅请求额度 |
@@ -181,7 +179,7 @@ $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需
 | ZenMux | `ZENMUX_MANAGEMENT_API_KEY` | 额度端点**只认 Management API Key**（推理 key 不适用），所以变量名单独区分。在 <https://zenmux.ai/platform/management> 创建该 key |
 | LiteLLM | `LITELLM_API_KEY` + 代理地址 | 自建网关：除虚拟 Key（**与推理同一把**）还要在凭据区填写自己的 proxy 地址。管理端点在 **proxy 根**——填了 `/v1` 也会被去掉，不会拼成 `/v1/key/info` |
 
-按 provider id 的字面映射（补齐上表按语义分组、未逐条列出的 7 条火山路由，逐条对应 `PROVIDERS[id].envName`）：
+按 provider id 的字面映射（补齐上表按语义分组、未逐条列出的 5 条火山路由，逐条对应 `PROVIDERS[id].envName`）：
 
 ```text
 deepseek                 DEEPSEEK_API_KEY
@@ -211,8 +209,6 @@ arkcli-agent-plan        ARKCLI_AGENT_PLAN_API_KEY      （额度用 VOLC_ACCESS
 arkcli-coding-plan       ARKCLI_CODING_PLAN_API_KEY
 arkcli-agent-plan-team   ARKCLI_AGENT_PLAN_TEAM_API_KEY
 arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
-ark-coding-plan-cn       ARK_CODING_PLAN_CN_API_KEY
-ark-agent-plan-cn        ARK_AGENT_PLAN_CN_API_KEY
 ark-coding-plan-byteplus ARK_CODING_PLAN_BYTEPLUS_API_KEY
 ```
 
@@ -252,7 +248,7 @@ ark-coding-plan-byteplus ARK_CODING_PLAN_BYTEPLUS_API_KEY
 
 调用约定（**结果永远不为空**）：
 
-- 模型手里的名字往往不是这里的 provider id（它更可能看到 DSH 的路由名，例如 `zai`），所以匹配是**宽松**的：一个名字命中多条路由时**全部返回**（`zai` → 中国版 + 国际版，`ark` → 7 条），每条各自带着真实 `state`（没启用的如实标 `disabled`），由调用方自己判断要看哪条。
+- 模型手里的名字往往不是这里的 provider id（它更可能看到 DSH 的路由名，例如 `zai`），所以匹配是**宽松**的：一个名字命中多条路由时**全部返回**（`zai` → 中国版 + 国际版，`ark` → 5 条），每条各自带着真实 `state`（没启用的如实标 `disabled`），由调用方自己判断要看哪条。
 - 一个名字都认不出时，返回里会**先**给一条说明（写明可用写法），**再附上全部 30 条数据**——数据先给出去，判断交给调用方，而不是回一个空结果。
 
 **Host 服务**（Cordis `Service`，key 为 `subUsage`）：

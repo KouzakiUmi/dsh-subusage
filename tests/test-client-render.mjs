@@ -128,7 +128,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   const section = plugin.__test.SubusageSection({ usageStore, t: (key) => key, getLocale: () => "zh" });
   const all = flattenNodes(section), selects = all.filter((n) => n.type === "select");
   assert.equal(selects.length, 0, "设置页不使用任何下拉列表");
-  // 火山方舟的 7 条路由在设置页合并成**一张**卡片（共用一个组开关），所以是
+  // 火山方舟剩下的 5 条路由在设置页合并成**一张**卡片（共用一个组开关），所以是
   // (30 − 6) 张 provider 卡片 + 1 个「没有检测到 API 的默认隐藏」开关 = 25。
   assert.equal(all.filter(n => n.props?.role === "switch").length, 25, "提供商卡片与默认隐藏开关均可见（Ark 组已合并）");
   if (provider === "xiaomi-token-plan-cn") {
@@ -222,8 +222,8 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 
   // 管理列表：已启用的在前，关闭项沉到末尾，组内各自保持既有顺序。
   const listed = flattenNodes(render()).filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("启用 ")).map(n => String(n.props["aria-label"]).slice("启用 ".length));
-  // Ark 的 7 条路由合并成一张卡片，所以比 PROVIDER_ORDER 少 6 条。
-  assert.equal(listed.length, order.length - 6, "管理列表列出全部提供商（Ark 组合并成一张卡片）");
+  // Ark 剩下的 5 条路由合并成一张卡片，所以比 PROVIDER_ORDER 少 4 条。
+  assert.equal(listed.length, order.length - 4, "管理列表列出全部提供商（Ark 组合并成一张卡片）");
   assert.equal(listed.at(-2), meta["zai-coding-cn"].short, "关闭的 Z.ai 沉到末尾组");
   assert.equal(listed.at(-1), meta["kimi-coding"].short, "关闭项在组内保持既有顺序");
   assert.ok(listed.slice(0, -2).every(short => !off.has(order.find(id => meta[id].short === short))), "前面的都是已启用的");
@@ -239,9 +239,9 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 		{ kind: "month", percent: 0.3, status: "ok", resetsAt: "2026-11-09T23:59:59.000Z", groupLabel: "文本 / 向量模型", detail: { used: 0.2587, limit: 100000, unit: "AFP" } },
 		{ kind: "day", percent: 0, status: "ok", resetsAt: "2026-10-10T00:00:00.000Z", groupLabel: "视觉 / 语音模型与 Harness", detail: { used: 0, limit: 50000, unit: "AFP" } }
 	];
-	const afpEntry = { providerId: "ark-agent-plan-cn", label: "ARK Agent Plan", state: "ok", coverage: "complete", freshness: "fresh", windows: afpWindows, extras: [{ kind: "plan", value: "medium" }], lastAttemptAt: "2026-10-09T23:51:45.000Z" };
+	const afpEntry = { providerId: "arkcli-agent-plan", label: "ARK Agent Plan", state: "ok", coverage: "complete", freshness: "fresh", windows: afpWindows, extras: [{ kind: "plan", value: "medium" }], lastAttemptAt: "2026-10-09T23:51:45.000Z" };
 	const count = (haystack, needle) => haystack.split(needle).length - 1;
-	const arkPill = renderWrapper("ark-agent-plan-cn");
+	const arkPill = renderWrapper("arkcli-agent-plan");
 	stateValues = [{ entry: afpEntry, updatedAt: 0 }, null, null, false, true]; stateIndex = 0;
 	const pillTree = arkPill.type(arkPill.props), pillText = visibleText(pillTree);
 	assert.equal(count(pillText, "文本 / 向量模型"), 1, "同一条额度线的组标题只插一次，不逐行重复");
@@ -253,12 +253,12 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 	// Ark 现在**不按路由收起**（额度是账号级订阅，见 providerVisible），所以要让面板落到 Agent Plan 上，
 	// 得让同组其余 6 条明确「没有可用的 AK/SK」（apiDetected:false）——组开关本身管不了这个。
 	const afpMeta = plugin.__test.PROVIDER_META;
-	const otherArk = plugin.__test.PROVIDER_ORDER.filter(id => id !== "ark-agent-plan-cn" && afpMeta[id]?.volc);
+	const otherArk = plugin.__test.PROVIDER_ORDER.filter(id => id !== "arkcli-agent-plan" && afpMeta[id]?.volc);
 	const afpSettings = { revision: "r", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: true },
-		visibility: { ark: true, hideWithoutApi: true, providers: Object.fromEntries(plugin.__test.PROVIDER_ORDER.map(id => [id, id === "ark-agent-plan-cn"])) } };
-	const afpConfigured = Object.fromEntries(plugin.__test.PROVIDER_ORDER.map(id => [id, id === "ark-agent-plan-cn"]));
+		visibility: { ark: true, hideWithoutApi: true, providers: Object.fromEntries(plugin.__test.PROVIDER_ORDER.map(id => [id, id === "arkcli-agent-plan"])) } };
+	const afpConfigured = Object.fromEntries(plugin.__test.PROVIDER_ORDER.map(id => [id, id === "arkcli-agent-plan"]));
 	const afpEntries = [afpEntry, ...otherArk.map(id => ({ providerId: id, label: id, state: "no-key", apiDetected: false, windows: [], extras: [], coverage: "partial", freshness: "unknown" }))];
-	stateValues = ["ark-agent-plan-cn"]; stateIndex = 0;
+	stateValues = ["arkcli-agent-plan"]; stateIndex = 0;
 	const section = plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => ({ settings: afpSettings, configured: afpConfigured, entries: afpEntries }) }, t: (key) => key, getLocale: () => "zh" });
 	assert.ok(visibleText(section).includes("视觉 / 语音模型与 Harness"), "设置页同样标出日限额的适用范围");
 

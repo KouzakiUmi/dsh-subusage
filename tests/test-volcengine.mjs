@@ -13,7 +13,7 @@ import { loadHostModule } from "./helpers.mjs";
 import { parseVolcAgentPlan, parseVolcCodingPlan, parseVolcSeatAfp, parseVolcSeatCoding, parseVolcSeatIds, volcEscape, volcSignature } from "../lib/volcengine.js";
 
 const { SubUsageService, subUsageRemote } = await loadHostModule();
-const CODING = "ark-coding-plan-cn", AGENT = "ark-agent-plan-cn", BYTEPLUS = "ark-coding-plan-byteplus";
+const CODING = "arkcli-coding-plan", AGENT = "arkcli-agent-plan", BYTEPLUS = "ark-coding-plan-byteplus";
 const TEAM = "arkcli-agent-plan-team";
 const TEAM_CODING = "arkcli-coding-plan-team";
 const AK = "AKLTTestAccessKeyId0000", SK = "TestSecretAccessKey0000000000000000";
@@ -187,10 +187,21 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 	assert.ok(entry.error.includes("AK/SK"), "点名需要 AK/SK");
 	assert.ok(entry.error.includes("不是推理"), "说明与推理 Key 的区别");
 	// 403 授权失败：提示权限/订阅，而不是签名。
-	h.setRespond(() => json({ ResponseMetadata: { Error: { Code: "OperationDenied.NotSubscribed", Message: "not subscribed" } } }));
+	h.setRespond(() => json({ ResponseMetadata: { Error: { Code: "AccessDenied", Message: "no permission" } } }));
 	entry = (await h.service.refresh({ providerIds: [CODING], force: true })).entries[0];
 	assert.equal(entry.errorCode, "subusage/auth");
 	assert.ok(entry.error.includes("读权限"), "提示权限与订阅");
+	// 但 `OperationDenied.NotSubscribed` 与 `NotFound.BillingType` 是**明确的「没有这个套餐」**，不是故障：
+	// 实测没有 BytePlus Coding Plan 的账号返回 HTTP 404 NotFound.BillingType（coding plan config is not exist）。
+	// 把它们当错误抛出去，界面上就多一张红色卡片；正确做法是回报 subscribed:false 让前端收起。
+	for (const code of ["OperationDenied.NotSubscribed", "NotFound.BillingType"]) {
+		h.setRespond(() => json({ ResponseMetadata: { Error: { Code: code, Message: "coding plan config is not exist" } } }));
+		entry = (await h.service.refresh({ providerIds: [CODING], force: true })).entries[0];
+		assert.equal(entry.state, "ok", `${code} 是答案不是故障`);
+		assert.equal(entry.subscribed, false, `${code} 要回报未订阅`);
+		assert.equal(JSON.stringify(entry.windows), "[]", "未订阅不画窗口");
+		assert.ok(entry.extras[0].value.includes("没有订阅"), "如实说明");
+	}
 	// Action 不存在：明确指向接口变更。
 	h.setRespond(() => json({ ResponseMetadata: { Error: { Code: "InvalidActionOrVersion", Message: "could not find operation" } } }));
 	entry = (await h.service.refresh({ providerIds: [CODING], force: true })).entries[0];
@@ -259,17 +270,26 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 	let spec;
 	const react = { createElement: () => null, Fragment: "fragment", useState: (v) => [typeof v === "function" ? v() : v, () => {}], useRef: (v) => ({ current: v }), useEffect: () => {}, useMemo: (f) => f(), useSyncExternalStore: () => null };
 	const code = readFileSync(fileURLToPath(new URL("../lib/client.js", import.meta.url)), "utf8");
-	vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { PROVIDER_ORDER, PROVIDER_META, draftFor, settingsPatch }; exports.apply = apply;"), { window: { __ModuleLoader__: { load: (value) => { spec = value; } } }, console });
+	vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { PROVIDER_ORDER, PROVIDER_META, ROUTE_PROVIDER_ALIAS, draftFor, settingsPatch }; exports.apply = apply;"), { window: { __ModuleLoader__: { load: (value) => { spec = value; } } }, console });
 	const client = spec.factory((name) => { assert.equal(name, "react"); return react; });
 	const order = client.__test.PROVIDER_ORDER, meta = client.__test.PROVIDER_META;
 	for (const id of [CODING, AGENT, BYTEPLUS]) {
 		assert.ok(order.includes(id), `${id} 在提供商顺序中`);
 		assert.equal(meta[id].volc, true, `${id} 标记为 AK/SK 凭据`);
-		assert.equal(meta[id].defaultEnabled, false, `${id} 默认关闭`);
 	}
-	// provider id 必须与官方插件 @volcengine/ark-plan-api 注册的路由逐字一致，否则药丸不会出现。
-	assert.deepEqual([CODING, AGENT, BYTEPLUS], ["ark-coding-plan-cn", "ark-agent-plan-cn", "ark-coding-plan-byteplus"]);
-	assert.equal(meta[CODING].envName, "ARK_CODING_PLAN_CN_API_KEY", "推理环境变量名与官方插件一致");
+	// arkcli 两条是官方 CLI 写的路由，默认开启；BytePlus 是 legacy 且走独立站点，默认关闭。
+	assert.notEqual(meta[CODING].defaultEnabled, false, "官方 CLI 的 Coding Plan 默认开启");
+	assert.notEqual(meta[AGENT].defaultEnabled, false, "官方 CLI 的 Agent Plan 默认开启");
+	assert.equal(meta[BYTEPLUS].defaultEnabled, false, "BytePlus 默认关闭");
+	// provider id 必须与写入方注册的路由逐字一致，否则选中方舟模型时药丸不会出现。
+	assert.deepEqual([CODING, AGENT, BYTEPLUS], ["arkcli-coding-plan", "arkcli-agent-plan", "ark-coding-plan-byteplus"]);
+	assert.equal(meta[CODING].envName, "ARKCLI_CODING_PLAN_API_KEY", "推理环境变量名与 arkcli helper 一致");
+	// 旧插件的两个国内路由 id 已从提供商列表移除（与 arkcli 查同一份订阅），但必须仍能归并到 arkcli 路由——
+	// 否则装了旧插件的用户，模型路由还是那两个 id，会突然失去整个用量面板。
+	for (const [legacy, target] of [["ark-agent-plan-cn", "arkcli-agent-plan"], ["ark-coding-plan-cn", "arkcli-coding-plan"]]) {
+		assert.ok(!order.includes(legacy), `${legacy} 已从提供商列表移除`);
+		assert.equal(client.__test.ROUTE_PROVIDER_ALIAS[legacy], target, `${legacy} 归并到 ${target}`);
+	}
 	const draft = client.__test.draftFor({ keyModes: {} }, CODING);
 	// vm 上下文里创建的对象与原 realm 的对象原型不同，跨 realm 一律用 JSON 比较。
 	const flat = (v) => JSON.stringify(v);

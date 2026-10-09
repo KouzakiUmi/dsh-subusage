@@ -117,6 +117,17 @@
 - 响应两代形态兼容：新形态 `creditUsagePercent` + `currentPeriod`；旧形态按 `monthlyLimit`/`used`（美分）折算比例并归月账期窗口；`{}`（proto3 零值）解码为 0，无上限不折算。未知结构报错不猜额度。
 - 测试：新增 `tests/test-supergrok.mjs`（归一化两代形态/周期归类/套餐两级回退/余额边界、登录文件各形态与槽位优先级、请求头、并行拉取、错误映射、缓存与 token 轮换失效、managed 边界）；`tests/test-contract.mjs` 补 `xai-oauth` 刷新契约与 managed 拒写断言；`tests/test-client-render.mjs` / `tests/test-client-behavior.mjs` / `tests/test-host-service.mjs` 同步提供商计数与索引。`node tests/run-all.mjs` 全部通过。
 
+## 0.10.7：删掉旧插件的国内重复路由，同一个 plan 只留一个面板
+
+- **症状（用户报的）**：同一个 Agent Plan 显示成两个面板——`Ark Agent Plan (CN, legacy plugin)` 与 `ARK Agent Plan (arkcli)`，数字还不一样（4.2% vs 5.3%）；Coding Plan 同样成对出现。用户的原话是「legacy 的数据比新的延迟」。
+- **实测结论：那不是延迟，是同一份订阅被查了两遍。** 用本机 AK/SK 把 5 条 Ark 路由各打一遍：legacy 与 arkcli 的请求 URL **逐字相同**（`GetAFPUsage` / `GetCodingPlanUsage` @ `open.volcengineapi.com/cn-beijing`），间隔 4 秒的两轮数据**完全一致**；`subusage_quota` 带 `refresh: true` 也给出两两相同的数字。差异只来自各自缓存（TTL 60 秒）的刷新时刻不同。
+- **改法**：**移除** `ark-coding-plan-cn` 与 `ark-agent-plan-cn` 两条路由及其在设置页的独立卡片。同一个 plan 无论由哪个插件提供，都只对应**一个**面板。
+- **旧插件用户的药丸不丢**：装了 `@volcengine/ark-plan-api` 的用户，模型路由仍然是那两个 id，所以 Client 新增 `ROUTE_PROVIDER_ALIAS`，在**入口**把它们归并到 arkcli 路由——药丸照常显示，数据来自同一份订阅。
+- **BytePlus 保留**：它是唯一的「同 Action 不同 host」（`ark.ap-southeast-1.byteplusapi.com` / `ap-southeast-1`），独立站点、独立订阅，删了就没有实现覆盖它。
+- **「没有这个套餐」不再是错误**：实测没有 BytePlus Coding Plan 的账号返回 HTTP 404 `NotFound.BillingType`（`coding plan config is not exist`）。此前它被当成 404 错误画成一张红色卡片；现在 `NotFound.BillingType` 与 `OperationDenied.NotSubscribed` 一律回报 `subscribed: false`，前端据此收起——**两个套餐都检测，谁有数据显示谁**，不需要预先判断用户「是哪个套餐」。
+- 新增结构化字段 `subscribed`（Host 的 entry 与 `quota()` 视图都有）：HTTP 200 但没有订阅 ≠ 0% 用量，这个区别以前只写在 `extras` 文案里，前端拿不到。
+- 测试：`test-volcengine.mjs` 的 Client 段改为断言 arkcli 两条默认开启、BytePlus 默认关闭，并新增「legacy id 已移除但必须仍能归并」；错误映射段拆出 `OperationDenied.NotSubscribed` / `NotFound.BillingType` → `subscribed: false` 的用例；各文件里的 provider 计数从 30 改到 28。
+
 ## 0.10.6：修好 Coding Plan 查不到用量，Grok token 过期说清楚
 
 - **症状（用户报的）**：有 Coding Plan 订阅、AK/SK 也配了，卡片却永远写着「订阅检测已关闭 / 暂无额度数据」；同一台机器用 `arkcli usage plan --product coding-plan` 能查到额度。
