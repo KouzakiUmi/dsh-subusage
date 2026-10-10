@@ -270,5 +270,11 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 	assert.ok(!visibleText(detailBox.children[0]).includes("重置于"), "用量行不夹带重置时间");
 	assert.ok(visibleText(detailBox.children[1]).includes("重置于"), "次行是重置时间");
 	assert.ok(!visibleText(detailBox.children[1]).includes("总计"), "重置行不夹带用量");
+	const bar = flattenNodes(row).find(n => n.props?.role === "progressbar");
+	assert.equal(bar.props["aria-valuenow"], 97.4, "进度条按剩余填充：已用 2.6% → 余 97.4");
+	assert.equal(bar.children[0].props.style.width, "97.4%");
+	const emptyBar = flattenNodes(plugin.__test.UsageWindowRow({ w: { kind: "week", percent: 100, status: "rate-limited" }, t: k => k, getLocale: () => "zh" })).find(n => n.props?.role === "progressbar");
+	assert.equal(emptyBar.props["aria-valuenow"], 0, "已达限额进度条为空槽");
+	assert.equal(emptyBar.children[0].props.style.width, "0%");
 }
 console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/提供商开关/无下拉布局、用量面板内联行动条、待处理排序与计数跳转、路由缺失收起与已启用前置、AFP 分组与明细拆行");
