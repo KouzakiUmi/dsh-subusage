@@ -42,7 +42,7 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 - 登录返回 `dsh-subusage#SubUsageLoginState`，只公开任务状态、固定错误说明与可选公共结果，不包含 Cookie。
 
 - `read(request?)`：request 在 wire 层可选（两端描述符声明 `acceptsUndefined`，网关对缺参放行、service 直调无参同样兜底），缺参/undefined 等价于全量 `refresh({ providerIds: 全部, force: false })`（默认账户）；也可传入与 refresh 相同的查询（Client 初始读取会携带 `commandCodeAccount`）。
-- `refresh(request)`：`request = { providerIds: string[], force: boolean, commandCodeAccount?: string }`，只读取指定厂商；`commandCodeAccount` 仅对 commandcode 生效（空串/缺省 = 默认账户，额外账户 id 即其凭据引用名）；返回的 entries 由 Client 合并。
+- `refresh(request)`：`request = { providerIds: string[], force: boolean, commandCodeAccount?: string }`，只读取指定厂商；`commandCodeAccount` 仅对 commandcode 生效（空串/缺省 = 默认账户，额外账户 id 即其凭据引用名）；返回的 entries 由 Client 合并。Client store 按 id 独立 in-flight 与 RPC：同一家仍去重，不同家互不等待；设置页刷新锁（`refreshing`）与保存锁（`busy`）分离，刷新不得禁用其它提供商开关。
 - `save(settings)`：provider patch，包含 `providerId`、`expectedRevision`、来源模式、凭据保持/替换/清除动作与可选 Z.ai 参数。凭据由提供方插件管理的厂商（`managedByPlugin`，现即 commandcode、xai-oauth 与 openai-codex）拒绝一切凭据补丁，只接受裸 patch。
 - 检测开关使用独立补丁 `{ expectedRevision, visibility: { providers?, hideWithoutApi? } }`，不得混入凭据字段；provider 开关增量合并，不重置未提交条目。
 - 公共 settings 只含 revision、非秘密参数、hasKeys、keyModes 与 xiaomi 的 `hasCookie`、`loginAt`、`expiresAt`。后两项是本地计时元数据（ISO 串或 null），不是秘密，也不参与凭据有效性判断。
@@ -60,7 +60,7 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 - Kimi `/coding/v1/usages` 的窗口集合按账户下发：`usages` 比例池可能只有 `limit_5h` + `limit_month_total`（`limit_7d` 仅在部分套餐出现，不能当必需字段），旧账户则只有顶层 `usage` + `limits[]` 绝对计数，同一 Key 连续请求形态稳定。归一化按实际下发的窗口名产出窗口；`limit_month_code` 是月池的 Code 份额而非独立预算，不单独成窗；无任何比例池时，用 `limits[]` 中 `duration=300 / TIME_UNIT_MINUTE` 项的 `limit`/`remaining` 反推 5 小时窗口，再用顶层 `usage` 的 `limit`/`remaining` 反推周额度。未知结构仍报错，不猜测额度。
 - Command Code 并行直连 `/alpha/billing/credits` 与 `/alpha/billing/subscriptions`（请求头对齐提供方插件的 accountHeaders：Bearer、accept-encoding: identity、x-command-code-version、x-cli-environment）。absent 窗口是未报告上限（不画额度行）；`cap: 0` 是报告过的无上限，按 0% 不受限展示；`exceeded` 或原始比例达 100% 即限流；已出现的窗口块缺 `used`/`cap` 或非数值一律报错，不当作零用量。月余额 `credits.monthlyCredits` 是剩余金额，使用已知套餐表快照计算 `max(0, total - remaining)`，不是接口直接报告的月cap；未知套餐或缺月余额时 coverage=partial，不猜测百分比。planId优先 subscriptions.data.planId、回退 credits.planId，重置取 subscriptions.data.currentPeriodEnd（ISO或毫秒），非法日期不输出。月池耗尽不参与短窗级联（额外购买/赠送池可能仍可用）；周/5小时保持现有级联。余额只显示真正报告过的月剩余/已购/赠送字段。用量显示跟随药丸弹层选择的账户：默认账户（含自动轮换）走 `COMMANDCODE_API_KEY` 凭据链，额外账户按其凭据引用名（`apiKeyEnv`）从凭据服务 → 启动环境解析（对齐提供方插件 `slots()`/`resolveRef`），缓存指纹计入账户选择，entry 带 `account` 字段；自动轮换不跟随实际服务账户，自定义 apiBase 不跟随。
 - SuperGrok 并行直连官方 Grok CLI 计费代理 `/v1/billing?format=credits` 与 `/v1/settings`（请求头对齐官方 CLI：Bearer、`X-XAI-Token-Auth: xai-grok-cli`、`x-userid`、`x-grok-client-version`）。`creditUsagePercent` 是统一用量池的**已用**百分比（0–100，剩余 = 100 − 已用），周期取 `currentPeriod`（周/月枚举名，未知或缺失类型归通用订阅池 `sub`），重置取 `currentPeriod.end`，非法日期不输出；旧形态按 `monthlyLimit`/`used`（美分）折算比例并归月账期窗口，`{}`（proto3 零值）解码为 0，无上限（limit≤0）不折算。套餐名取 `/v1/settings` 的 `subscription_tier_display`（失败回退 billing 响应的 `subscription_tier`），已购加量余额 `prepaidBalance` 美分转美元显示；未报告的字段不冒充 0，无任何比例来源时报错不猜额度。
-- 单厂商凭据、网络、解析异常不影响其它厂商条目。- 按厂商共享 TTL 缓存与 in-flight 请求；配置/凭据变化使旧账号缓存失效。
+- 单厂商凭据、网络、解析异常不影响其它厂商条目。按厂商共享 TTL 缓存与 in-flight 请求；配置/凭据变化使旧账号缓存失效。Client 刷新按 id 拆开，禁止把多家绑在同一个 Promise 上。
 - 窗口对象上的**展示字段**（如 AFP 的 `groupLabel`）在 Host 重新构造窗口时必须一并带上：Host 的 `windowRow` 是白名单工厂，只保留 `kind / percent / resetsAt / status / detail`，解析器另外产出的标注会在这里被静默丢弃——不报错、不抛异常，界面只是少一块信息，单元测试照样全绿。凡「解析器产出 → Host 装配 → wire → Client 渲染」的字段都按这条处理，并在 Host 侧补一条跨装配层的断言（`0.10.4` 的 AFP 分组就是这么丢过一次的）。
 - TTL 为 60 秒。Client 仅订阅活跃、开启的提供商，隐藏页面暂停定时读取，回到可见状态再检查；不要把所有厂商做成独立全局轮询。
 - 新增厂商须同步 Host 的 PROVIDERS、Client 的 PROVIDER_META / PROVIDER_ORDER、帮助文案、README 和默认值测试。未获明确需求的新订阅商保持 `defaultEnabled: false`；原有偏好通过存储合并保留。
@@ -162,6 +162,8 @@ node --input-type=module -e "import {chromium} from 'playwright-core'; import {r
 - **隔离 `DSH_HOME` 下启动会停在** `user patch-layer watching requires the Cordis HMR service`：profile 初始化时写入的 `patchReload: live` 需要 HMR 服务，而隔离 home 里没有。同样与本插件无关，所以最终用真实 `DSH_HOME` + 专用 `web` profile 做隔离。
 
 **未做**：没有在 `0.2.0-rc.1` / `0.2.0-rc.2` / `0.2.1-alpha.2` 上重复这六步，`dsh.compatibility.dshReleases` 对这三个保持 `unknown`；真实 Desktop profile 的插件更新与界面回读仍由用户自行验收。
+
+本机 Desktop Core 现为 `0.2.1-alpha.2`（`C:\Program Files\DSH NEXT\resources\app\node_modules\@deepseek-ai\dsh\package.json`）。peer 范围 `>=0.2.1-0 <0.3.0-0` 已覆盖；静态核过 `@deepseek-ai/dsh-tools` / `dsh-typert-protocol` 仍为 `0.2.1-alpha.2` 且导出 `defineTool`。按「没有实机六步不标 compatible」的约定，`dshReleases["0.2.1-alpha.2"]` 仍为 `unknown`。打开设置页的首次 `readAll` 仍是一次全量 RPC（拆开会破坏现有 read 契约测试），整页开关在拿到 revision 前保持禁用，上限为 Client 20 秒 RPC deadline。
 
 ### 0.10.0 → 0.10.1 验证记录：火山方舟全面覆盖、额度查询 API、RPC 版本窗口期与设置页排序
 

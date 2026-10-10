@@ -2,6 +2,13 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.10.9：设置页刷新不再冻其它提供商开关
+
+- 设置页「刷新当前 / 刷新全部」不再占用全局 `busy`：刷新期间其它提供商开关、凭据入口仍可点；刷新按钮自身显示「刷新中…」并禁用。Client `createUsageStore.refresh` 按提供商拆 inflight 与 RPC，单家刷新不再等待整批最慢一家。刷新全部时单家传输失败只写该条目错误，不再抬成整页 `loadError`、也不提前结束其余家。
+- Host `provider()` 的凭据解析（凭据服务/登录文件读取）加 10 秒超时（与 HTTP 的 `AbortSignal.timeout` 同量级，可经 `identityTimeoutMs` 注入）：凭据服务挂起时该提供商返回可读的超时错误条目（`subusage/identity-timeout`），不再让「刷新中」永久卡住；单家超时不拖累同批其它提供商，且不按凭据失效处理、不清 Cookie。
+- 刷新全部进行中拨可见性开关不再静默丢掉在途用量：visibility 保存只更新 settings（不再推进 epoch、不重置在途请求序号），在途 refresh 完成后照常合并 entries。过期请求的 settings 仍丢弃；**当前代** refresh 若带上另一窗口的新 revision 则采用它，但不再 `invalidate` 全员（非活跃条目不会永久 loading）。凭据保存仍推进 epoch；火山 AK/SK 变更会在 Client 失效整组 Ark 路由并在保存后整组重拉。
+- `setCommandCodeAccount` 刷新失败不再变成未处理拒绝。点「刷新全部」即使过滤后只剩一家，也不把传输失败抬成整页 `loadError`。`subusage_quota` 整次查询加 30 秒上限。identity `withTimeout` 吞掉超时后迟到的 reject，避免 unhandledRejection。
+
 ## 0.10.0：扩展至 30 条提供商、额度查询 API 与 UX 三改
 
 > `0.9.0`（火山方舟首次接入与 SiliconFlow，npm 已发布）之后累积的改动都记在本节；火山方舟这一条线上后续做的扩展也并入本节。

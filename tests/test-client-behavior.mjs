@@ -415,6 +415,100 @@ tree = retryHooks.render(api.SubusageSection, { ...props, usageStore: retryStore
 assert.equal(retrySnapshot.settings.revision, "1");
 assert.equal(initCalls, beforeRetry + 1);
 assert(!nodes(tree).some(n => n.props.role === "alert")); retryHooks.unmount();
+// 刷新不得锁其它提供商开关：busy 只留给保存。refresh 按家 RPC，单家不等另一家 inflight。
+const refreshGate = deferred();
+const freezeSnapshot = result(ids.map((id) => entry(id)));
+const freezeStore = { ...uiStore, getSnapshot: () => freezeSnapshot, readAll: async () => freezeSnapshot, refresh: async () => refreshGate.promise };
+const fh = new Hooks(), fp = { ...props, usageStore: freezeStore };
+tree = fh.render(api.SubusageSection, fp); await flush(); tree = fh.render(api.SubusageSection, fp);
+const freezeRefresh = nodes(tree).find(n => n.type === "button" && n.children.includes("刷新全部")).props.onClick();
+await flush(); tree = fh.render(api.SubusageSection, fp);
+const refreshingButtons = nodes(tree).filter(n => n.type === "button" && n.children.includes("刷新中…"));
+assert.equal(refreshingButtons.length, 2, "刷新中文案落到两个刷新按钮");
+assert(refreshingButtons.every(n => n.props.disabled), "刷新按钮自身禁用");
+assert(nodes(tree).filter(n => n.props.role === "switch").every(n => !n.props.disabled), "刷新期间其它提供商开关仍可点");
+nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick({ preventDefault() {} });
+tree = fh.render(api.SubusageSection, fp);
+assert.equal(nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[1]}`).props.open, true, "刷新期间仍可展开其它厂商凭据");
+refreshGate.resolve(freezeSnapshot); await freezeRefresh;
+tree = fh.render(api.SubusageSection, fp);
+assert(nodes(tree).some(n => n.type === "button" && n.children.includes("刷新全部") && !n.props.disabled), "刷新结束后解除禁用");
+fh.unmount();
+const aGate = deferred(), bGate = deferred(), splitCalls = [];
+const splitStore = api.createUsageStore((method, query) => {
+	splitCalls.push({ method, query: JSON.parse(JSON.stringify(query)) });
+	if (method === "read") return result(ids.map((id) => entry(id)));
+	if (query.providerIds[0] === ids[0]) return aGate.promise;
+	if (query.providerIds[0] === ids[1]) return bGate.promise;
+	return result([entry(query.providerIds[0])]);
+});
+await splitStore.readAll(); splitCalls.length = 0;
+const pendingB = splitStore.refresh([ids[1]], true); await flush();
+const pendingA = splitStore.refresh([ids[0]], true);
+aGate.resolve(result([entry(ids[0], 77)])); await pendingA;
+assert.equal(splitStore.getSnapshot().entries.find(e => e.providerId === ids[0]).windows[0].percent, 77);
+assert.equal(splitStore.getSnapshot().entries.find(e => e.providerId === ids[1]).windows[0].percent, 25, "B 仍在途不得被 A 覆盖");
+assert.deepEqual(splitCalls.filter(c => c.method === "refresh").map(c => c.query.providerIds), [[ids[1]], [ids[0]]], "按家 RPC 而不是一批");
+bGate.resolve(result([entry(ids[1], 11)])); await pendingB;
+assert.equal(splitStore.getSnapshot().entries.find(e => e.providerId === ids[1]).windows[0].percent, 11);
+splitStore.dispose();
+const bothA = deferred(), bothB = deferred(), bothCalls = [];
+const bothStore = api.createUsageStore((method, query) => {
+	bothCalls.push(query && query.providerIds ? query.providerIds.slice() : []);
+	if (method === "read") return result(ids.map((id) => entry(id)));
+	if (query.providerIds[0] === ids[0]) return bothA.promise;
+	if (query.providerIds[0] === ids[1]) return bothB.promise;
+	return result([entry(query.providerIds[0])]);
+});
+await bothStore.readAll(); bothCalls.length = 0;
+const pendingBoth = bothStore.refresh([ids[0], ids[1]], true); await flush();
+assert.deepEqual(bothCalls.filter(ids => ids.length === 1).sort().map(x => x[0]).sort(), [ids[0], ids[1]].sort(), "多家一次 refresh 拆成按家 RPC");
+bothA.reject(new Error("A down"));
+await flush();
+assert.equal(bothStore.getSnapshot().entries.find(e => e.providerId === ids[0]).state, "error");
+assert.equal(bothStore.getSnapshot().entries.find(e => e.providerId === ids[1]).windows[0].percent, 25, "A 失败不得结束 B 的等待");
+bothB.resolve(result([entry(ids[1], 42)]));
+await pendingBoth;
+assert.equal(bothStore.getSnapshot().entries.find(e => e.providerId === ids[1]).windows[0].percent, 42);
+bothStore.dispose();
+// 刷新在途时拨可见性开关：保存只更新 settings，不丢在途用量、不回退本地 revision。
+const visGate = deferred(); let visSaveCalls = 0;
+const visStore = api.createUsageStore((method, query) => {
+	if (method === "read") return result(ids.map((id) => entry(id)));
+	if (method === "save") { visSaveCalls++; return result([], `vis-${visSaveCalls + 1}`); }
+	if (query.providerIds[0] === ids[0]) return visGate.promise;
+	return result([entry(query.providerIds[0])]);
+});
+await visStore.readAll();
+const pendingVis = visStore.refresh([ids[0]], true); await flush();
+await visStore.save({ expectedRevision: "1", visibility: { providers: { [ids[1]]: false } } });
+assert.equal(visSaveCalls, 1); assert.equal(visStore.getSnapshot().settings.revision, "vis-2");
+visGate.resolve(result([entry(ids[0], 66)], "vis-stale"));
+await pendingVis;
+assert.equal(visStore.getSnapshot().entries.find(e => e.providerId === ids[0]).windows[0].percent, 66, "在途刷新结果不被可见性保存丢弃");
+assert.equal(visStore.getSnapshot().settings.revision, "vis-2", "过期响应的 settings 不回退本地 revision");
+assert.equal(visStore.getSnapshot().entries.find(e => e.providerId === ids[1]).windows[0].percent, 25, "被关闭厂商的存量用量保留");
+assert.equal(visStore.getSnapshot().entries.find(e => e.providerId === ids[2]).windows[0].percent, 25, "其它厂商用量不受影响");
+visStore.dispose();
+// 另一窗口改 revision：当前代 refresh 采用新 settings，但不把其它家打成 loading。
+const extStore = api.createUsageStore((method) => method === "read" ? result(ids.map((id) => entry(id))) : result([entry(ids[0], 91)], "other-window"));
+await extStore.readAll();
+assert.equal(extStore.getSnapshot().settings.revision, "1");
+await extStore.refresh([ids[0]], true);
+assert.equal(extStore.getSnapshot().settings.revision, "other-window", "当前代 refresh 跟随 Host 新 revision");
+assert.equal(extStore.getSnapshot().entries.find(e => e.providerId === ids[0]).windows[0].percent, 91);
+assert.equal(extStore.getSnapshot().entries.find(e => e.providerId === ids[1]).windows[0].percent, 25, "其它家用量保留");
+assert.notEqual(extStore.getSnapshot().entries.find(e => e.providerId === ids[1]).state, "loading");
+extStore.dispose();
+// 火山 AK/SK 保存必须整组失效，不能只 loading 当前 tab。
+const arkA = "arkcli-agent-plan", arkB = "arkcli-coding-plan";
+const volcStore = api.createUsageStore((method) => method === "read" ? result([...ids, arkA, arkB].map((id) => entry(id))) : method === "save" ? result([], "volc-2") : result([entry(arkA)]));
+await volcStore.readAll();
+await volcStore.save({ providerId: arkA, expectedRevision: "1", volc: { accessKeyId: { action: "replace", value: "AKLT" } } });
+assert.equal(volcStore.getSnapshot().entries.find(e => e.providerId === arkA).state, "loading");
+assert.equal(volcStore.getSnapshot().entries.find(e => e.providerId === arkB).state, "loading", "共享 AK/SK 变更失效整组 Ark");
+assert.equal(volcStore.getSnapshot().entries.find(e => e.providerId === ids[0]).state, "ok", "非 Ark 不受牵连");
+volcStore.dispose();
 // New providers stay off even with missing visibility fields from an older settings snapshot.
 for (const id of ["zai-coding", "synthetic", "nanogpt"]) assert.equal(api.providerVisible(publicSettings(), id, entry(id)), false);
-console.log("PASS provider management switches/no-dropdown/filtering/persistence payloads/dirty guard/pill subscription/race + existing client behavior");
+console.log("PASS provider management switches/no-dropdown/filtering/persistence payloads/dirty guard/pill subscription/race + refresh lock isolation");

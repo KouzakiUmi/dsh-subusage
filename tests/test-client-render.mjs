@@ -263,7 +263,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 	assert.ok(visibleText(section).includes("视觉 / 语音模型与 Harness"), "设置页同样标出日限额的适用范围");
 
 	// 明细拆行：首行只放用量与适用范围，次行只放重置时间。
-	const row = plugin.__test.UsageWindowRow({ w: afpWindows[0], t: (key) => ({ detailUsed: "已用 {used} / 总计 {limit} {unit}", detailResetIn: "重置于 {time}（还有 {rest}）" })[key] ?? key, getLocale: () => "zh" });
+	const row = plugin.__test.UsageWindowRow({ w: { ...afpWindows[0], resetsAt: "2099-10-10T01:34:25.000Z" }, t: (key) => ({ detailUsed: "已用 {used} / 总计 {limit} {unit}", detailResetIn: "重置于 {time}（还有 {rest}）" })[key] ?? key, getLocale: () => "zh" });
 	const detailBox = row.children.at(-1);
 	assert.equal(detailBox.children.length, 2, "用量与重置拆成两行");
 	assert.ok(visibleText(detailBox.children[0]).includes("总计 10.0K AFP"), "首行是用量");

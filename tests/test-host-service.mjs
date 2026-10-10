@@ -5,13 +5,13 @@ const { SubUsageService, subUsageRemote, normalizeKimi, normalizeMimo, normalize
 const Z = "zai-coding-cn", K = "kimi-coding", M = "xiaomi-token-plan-cn", O = "opencode-go";
 const IDS = [Z, K, M, O];
 const zBody = { data: { limits: [{ type: "CREDIT_LIMIT", unit: 3, percentage: 12 }, { type: "CREDIT_LIMIT", unit: 6, percentage: 20 }] } };
-function harness(initial) {
+function harness(initial, extra = {}) {
  const files = new Map(initial ? [["memory/config", JSON.stringify(initial)]] : []);
  let now = Date.parse("2026-01-01T00:00:00Z"); let calls = []; let response = () => zBody;
  const io = { readFileSync(path) { if (!files.has(path)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); return files.get(path); }, mkdirSync(path, options) { assert.equal(path, "memory"); assert.deepEqual(options, { recursive: true, mode: 0o700 }); }, writeFileSync(path, value, options) { assert.deepEqual(options, { encoding: "utf8", mode: 0o600 }); files.set(path, value); }, chmodSync(path, mode) { assert.equal(path, "memory/config.tmp"); assert.equal(mode, 0o600); assert(files.has(path)); files.set("permissions-checked", true); }, renameSync(from, to) { assert.equal(files.get("permissions-checked"), true); files.delete("permissions-checked"); files.set(to, files.get(from)); files.delete(from); } };
  const credential = {}; const environment = {};
  const ctx = { get() {}, llm: { listProviders: () => [{ id: Z }] }, effect() {} };
- const service = new SubUsageService(ctx, { io, configPath: "memory/config", now: () => now, resolveCredentials: async id => credential[id], resolveEnvironment: id => environment[id], fetch: async (url, options) => { calls.push({ url, options }); const value = await response(url, options); if (value instanceof Error) throw value; if (value?.http) return { ok: false, status: value.http, headers: { get: () => value.retryAfter ?? null } }; return { ok: true, status: 200, headers: { get: () => null }, text: async () => typeof value === "string" ? value : JSON.stringify(value) }; } });
+ const service = new SubUsageService(ctx, { io, configPath: "memory/config", now: () => now, resolveCredentials: async id => credential[id], resolveEnvironment: id => environment[id], fetch: async (url, options) => { calls.push({ url, options }); const value = await response(url, options); if (value instanceof Error) throw value; if (value?.http) return { ok: false, status: value.http, headers: { get: () => value.retryAfter ?? null } }; return { ok: true, status: 200, headers: { get: () => null }, text: async () => typeof value === "string" ? value : JSON.stringify(value) }; }, ...extra });
  return { service, calls, files, credential, environment, tick: ms => now += ms, respond: fn => response = fn };
 }
 const descriptors = subUsageRemote.descriptors;
@@ -57,6 +57,22 @@ await h.service.save({ providerId: Z, keyMode: "inherit" }); delete h.credential
 h.respond(() => zBody); result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equal(result.entries[0].keySource, "env");
 const isolated = harness(); isolated.service.credentials = async id => { if (id === Z) throw new Error("DO NOT LEAK"); return undefined; };
 result = await isolated.service.read(); assert.equal(result.entries.length, 27); assert.equal(result.entries[0].errorCode, "subusage/credentials"); assert(!JSON.stringify(result).includes("DO NOT LEAK")); assert.equal(isolated.calls.length, 0);
+// identity 解析（凭据服务/登录文件读取）与 HTTP 一样可能永久挂起：默认 10s（对齐 fetchJson 的
+// AbortSignal.timeout）。注入极短 identityTimeoutMs + 永不 resolve 的 resolveCredentials，验证
+// 超时后该家在短时间内返回可读 error 条目、不拖死同批其它 provider（Client 的「刷新中」不再
+// 永久卡住），也不被 client 的 /auth|credential/ 判定当成凭据失效导去重新登录入口。
+assert.equal(h.service.identityTimeoutMs, 10000, "identity 超时默认与 HTTP 的 10s 对齐");
+const hanging = harness({ xiaomi: { cookie: "api-platform_serviceToken=S; userId=1" } }, { identityTimeoutMs: 15, resolveCredentials: () => new Promise(() => {}) });
+hanging.respond(url => url.endsWith("/balance") ? { data: { balance: "1", currency: "CNY" } } : { data: {} });
+let hungGuard; const hungStart = Date.now();
+const hung = await Promise.race([hanging.service.refresh({ providerIds: [Z, M], force: true }), new Promise((_, reject) => { hungGuard = setTimeout(() => reject(new Error("identity 超时未生效：refresh 5 秒内未返回")), 5000); })]).finally(() => clearTimeout(hungGuard));
+assert.ok(Date.now() - hungStart < 5000, "identity 挂起时 refresh 应在超时后立即返回，而不是永久等待");
+const hungZai = hung.entries.find(e => e.providerId === Z);
+assert.equal(hungZai.state, "error");
+assert.equal(hungZai.errorCode, "subusage/identity-timeout");
+assert.ok(hungZai.error.includes("超时"), "超时错误必须可读");
+assert.ok(!/auth|credential/i.test(hungZai.errorCode), "identity 超时不得被当成 auth/credential 失效");
+assert.equal(hung.entries.find(e => e.providerId === M).state, "ok", "单家凭据服务挂起不得拖死同批其它 provider");
 // 未知 provider id 不再整体拒绝（客户端已更新、Host 未重启时必然出现）：过滤掉它，并回一条可读的
 // unknown-provider 条目，好过让用户只看到网关的 boundary validation。形状错误（缺 force）仍拒绝。
 const unknownResult = await h.service.refresh({ providerIds: ["bad"], force: false });
