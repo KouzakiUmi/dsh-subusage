@@ -154,7 +154,11 @@ const quota = { state: "ok", coverage: "complete", freshness: "fresh", windows: 
 const renderPill = (entry, open = false) => { states = [entry ? { entry, updatedAt: 0 } : null, null, undefined, false, open]; index = 0; return UsagePill({ providerId: M, label: "MiMo", readEntry: () => {}, t, getLocale }); };
 const json = (node) => JSON.stringify(node);
 
-assert.ok(text(renderPill(quota)).includes("75% left"), "距离到期远时保持原余量文案");
+// 药丸正常态只画彩色余量条、不写字也不写百分比；数字收进 title / aria-label，点开弹层才是大字余量。
+const calm = renderPill(quota);
+assert.equal(text(calm).trim(), "", "余量充足时药丸不显示任何文字");
+assert.ok(json(calm).includes("75% left"), "余量数字仍在 title / aria-label 中");
+assert.ok(text(renderPill(quota, true)).includes("statusPlenty"), "弹层顶部横幅先给出「额度充足」的结论");
 assert.ok(!json(renderPill({ ...quota, ...inMs(5 * 60 * 60 * 1000) })).includes("Cookie expires in"), "未到提醒窗口不打扰用户");
 const soon = renderPill({ ...quota, ...inMs(90 * 60 * 1000) });
 assert.ok(text(soon).includes("Cookie expires in 2 h"), "即将到期时药丸改显到期提醒");

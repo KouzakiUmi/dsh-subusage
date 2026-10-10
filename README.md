@@ -6,7 +6,7 @@
 
 > **English.** dsh-subusage shows subscription quota and balance for the AI providers you already use, as a pill next to the model selector in DeepSeek Harness. Provider switches and credentials live in one settings page, and other plugins or agents can read the same snapshot through a read-only quota API.
 
-[![npm version](https://img.shields.io/badge/npm-0.10.10-blue)](https://www.npmjs.com/package/dsh-subusage)
+[![npm version](https://img.shields.io/badge/npm-0.10.11-blue)](https://www.npmjs.com/package/dsh-subusage)
 [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
 [![DSH](https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.1%20%3C0.3.0--0-informational)](#compatibility--兼容性)
 
@@ -18,7 +18,7 @@
 | 设置页 | 开关与凭据集中管理；缺凭据、Cookie 过期时把修复入口直接送到卡片上 | 设置 → 订阅用量 → 提供商管理 |
 | 只读额度 API | 其他插件与 Agent 复用同一份额度数据，不必各自对接各家接口 | Agent 工具 `subusage_quota`、Host 服务 `subUsage.quota()` |
 
-药丸示例：`✓ 余 87%`、`⚠ 7d 余 12%`、`✕ 7d 已达限额`。多窗口取最差一窗，点击查看完整明细；成功结果按提供商缓存 **60 秒**，手动刷新可跳过普通 TTL（仍遵守上游限流退避与 `Retry-After`）。
+药丸只画图形：每个额度窗口一根彩色余量条（绿 / 黄 / 橙 / 红，满 = 100% 剩余），正常时不写字；需要留意时追加一个词，如 `周 偏少`、`5时 已用尽`、`需配置`、`拉取失败`。点击弹层，顶部先给结论（额度充足 / 余量偏低 / 即将用尽 / 额度已用尽…），下面是各窗口的剩余百分比与重置倒计时；成功结果按提供商缓存 **60 秒**，手动刷新可跳过普通 TTL（仍遵守上游限流退避与 `Retry-After`）。
 
 本插件**不注册模型路由**，药丸按 provider id 匹配；因此使用哪个插件提供该模型路由不影响匹配，id 对不上时才不显示。
 
@@ -385,13 +385,13 @@ node scripts/check-browser-runtime.mjs   # 需要工作区可解析 playwright-c
 
 ### 界面预览
 
-以下为 0.7.0 的离线组件测试截图，使用虚构用量数据，不包含真实账号信息，也不是运行中的 DSH 截图。
+以下为 0.10.11 的离线组件测试截图，使用虚构用量数据，不包含真实账号信息，也不是运行中的 DSH 截图。
 
 深色设置页：查看订阅用量、管理凭据与提供商。
 
 ![深色订阅设置页（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/settings-dark.png)
 
-浅色用量弹层：查看每日与每周额度、用量明细。
+浅色用量弹层：顶部先给结论（额度充足 / 余量偏低 / 即将用尽…），下面是各窗口的剩余百分比与重置时间。右下角是收起态药丸——每个窗口一根彩条，正常时不写字。
 
 ![浅色 NanoGPT 用量弹层（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/usage-popover-light.png)
 

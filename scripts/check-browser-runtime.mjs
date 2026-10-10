@@ -43,9 +43,10 @@ try {
       };
     });
     assert.equal(info.overflow, false, `${theme}/${width} 不得横向溢出：${JSON.stringify(info.overflowNodes)}`);
-    // 预览桩的 configured 把其余 Ark 路由标成未安装，且 Codex 现在默认关闭，
-    // 所以可见数不是 PROVIDERS 的默认开启数。
-    assert.equal(info.providerCount, 10, '预览桩下的可见 provider 数');
+    // 预览桩下可见 13 条 = 桩里显式开启的 8 条（zai/kimi/mimo/opencode/commandcode/minimax/minimax-cn/xai-oauth）
+    // + 默认开启的 deepseek + Ark 的 4 条路由（DeepSeek 与 Ark 不在桩的 visibility.providers 里，按默认开关放行；
+    // Ark 不按路由收起，configured=false 也不影响）。codex 与其余 13 家默认关闭，因此不可见。
+    assert.equal(info.providerCount, 13, '预览桩下的可见 provider 数');
     assert.equal(info.selectedProvider, 'subusage-tab-xiaomi-token-plan-cn', '标签选中态必须匹配当前详情');
     assert.equal(info.tabsVisible, true, '窄屏仍使用按钮导航');
     assert(info.tabWidths.every(width => width > 0), '所有标签均有可点击区域');

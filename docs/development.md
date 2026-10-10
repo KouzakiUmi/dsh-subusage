@@ -142,6 +142,22 @@ node --input-type=module -e "import {chromium} from 'playwright-core'; import {r
 
 预览页面包括布局示意，不完全复刻 DSH 外壳。市场所用设置截图来自 `settings-530-xiaomi-token-plan-cn-dark-credentials.png`，弹层来自 `settings-530-nanogpt-light-pill.png`。人工检查后将 PNG 复制到 `assets/screenshots/` 的相应文件，保留离线标记并同步 [截图声明](../screenshots.json) 与 README。市场只需 GitHub 仓库图片，当前 npm 白名单不包含这些 PNG。
 
+### 0.10.11 验证记录：药丸与弹层视觉重设计（离线）
+
+**范围**：只改 Client 渲染层（`lib/client.js`）——档位文案、药丸图形化、弹层状态横幅、窗口行与补充项布局、设置页用量面板与标签。Host、RPC 契约、缓存、凭据解析与档位阈值（已用 71 / 91 / 100%）未动。
+
+| 检查 | 结果 | 要点 |
+|---|---|---|
+| `node tests/run-all.mjs` | pass | 含更新后的 `test-mimo-cookie-expiry.mjs`（正常态药丸已无文字，数字改在 title / aria-label） |
+| `node scripts/check-manifest.mjs` | pass | 打包白名单与 exports 未变 |
+| `node --check lib/*.js` | pass | 无源码转译 |
+| `node scripts/check-browser-runtime.mjs` | pass | 严格 Chrome、深浅主题 × 530 / 500 / 499 / 360：无横向溢出、无下拉列表、25 个开关 |
+| 一次性画廊脚本（`debug/`，不入库） | pass | 15 种状态（充足 / 偏少 / 即将用尽 / 已用尽 / 受连累 / 未配置 / 需登录 / 失败 / 加载 / 缓存 / 仅余额 / Cookie 将到期 / Cookie 已过期 / AFP 四窗口）深浅各一张，目视核对配色与层级 |
+
+**顺带修掉的既有问题**：`check-browser-runtime.mjs` 的「预览桩下可见 provider 数」期望值停在 10，而预览桩实际可见 13 条（桩里显式开启 8 条 + 默认开启的 DeepSeek + Ark 的 4 条路由）。该断言在**未改动的 0.10.10 代码上同样失败**（用 `git stash` 复现），属期望值未随 provider 默认开关更新，已按实际构成改为 13 并在注释里写明组成。
+
+**未做**：没有在运行中的 DSH 实例上做像素验收（离线预览不执行 effect、不复刻外壳），也没有真实账号数据。README 的两张界面图已用本版本的离线预览重新生成（设置页取自 `settings-530-xiaomi-token-plan-cn-dark-credentials.png`，弹层取自 `settings-530-nanogpt-light-pill.png`，均为虚构用量）。
+
 ### 0.10.8 运行时验证记录：web profile 的安装—启动—回滚闭环
 
 **环境**：Desktop 内置 Core `0.2.1-alpha.1`（与 `dsh.compatibility.dshReleases` 里标 `compatible` 的版本一致），真实 `$DSH_HOME` 下的 `web` profile，固定 Commit `c47521df4dab8559b4d6d04f502a9477a5a5f5da`（= `v0.10.8`）。**未触碰 `desktop` profile**（验证后复核其依赖清单不变）。
