@@ -31,6 +31,25 @@
 - `slots.inject` 等待实际 slot 声明；注册、事件、计时器和共享缓存应随所属 fiber 卸载清理。
 - 不新增未知 settingsScope API、主进程 guest 通道或假定 Client 能创建 BrowserWindow。
 
+### 依赖面与 Core 兼容规范（2026-10-11 审查后固化）
+
+**只依赖公开扩展 API 面**，不碰内部组件、不依赖桌面壳（Electron）版本——这是 0.2.x 各 Core 实际全兼容的原因：
+
+- Host（`lib/index.js`）只 import 四个核心包的公开导出：`defineTool`（dsh-tools）、`TypertRemoteService` / `RemoteError`（dsh-typert-protocol）、`credentialRef` / `isCredentialRefName`（dsh-credentials）、`launchEnvironmentOf`（dsh-launch-environment），外加 Cordis 服务 `llm`。
+- Client（`lib/client.js`）只 require 宿主注入的 `react`，通过 `dsh.client.inject` 声明 client 基座公开模块（client-locale、client-ui-settings、client-ui-slots、api-gateway、api-remotes、api-session-controller、client-ui-model-selection），UI 全走 slots。
+- 适配新能力时先找公开服务与导出；公开面没有的能力不做，不用内部通道绕。
+
+**peer 双分支规则**：`>=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-0 <0.3.0-0`。node-semver 只在**某个比较符与目标版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时才放行预发布版本，所以单分支 `>=0.2.0-rc.1 <0.3.0-0` 会**静默排除** `0.2.1-alpha.x`（0.8.1~0.10.7 的历史教训——当时靠 DSH 安装链路不阻断 peer 才没出事）。Core 升 0.3.x 且 API 面未变时，必须新增 `>=0.3.0-0 <0.4.0-0` 分支，而不是放宽成单分支。
+
+**`dsh.compatibility.dshReleases` 是实测证据记录，不是依赖声明**。标 `compatible` 的标准是有实机运行证据：六步闭环（install→dump-config→start→api-smoke→ui-readback→uninstall→rollback）**或**日常实机运行 + 核心包静态核对；无证据一律 `unknown`，没有证据不猜。当前证据：`0.2.1-alpha.1` 六步闭环（0.10.8）；`0.2.1-alpha.2` 日常实机运行（Desktop Core，0.10.8~0.10.11）；`0.2.0-rc.2` 被 v0.1.0~v0.3.0 三个发布版本精确锁定运行；`0.2.0-rc.1` 无直接记录，维持 `unknown`。
+
+**适配新 Core 版本的核对清单**：
+
+1. 读目标 Core 的 manifest 确认版本号；确认 peer 双分支是否覆盖（不覆盖则按上面的规则加分支）。
+2. 静态核对四个核心包的版本与公开导出仍存在（`defineTool` 等）。
+3. 实机跑一轮：安装/升级 → 设置页渲染 → 药丸 → `subusage_quota` 查询。
+4. 按证据更新 `dshReleases`、README 兼容表与本文件「最后验证汇总」；证据不足就保持 `unknown` 并写明缺什么。
+
 ## 3. RPC v0.2 契约
 
 Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，测试机械比较 service、namespace、method、wire、codec typeSymbol。
