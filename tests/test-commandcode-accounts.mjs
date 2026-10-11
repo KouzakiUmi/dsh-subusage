@@ -150,6 +150,39 @@ const describeOk = (row, writable = true) => async () => ({ ok: true, value: { w
 	cc.dispose();
 }
 
+// ── 共用控制器的竞态：并发 load 合并，旧 describe 不覆盖切换结果 ─────────────
+{
+	const WORK = "COMMANDCODE_ACCOUNT_WORK";
+	let releaseStale;
+	const staleGate = new Promise((resolve) => { releaseStale = resolve; });
+	let describeCalls = 0;
+	let row = namespaceRow({ accounts: [{ label: "工作号", apiKeyEnv: WORK }], activeAccount: "" }, 7);
+	const cc = api.createCommandCodeAccounts({
+		describe: async () => {
+			describeCalls += 1;
+			// 第二次 describe 捕获「发起时」的快照，并在 mutate 之后才返回——正是被覆盖的那种时序。
+			const snapshot = { ...row, value: { ...row.value } };
+			if (describeCalls === 2) await staleGate;
+			return { ok: true, value: { writable: true, namespaces: [snapshot] } };
+		},
+		mutate: async (ops, revision) => { row = { ...row, revision: revision + 1, value: { ...row.value, activeAccount: ops[0].value ?? "" } }; return { ok: true, value: row }; }
+	});
+	await cc.load();
+	const switching = cc.switchTo(WORK);
+	const loading = cc.load();
+	const merged = cc.load();
+	assert.equal(describeCalls, 2, "同一代的并发 load 合并成一次 describe（设置页 + 药丸同时挂载不会查两遍）");
+	await switching;
+	assert.equal(cc.getSnapshot().activeId, WORK, "切换立即生效");
+	assert.equal(cc.getSnapshot().revision, 8, "revision 取自 mutate 返回行");
+	releaseStale();
+	await loading; await merged; await flush();
+	assert.equal(cc.getSnapshot().activeId, WORK, "切换后返回的旧 describe 不覆盖 activeId");
+	assert.equal(cc.getSnapshot().revision, 8, "revision 保持 mutate 的权威值");
+	assert.equal(cc.getSnapshot().status, "ready", "状态不卡在 loading");
+	cc.dispose();
+}
+
 // ── 弹层账户区渲染 ───────────────────────────────────────────────────────────
 trees.length = 0;
 assert.equal(api.CommandCodeAccountSwitch({ cc: null, ccState: null, t }), null, "未注入 cc 时区块整体隐藏");
@@ -175,6 +208,12 @@ assert.equal(api.CommandCodeAccountSwitch({ cc: null, ccState: null, t }), null,
 	assert.ok(JSON.stringify(summary.children).includes("工作号"), "summary 显示当前账户");
 	assert.ok(JSON.stringify(summary.children).includes("3"), "summary 显示选项数量");
 	assert.equal(flat.find((n) => n.props?.style?.overflowY === "auto")?.props?.style?.maxHeight, 240, "展开后列表限高滚动");
+	// 切换进行中 / 只读时按钮禁用：switchTo 在这种状态下直接返回，可点的按钮只会变成「点了没反应」。
+	const busyButtons = nodes(api.CommandCodeAccountSwitch({ cc, ccState: { ...cc.getSnapshot(), switching: true }, t })).filter((n) => n.type === "button");
+	assert.equal(busyButtons.length, 3);
+	assert.ok(busyButtons.every((b) => b.props.disabled === true && b.props.style.cursor === "default"), "切换进行中三个选项都禁用");
+	const readOnlyButtons = nodes(api.CommandCodeAccountSwitch({ cc, ccState: { ...cc.getSnapshot(), writable: false }, t })).filter((n) => n.type === "button");
+	assert.ok(readOnlyButtons.every((b) => b.props.disabled === true), "只读（不可写）时同样禁用");
 	cc.dispose();
 }
 {
