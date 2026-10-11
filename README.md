@@ -370,7 +370,7 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 - `state`：`ok` | `no-key` | `no-cookie` | `error` | `disabled`
 - `windows[].percent` 是**已用**百分比（0–100）；`extras` 放余额与套餐名等补充项
 - `account` / `accountActive` / `accountMode` 只在多账户的 Command Code 上出现（见下）；此时同一条路由会有**多条**条目（每个账户一条，`providerId` 相同），消费方按 `account` 区分
-- 视图**刻意精简**：不返回设置，也不返回 `keySource` / `apiDetected` / 继承变量名等内部状态，第三方消费者拿不到任何与 Key 相关的字段
+- 视图**刻意精简**：不返回设置，也不返回 `keySource` / `apiDetected` / 继承变量名等内部状态，第三方消费者拿不到任何与 Key 相关的字段。多账户路由（Command Code）连错误文案里的**凭据引用名**也会换成账户标签（`Account 2`），内部 `apiKeyEnv` 只留在本机界面那条通道里（用户要靠它定位该往哪个 ref 写凭据）
 - 视图里**不出现值为 `undefined` 的字段**：字段缺席表示「这家没有报告」，而不是「报告了空」——带 `undefined` 的键会被调用方的 schema 校验判成型别错误
 - 单家读取失败只影响它自己的条目，其余照常返回
 - 与设置页共用同一份缓存（TTL 60 秒），频繁调用不会反复请求各家接口；多账户各按「路由 id + 账户引用名」占一份缓存，读全部账户不会互相驱逐

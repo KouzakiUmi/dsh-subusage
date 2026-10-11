@@ -104,6 +104,21 @@ const respondByKey = (_url, options) => {
 	console.log("PASS quota 多账户：一账户一条、激活排最前、按账户分缓存");
 }
 
+// ── 对外视图不泄露凭据引用名：额外账户没配凭据时改用账户标签 ────────────────
+{
+	const h = harness({ accounts: [{ label: "工作号", apiKeyEnv: WORK }] });
+	const view = await h.service.quota({ providerIds: [C] });
+	const work = view.providers.find(p => p.account === "工作号");
+	assert.equal(work.state, "no-key");
+	assert.ok(work.error.includes("工作号"), "错误文案用账户标签指明是哪一号");
+	assert.ok(!JSON.stringify(view).includes(WORK), "对外视图不含内部凭据引用名（apiKeyEnv）");
+	// client 通道仍保留引用名：本机界面要靠它定位该往哪个 ref 里写凭据。
+	const entry = (await h.service.refresh({ providerIds: [C], force: false, commandCodeAccount: WORK })).entries[0];
+	assert.ok(entry.error.includes(WORK), "client 通道保留引用名（本机排障定位用）");
+	h.service.dispose();
+	console.log("PASS 对外视图脱敏：错误文案用账户标签，不泄露 apiKeyEnv 引用名");
+}
+
 // ── 自动轮换与单账户：模式标注照给，但不编造激活账户 ────────────────────────
 {
 	const auto = harness({ accounts: ACCOUNTS.slice(0, 1), accountCredential: KEYS, respond: respondByKey });

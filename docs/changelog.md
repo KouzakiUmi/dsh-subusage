@@ -10,6 +10,7 @@
 - **工具输出不再塞空条目**：**点名的家原样返回**（即使没配凭据——用户问的正是「它为什么没数据」）；**不点名时**（含名字一个都没认出来、走全量兜底时）省略检测已关闭、未配置凭据、以及接口没报告任何额度的条目，省略条数按**家**去重后写进 `omitted`（同一家的多个 Command Code 账户只算一家），并在文本末尾说明。**读取失败（`error`）的条目保留**——那是「这次没读到」，不是「没配置」，省略掉会把排障方向带偏；认不出的名字自己那行也保留。`plan` 只算套餐名、`account` 只算账户标注，都不当作「有额度数据」（但火山方舟的席位标注同样用 kind `account`，它算身份信息，见下）。
 - 账户清单与提供方插件 `slots()` 的唯一差异写进注释与文档：**不支持「字面 Key」账户**（`accounts[].apiKey` 直接写在提供方配置里的那种，其 slots() 会列、本插件按引用名解析不到），设置页与工具两处一并跳过；同一凭据引用名重复出现时只列一次（否则同账户出两行、还会多打一份计费请求）。`setCommandCodeAccount` 把 `"default"` 归一为空串——Host 端本就是同一缓存键，归一后不会为「固定到默认账户」多打一次强制刷新。
 - **不再误吞火山方舟的席位标注**：为去掉重复账户名，工具文本最初跳过所有 `extras.kind === "account"`，而席位版的标注用的正是同一个 kind（`席位 seat-xxx（共 N 个席位）`）——文本里席位 ID 会整行消失。现在只在该条带顶层 `account` 字段（多账户行）时才跳过，省略判定同理：无窗口但带席位身份的成功条目不再被当作「没有数据」。
+- **对外额度视图不泄露凭据引用名**：额外账户没配凭据时，`provider()` 的 no-key 文案里嵌着它的 `apiKeyEnv` 引用名（如 `COMMANDCODE_ACCOUNT_WORK`），而视图契约承诺不含继承变量名/凭据引用。`quota()` 现在把错误文案里的引用名换成账户标签（`Account 2`）；本机界面那条通道（`read`/`refresh`）仍保留引用名——用户要靠它定位该往哪个 ref 里写凭据。
 - 文案与契约：`commandcodeHelp` 与账户区提示说明「设置页与弹层同一开关」；工具 `description` 交代省略规则与多账户形态，`output.schema` 增加 `account` / `accountActive` / `accountMode` / `omitted`；README 的额度查询 API 一节补上视图新字段与「`quota()` 本身不过滤」的区别。
 - 测试：新增 `tests/test-commandcode-multiquota.mjs`（账户清单、按账户展开与排序、按账户分缓存与失效、工具省略与点名、文本层账户后缀）；`tests/test-commandcode-accounts.mjs` 增加设置页账户区与「未注入 cc 时隐藏」两段。`node tests/run-all.mjs`（32 个文件）与 `node scripts/check-manifest.mjs` 全部通过。
 
