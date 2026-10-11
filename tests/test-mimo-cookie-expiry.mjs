@@ -107,7 +107,8 @@ const DICT = {
 	pillCookieSoon: "Cookie expires in {rest}", mimoCookieExpired: "Cookie expired",
 	mimoLoginAt: "Signed in {time}", mimoCookieExpiresAt: "Expires {time}",
 	mimoCookieUntracked: "Login time not recorded", mimoCookieTtl: "24h session cookie",
-	pillRemaining: "{p}% left", pillLimited: "Limit reached", statusNoCookie: "Login required"
+	pillRemaining: "{p}% left", pillLimited: "Used up", statusNoCookie: "Login required",
+	statusPlenty: "Plenty left", statusExhausted: "Quota used up", remainWord: "left"
 };
 let states = [], index = 0;
 const react = {
@@ -158,19 +159,19 @@ const json = (node) => JSON.stringify(node);
 const calm = renderPill(quota);
 assert.equal(text(calm).trim(), "", "余量充足时药丸不显示任何文字");
 assert.ok(json(calm).includes("75% left"), "余量数字仍在 title / aria-label 中");
-assert.ok(text(renderPill(quota, true)).includes("statusPlenty"), "弹层顶部横幅先给出「额度充足」的结论");
+assert.ok(text(renderPill(quota, true)).includes("Plenty left"), "弹层顶部横幅先给出「额度充足」的结论");
 assert.ok(!json(renderPill({ ...quota, ...inMs(5 * 60 * 60 * 1000) })).includes("Cookie expires in"), "未到提醒窗口不打扰用户");
 const soon = renderPill({ ...quota, ...inMs(90 * 60 * 1000) });
 assert.ok(text(soon).includes("Cookie expires in 2 h"), "即将到期时药丸改显到期提醒");
 assert.ok(json(soon).includes("rgba(234,179,8,.10)"), "临近到期使用黄色提示底色");
-assert.ok(json(soon).includes("#eab308"), "临近到期文字随档位着色");
+assert.ok(json(soon).includes("rgba(234,179,8,.45)"), "临近到期药丸描边随档位着色");
 const urgent = renderPill({ ...quota, ...inMs(10 * 60 * 1000) });
 assert.ok(text(urgent).includes("Cookie expires in 10 min") && json(urgent).includes("rgba(249,115,22,.10)"), "30 分钟内升级为橙色紧急提示");
 const expired = renderPill({ ...quota, ...inMs(-60 * 1000) });
 assert.ok(text(expired).includes("Cookie expired"), "已过期直接提示重新登录");
 assert.ok(json(expired).includes("rgba(239,68,68,.10)"), "已过期使用红色提示底色");
 const blocked = renderPill({ ...quota, ...inMs(10 * 60 * 1000), windows: [{ kind: "sub", percent: 100, status: "rate-limited" }] });
-assert.ok(text(blocked).includes("Limit reached") && !text(blocked).includes("Cookie expires in"), "额度已用尽优先于 Cookie 到期提醒");
+assert.ok(text(blocked).includes("Used up") && !text(blocked).includes("Cookie expires in"), "额度已用尽优先于 Cookie 到期提醒");
 const popup = renderPill({ ...quota, ...inMs(90 * 60 * 1000) }, true);
 assert.ok(text(popup).includes("Cookie expires in 2 h") && text(popup).includes("Expires "), "弹层常驻显示剩余时间与到期时刻");
 assert.ok(!text(renderPill(quota, true)).includes("Expires "), "无计时记录时弹层不编造到期时间");

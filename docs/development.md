@@ -2,7 +2,7 @@
 
 ## 1. 目标与授权边界
 
-目标 API 为 DeepSeek Harness `0.2.0-rc.2`，peer 范围为 `>=0.2.0-rc.1 <0.3.0-0`，允许范围内的预发布版本。范围声明与真实运行验证分别记录。本项目是树外 Host/Client bundle，`cordis.patch.yml` 插入 `subusage`，不修改核心、安装树或 ASAR。
+目标 API 为 DeepSeek Harness `0.2.x` 公开扩展面，peer 范围为 `>=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-0 <0.3.0-0`（双分支各自带预发布标签，否则 0.2.1-alpha.x 被静默排除）。范围声明与真实运行验证分别记录。本项目是树外 Host/Client bundle，`cordis.patch.yml` 插入 `subusage`，不修改核心、安装树或 ASAR；只依赖公开服务与核心包公开导出，不依赖桌面壳版本。
 
 工作区开发、安装启用、依赖安装/构建授权与重启是不同操作。修改并通过测试不代表运行环境已经生效。
 
@@ -15,7 +15,6 @@
 | `docs/provider-coverage.md` | 提供商覆盖与**不接入**的决策记录：已支持清单、评估后不做的厂商与理由、用户决策跳过的厂商 |
 | `lib/client.js` | Client 模块、共享 store、设置页与模型药丸；内含界面中英文文案 |
 | `lib/mimo-login.js` | 隔离 Chrome 登录、Cookie 提取与任务生命周期 |
-| `locale/zh.json`、`locale/en.json` | 插件元数据与配置文案 |
 | `cordis.patch.yml`、`package.json` | bundle 注册、入口、依赖与打包白名单 |
 | `tests/` | 桩网络/隔离文件系统回归 |
 | `scripts/` | 清单、打包、离线预览与浏览器检查 |
@@ -177,9 +176,11 @@ node --input-type=module -e "import {chromium} from 'playwright-core'; import {r
 - **npm 全局 CLI（`0.1.2-rc.1`）跑 web profile 会失败**：本机 `~/.dsh/cordis.patch.yml` 里 `arkcli helper` 写的 MCP 条目带 `arkcli_managed` 字段，而 `0.1.2-rc.1` 的 `@deepseek-ai/dsh-mcp-client` schema **严格拒绝**该字段（`dsh: plugin tree failed to load … 1 entry did not activate`）。Desktop Core `0.2.1-alpha.1` 的该 schema 允许它，所以 Desktop 一直正常。验证因此改用 Desktop 自带的 Core。
 - **隔离 `DSH_HOME` 下启动会停在** `user patch-layer watching requires the Cordis HMR service`：profile 初始化时写入的 `patchReload: live` 需要 HMR 服务，而隔离 home 里没有。同样与本插件无关，所以最终用真实 `DSH_HOME` + 专用 `web` profile 做隔离。
 
-**未做**：没有在 `0.2.0-rc.1` / `0.2.0-rc.2` / `0.2.1-alpha.2` 上重复这六步，`dsh.compatibility.dshReleases` 对这三个保持 `unknown`；真实 Desktop profile 的插件更新与界面回读仍由用户自行验收。
+**未做**：没有在 `0.2.0-rc.1` 上重复这六步（`dshReleases["0.2.0-rc.1"]` 保持 `unknown`）。
 
-本机 Desktop Core 现为 `0.2.1-alpha.2`（`C:\Program Files\DSH NEXT\resources\app\node_modules\@deepseek-ai\dsh\package.json`）。peer 范围 `>=0.2.1-0 <0.3.0-0` 已覆盖；静态核过 `@deepseek-ai/dsh-tools` / `dsh-typert-protocol` 仍为 `0.2.1-alpha.2` 且导出 `defineTool`。按「没有实机六步不标 compatible」的约定，`dshReleases["0.2.1-alpha.2"]` 仍为 `unknown`。打开设置页的首次 `readAll` 仍是一次全量 RPC（拆开会破坏现有 read 契约测试），整页开关在拿到 revision 前保持禁用，上限为 Client 20 秒 RPC deadline。
+**2026-10-11 兼容声明更新**：`0.2.1-alpha.2` 与 `0.2.0-rc.2` 升为 `compatible`。依据是实机运行证据而非六步闭环——本机 Desktop Core 现为 `0.2.1-alpha.2`（`C:\Program Files\DSH NEXT\resources\app\node_modules\@deepseek-ai\dsh\package.json`），0.10.8 ~ 0.10.11 在其上日常运行（含设置页、药丸、`subusage_quota` 查询）均正常，静态核对 `@deepseek-ai/dsh-tools` / `dsh-typert-protocol` 仍为 `0.2.1-alpha.2` 且导出 `defineTool`；`0.2.0-rc.2` 则有 v0.1.0 ~ v0.3.0 三个发布版本精确锁定它运行的记录。插件只依赖 Core 的公开扩展 API 面（Cordis 服务与核心包公开导出），不碰内部组件、不依赖桌面壳版本，这是 0.2.x 各版本实际全兼容的原因。`0.2.0-rc.1` 没有直接运行记录，维持 `unknown`。
+
+**最后验证汇总**：Core `0.2.1-alpha.2`，日期 `2026-10-11`（日常实机运行 + 离线浏览器检查 + 全量回归）；在线接口与真实账号的最近一轮实测见 0.10.10/0.10.11 各节。打开设置页的首次 `readAll` 仍是一次全量 RPC（拆开会破坏现有 read 契约测试），整页开关在拿到 revision 前保持禁用，上限为 Client 20 秒 RPC deadline。
 
 ### 0.10.0 → 0.10.1 验证记录：火山方舟全面覆盖、额度查询 API、RPC 版本窗口期与设置页排序
 

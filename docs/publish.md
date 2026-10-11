@@ -77,7 +77,7 @@ npm publish --access public --ignore-scripts
 npm view dsh-subusage version dist-tags
 ```
 
-`publishConfig` 固定公共 registry 和公开访问。认证在 npm 官方页面完成，不把密码、验证码或 token 写入仓库。截图与维护文档存放在 GitHub，当前 `files` 白名单只打包运行代码、locale、patch 与 README；README 的图片和文档链接使用 GitHub 地址，npm 页面也能访问。
+`publishConfig` 固定公共 registry 和公开访问。认证在 npm 官方页面完成，不把密码、验证码或 token 写入仓库。截图与维护文档存放在 GitHub，当前 `files` 白名单只打包运行代码（`lib`）、patch、README 与 LICENSE；README 的图片和文档链接使用 GitHub 地址，npm 页面也能访问。
 
 ## 市场收录
 
@@ -116,16 +116,18 @@ tarball: https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh
 
 ## 截图维护
 
-根目录 [screenshots.json](../screenshots.json) 与 `package.json` 相邻，声明两张仓库内图片，顺序即展示顺序：
+根目录 [screenshots.json](../screenshots.json) 与 `package.json` 相邻，声明四张仓库内图片，顺序即展示顺序：
 
 ```json
 [
   "assets/screenshots/settings-dark.png",
-  "assets/screenshots/usage-popover-light.png"
+  "assets/screenshots/usage-popover-light.png",
+  "assets/screenshots/pill-states-light.png",
+  "assets/screenshots/pill-states-dark.png"
 ]
 ```
 
-第一张展示深色设置页、MiMo 凭据入口及新增三项默认关闭；第二张展示浅色 NanoGPT 用量弹层。两张均为 0.7.0 离线组件测试截图，包含虚构数据及预览标记。
+第一张展示深色设置页、MiMo 凭据入口及提供商管理；第二张展示浅色 NanoGPT 用量弹层（状态横幅 + 各窗口剩余百分比）；后两张是药丸 15 种状态画廊（浅色 / 深色）。四张均为 0.10.11 离线组件测试截图，包含虚构数据及预览标记。
 
 更新截图时，用当前组件生成预览并检查布局，复制所选 PNG 到 `assets/screenshots/`，再同步声明和 README。具体生成方法见 [开发说明](development.md#离线浏览器与截图)。不要将 `debug/` 路径写入声明，该目录被 Git 忽略；不要放入真实 Key、Cookie 或账户数据。
 

@@ -105,12 +105,14 @@ const firstError = renderPill(null, true, 'fetch failed', 'error');
 assert.ok(!visibleText(firstError).includes('loading'), '首次失败弹层不能继续显示加载提示');
 const noKey = { ...normal, state: 'no-key', errorCode: 'subusage/no-key', retainPrevious: false, freshness: 'unknown' };
 const missingKeyTree = renderPill(noKey, true, 'missing key', 'no-key');
-assert.ok(!visibleText(missingKeyTree).includes('pillRemaining'), '删除凭据后不能渲染旧额度');
+// 窗口行的可见数字已改为「{left}% + remainWord」，不再含 pillRemaining 字面量；
+// 「不得展示旧额度」必须断言 remainWord（t 为键名回显），否则旧窗口漏渲染也过得了。
+assert.ok(!visibleText(missingKeyTree).includes('remainWord'), '删除凭据后不能渲染旧额度');
 assert.ok(visibleText(missingKeyTree).includes('pillNeedKey'), '删除凭据后必须展示配置指引');
 const stale = { ...normal, state: 'error', retainPrevious: true, freshness: 'stale', lastSuccessAt: new Date(0).toISOString(), errorCode: 'subusage/network' };
 assert.ok(visibleText(renderPill(stale, true, 'temporary network failure', 'error')).includes('cacheAge'), '允许保留的网络错误必须标注缓存年龄');
-assert.ok(!visibleText(renderPill({ ...stale, retainPrevious: false }, true, 'failed', 'error')).includes('pillRemaining'), '无保留许可不得展示旧额度');
-assert.ok(!visibleText(renderPill({ ...stale, errorCode: 'subusage/auth' }, true, 'expired', 'error')).includes('pillRemaining'), '认证失效不得展示旧额度');
+assert.ok(!visibleText(renderPill({ ...stale, retainPrevious: false }, true, 'failed', 'error')).includes('remainWord'), '无保留许可不得展示旧额度');
+assert.ok(!visibleText(renderPill({ ...stale, errorCode: 'subusage/auth' }, true, 'expired', 'error')).includes('remainWord'), '认证失效不得展示旧额度');
 assert.ok(visibleText(renderPill({ ...empty, coverage: 'partial' })).includes('statusPartial'), '仅余额成功必须明确数据不完整、额度未知');
 const monthlyEntry = { state: "ok", coverage: "complete", windows: [{ kind: "month", percent: 20.2, status: "ok", detail: { used: 14.14, limit: 70, remaining: 55.86, unit: "credits", limitSource: "plan-snapshot" } }], extras: [{ kind: "monthly-balance", value: "55.86 credits" }] };
 assert.ok(visibleText(renderPill(monthlyEntry, true)).includes("monthlyBalanceLabel"));

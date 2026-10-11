@@ -28,7 +28,7 @@ const react = {
   useMemo: (fn, deps) => harness.memo(fn, deps),
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot()
 };
-vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, canShowUsage, validateCookieText, settingsPatch, draftFor, SubusageSection, UsagePill, UsageWindowRow, providerIcon, providerVisible, zh }; exports.apply = apply;"), {
+vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, canShowUsage, validateCookieText, settingsPatch, draftFor, SubusageSection, UsagePill, UsageWindowRow, computeStatus, providerVisible, zh }; exports.apply = apply;"), {
   window: { localStorage: { getItem: (key) => memory.get(key), setItem: (key, value) => memory.set(key, value) }, __ModuleLoader__: { load: (value) => { spec = value; } } },
   document, console, Date: FakeDate,
   setInterval: (fn, ms) => { const id = ++nextTimer; intervals.set(id, { fn, ms }); return id; }, clearInterval: (id) => intervals.delete(id),

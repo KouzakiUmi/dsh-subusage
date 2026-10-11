@@ -9,7 +9,7 @@
 
   [![npm version](https://img.shields.io/badge/npm-0.10.11-blue)](https://www.npmjs.com/package/dsh-subusage)
   [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
-  [![DSH](https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.1%20%3C0.3.0--0-informational)](#compatibility--兼容性)
+  [![DSH](https://img.shields.io/badge/DSH-0.2.x-informational)](#compatibility--兼容性)
 
   <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/usage-popover-light.png" width="640" alt="浅色用量弹层（离线预览）">
 
@@ -170,12 +170,12 @@ $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需
 |---|---|---|
 | 核心 peer 范围 | `@deepseek-ai/dsh` 及各核心包均为 `>=0.2.0-rc.1 <0.2.1-0 \|\| >=0.2.1-0 <0.3.0-0` | [`package.json`](package.json) 的 `peerDependencies` |
 | Node.js | `>=22.19.0` | `engines` 与 `dsh.compatibility.node` |
-| 已验证的 Core 版本 | `0.2.1-alpha.1` | 本机实机运行；逐版本状态见 `dsh.compatibility.dshReleases` |
-| 最后验证日期 | `2026-10-10` | [开发与验证说明](docs/development.md) |
+| 已验证的 Core 版本 | `0.2.0-rc.2`、`0.2.1-alpha.1`、`0.2.1-alpha.2` | 实机运行；逐版本状态与验证方式见 `dsh.compatibility.dshReleases` |
+| 最后验证日期 | `2026-10-11` | [开发与验证说明](docs/development.md) |
 
 > **范围里那个 `||` 分支不是冗余。** node-semver 只有在范围中**某个比较符与该版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时，才放行预发布版本。所以 `>=0.2.0-rc.1 <0.3.0-0` 这种看起来覆盖 0.2.x 的写法会**静默排除** `0.2.1-alpha.1`——而它正是当前活跃版本。必须为每个 minor 元组各写一个带预发布标签的分支。
 
-`dsh.compatibility.dshReleases` 逐版本声明已知状态：**只有实际验证过的标 `compatible`**，其余一律 `unknown`——没有证据不猜。声明范围不代表范围内所有版本都已实机验证；实际验证范围（在线接口、真实账号、浏览器像素验收等）见 [开发与验证说明](docs/development.md)。这是树外 Host / Client bundle，通过 `cordis.patch.yml` 插入，不修改 DSH 核心、安装树或 ASAR。
+`dsh.compatibility.dshReleases` 逐版本声明已知状态：**只有实际验证过的标 `compatible`**，其余一律 `unknown`——没有证据不猜。本插件只依赖 Core 的**公开扩展 API 面**（Cordis 服务 `llm`/slots/locale/remote/settings/modelDirectories、4 个核心包的公开导出、client 基座的公开模块），不碰内部组件、不依赖桌面壳版本——这是 0.2.x 各版本实际全兼容的原因；`dshReleases` 记录的是**实测证据**，不是依赖声明。实际验证范围（在线接口、真实账号、浏览器像素验收等）见 [开发与验证说明](docs/development.md)。这是树外 Host / Client bundle，通过 `cordis.patch.yml` 插入，不修改 DSH 核心、安装树或 ASAR。
 
 ## Install / 安装
 
@@ -430,7 +430,7 @@ node scripts/check-browser-runtime.mjs   # 需要工作区可解析 playwright-c
 
 文档入口：[凭据获取指引](docs/credentials.md)（每类凭据的官网入口、环境变量与填入位置、报错对照）、[开发与验证](docs/development.md)（RPC 契约、缓存与凭据约定、离线预览与实机验收范围）、[提供商清单与额度语义](docs/providers.md)、[提供商覆盖与取舍](docs/provider-coverage.md)、[UX 设计](docs/design-ux.md)、[发布与市场收录](docs/publish.md)、[更新记录](docs/changelog.md)、[审查记录](docs/code-review.md)。
 
-> 打包说明：`package.json` 的 `files` 白名单是 `lib` / `locale` / `cordis.patch.yml` / `README.md`，因此 `assets/title.svg`、`assets/screenshots/` 与 `docs/` **不进 npm 包**——顶部 title 图与下面的界面预览只在 GitHub 页面显示。改动白名单属于发布决策，需单独处理。
+> 打包说明：`package.json` 的 `files` 白名单是 `lib` / `cordis.patch.yml` / `README.md` / `LICENSE`，因此 `assets/title.svg`、`assets/screenshots/` 与 `docs/` **不进 npm 包**——顶部 title 图与下面的界面预览只在 GitHub 页面显示。改动白名单属于发布决策，需单独处理。
 
 ### 界面预览
 
