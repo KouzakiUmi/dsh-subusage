@@ -2,6 +2,15 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.10.12：首页重设计、审查修复与兼容声明更新
+
+- **README 重写为产品首页**：Hero + 痛点对照表 + 15 种状态画廊（新增 `pill-states-light/dark.png` 两张带水印离线预览，`screenshots.json` 扩为 4 项）+ 快速开始；30 行提供商表格等长列表移到「技术文档」分界线之后；`dsh-codex-connect` 引用补上维护中的上游链接（franksong2702，npm 同名包指向处）。
+- **审查修复**（Grok 4.6 / GLM-5.3 双子代理独立审查，无 P1）：设置页余额态不再同时出现「余额 xx / 暂无额度数据 / 余额行」三处打架；提供商标签改用与面板、药丸同一个 `computeStatus()`（缺凭据蓝 ⚙、无窗口成功中性 ℹ，不再误标红/绿）；Cookie 到期药丸保留迷你余量条，行动项只占一个词；删除死代码 `numColor` / `tagColor` / `providerIcon` 与 locale `retry`。
+- **测试**：新增 `tests/test-compute-status.mjs` 分支矩阵（含优先级交错用例）；「不得展示旧额度」断言改用 `remainWord`，罩住 0.10.11 的新渲染。
+- **兼容声明**：`dshReleases` 的 `0.2.1-alpha.2` 与 `0.2.0-rc.2` 按实机证据升为 `compatible`（Desktop Core alpha.2 上 0.10.8~0.10.11 日常运行；v0.1.0~v0.3.0 精确锁定 rc.2）；`0.2.0-rc.1` 无运行记录维持 `unknown`。README 兼容表与最后验证日期（2026-10-11）同步。
+- **规范文档**：development.md 新增「依赖面与 Core 兼容规范」（公开 API 面清单、peer 双分支规则与 0.8.x~0.10.7 教训、dshReleases 证据语义、Core 升级核对清单）；design-ux.md 新增「状态判定规范（computeStatus）」并刷新线框图与档位词。
+- 文档过时修正：DSH badge 改为 `0.2.x`、files 白名单描述（无 locale、含 LICENSE）、development.md 的 locale 文件入口、publish.md 截图声明（两张 0.7.0 → 四张 0.10.11）。
+
 ## 0.10.11：药丸与弹层视觉重设计（仅 Client UI）
 
 - **修正「偏高」**：旧档位词「偏高」没写清主语（用量高？余量高？）。档位词现在只说还剩多少：充足 / 偏少 / 即将用尽 / 已用尽 / 受连累；阈值（已用 71 / 91 / 100%）与内部 `percent` 不变。

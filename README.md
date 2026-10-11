@@ -7,7 +7,7 @@
 
   dsh-subusage 把你订阅的 30 家模型服务商额度装进 DeepSeek Harness 的输入框旁边——不切控制台、不猜百分比、不等报错。
 
-  [![npm version](https://img.shields.io/badge/npm-0.10.11-blue)](https://www.npmjs.com/package/dsh-subusage)
+  [![npm version](https://img.shields.io/badge/npm-0.10.12-blue)](https://www.npmjs.com/package/dsh-subusage)
   [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
   [![DSH](https://img.shields.io/badge/DSH-0.2.x-informational)](#compatibility--兼容性)
 
