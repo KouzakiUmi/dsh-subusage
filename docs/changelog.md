@@ -13,6 +13,7 @@
 - **对外额度视图不泄露凭据引用名**：额外账户没配凭据时，`provider()` 的 no-key 文案里嵌着它的 `apiKeyEnv` 引用名（如 `COMMANDCODE_ACCOUNT_WORK`），而视图契约承诺不含继承变量名/凭据引用。`quota()` 现在把错误文案里的引用名换成账户标签（`Account 2`）；本机界面那条通道（`read`/`refresh`）仍保留引用名——用户要靠它定位该往哪个 ref 里写凭据。
 - **共用控制器的竞态修掉**：设置页与药丸弹层现在共用同一个账户控制器，两处同时挂载会并发 `load()`。`load()` 现在把同一代的并发请求合并成一次 describe，并让「切换账户（mutate）之后才返回的旧 describe」作废——否则它会把 `activeId` / `revision` 覆盖回切换前的快照，两处界面一起回到旧账户；切换进行中 / 只读 / 未 ready 时账户按钮一并禁用（`switchTo` 本来就会拒绝，可点的按钮只会变成「点了没反应」）。
 - 文案与契约：`commandcodeHelp` 与账户区提示说明「设置页与弹层同一开关」；工具 `description` 交代省略规则与多账户形态，`output.schema` 增加 `account` / `accountActive` / `accountMode` / `omitted`；README 的额度查询 API 一节补上视图新字段与「`quota()` 本身不过滤」的区别。
+- 首页视觉：**标题图换成真实渲染截图拼贴**（`assets/title.png`，由 `debug/build-title.mjs` 生成、不入库）——左侧文字与三个同款药丸（一列迷你横条、满格 = 100% 剩余、档位色、正常态不写字），右侧是**当前实现真实渲染**的两张用量弹层并排（-5° 轻倾斜、不重叠）：浅色演示 **Codex**「额度充足」（`5 小时` / `每周` 两条限制 + `plus` 套餐标签），深色演示 **OpenCode Go**「额度已用尽并连坐」（受连累 / 已用尽标签、空槽余量条、每月仍剩 31% 与连坐明细）。字体用本机已装的开源 **Noto Sans SC**（SIL OFL），不使用商业字体。手绘的 `assets/title.svg` 删除；README 首屏去掉弹层大图（只留标题图），标题图整行宽度。
 - 测试：新增 `tests/test-commandcode-multiquota.mjs`（账户清单、按账户展开与排序、按账户分缓存与失效、工具省略与点名、文本层账户后缀）；`tests/test-commandcode-accounts.mjs` 增加设置页账户区与「未注入 cc 时隐藏」两段。`node tests/run-all.mjs`（32 个文件）与 `node scripts/check-manifest.mjs` 全部通过。
 
 ## 0.10.12：首页重设计、审查修复与兼容声明更新

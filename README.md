@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/title.svg" width="480" alt="dsh-subusage">
+  <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/title.png" width="100%" alt="dsh-subusage —— 模型选择器旁的余量药丸，右侧是同一界面的浅色与深色用量弹层（真实渲染截图）">
 
   # 订阅用量显示
 
@@ -10,10 +10,6 @@
   [![npm version](https://img.shields.io/badge/npm-0.11.0-blue)](https://www.npmjs.com/package/dsh-subusage)
   [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
   [![DSH](https://img.shields.io/badge/DSH-0.2.x-informational)](#compatibility--兼容性)
-
-  <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/usage-popover-light.png" width="640" alt="浅色用量弹层（离线预览）">
-
-  *点开药丸：先给结论（额度充足 / 余量偏低 / 即将用尽…），再给每个窗口的剩余百分比与重置倒计时。右下角是收起态药丸——每个额度窗口一根彩条，正常时不写字。*
 
   **安装只需一条命令** → [快速开始](#快速开始)
 </div>
