@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/title.svg" width="100%" alt="dsh-subusage —— 模型选择器旁的余量药丸，右侧是同一份额度数据的浅色与深色窗口卡">
+  <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/title.png" width="100%" alt="dsh-subusage —— 模型选择器旁的余量药丸，右侧是同一界面的浅色与深色用量弹层（真实渲染截图）">
 
   # 订阅用量显示
 
