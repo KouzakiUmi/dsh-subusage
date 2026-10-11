@@ -1,16 +1,48 @@
-# dsh-subusage
+<div align="center">
+  <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/title.svg" width="480" alt="dsh-subusage">
 
-![dsh-subusage](assets/title.svg)
+  # 订阅用量显示
 
-**DeepSeek Harness 订阅用量显示插件。** 在模型选择器旁显示当前模型商的订阅余量药丸，点开可看各周期用量、重置时间与套餐；设置页集中管理 30 条提供商 / 区域路由的检测开关与凭据；并以只读额度 API 供其他插件与 Agent 查询。
+  **选中的模型还剩多少额度，输入框旁边一眼可见。**
 
-> **English.** dsh-subusage shows subscription quota and balance for the AI providers you already use, as a pill next to the model selector in DeepSeek Harness. Provider switches and credentials live in one settings page, and other plugins or agents can read the same snapshot through a read-only quota API.
+  dsh-subusage 把你订阅的 30 家模型服务商额度装进 DeepSeek Harness 的输入框旁边——不切控制台、不猜百分比、不等报错。
 
-[![npm version](https://img.shields.io/badge/npm-0.10.11-blue)](https://www.npmjs.com/package/dsh-subusage)
-[![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
-[![DSH](https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.1%20%3C0.3.0--0-informational)](#compatibility--兼容性)
+  [![npm version](https://img.shields.io/badge/npm-0.10.11-blue)](https://www.npmjs.com/package/dsh-subusage)
+  [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
+  [![DSH](https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.1%20%3C0.3.0--0-informational)](#compatibility--兼容性)
 
-## Overview / 功能
+  <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/usage-popover-light.png" width="640" alt="浅色用量弹层（离线预览）">
+
+  *点开药丸：先给结论（额度充足 / 余量偏低 / 即将用尽…），再给每个窗口的剩余百分比与重置倒计时。右下角是收起态药丸——每个额度窗口一根彩条，正常时不写字。*
+
+  **安装只需一条命令** → [快速开始](#快速开始)
+</div>
+
+---
+
+## 为什么需要它
+
+| 没有它 | 有了它 |
+|---|---|
+| 额度散落在五六家控制台，查一次余额要开五个标签页 | 药丸常驻输入框旁：选中哪家模型就看哪家，多窗口自动取最差一窗 |
+| Agent 跑到一半撞上 429，才知道额度用尽 | 弹层先给结论再给依据：「即将用尽 · 最紧张：每周 · 剩 5% · 3 天后重置」 |
+| Cookie、OAuth 悄悄过期，报错才发现 | MiMo Cookie 提前 2 小时变黄、30 分钟变橙、过期变红；认证失效直说原因与修法 |
+| 每家插件各管各的凭据，格式五花八门 | 一个设置页集中管理 30 条路由的开关与凭据，缺什么补什么 |
+
+## 15 种状态，一眼分清
+
+药丸不写字也能传达状态：每个额度窗口一根彩条（绿 / 黄 / 橙 / 红，满格 = 100% 剩余），需要留意时才追加一个词。下面是全部状态的离线预览（虚构用量数据）：
+
+<img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/pill-states-light.png" width="100%" alt="药丸 15 种状态（浅色，离线预览）">
+
+<details>
+<summary>深色主题</summary>
+
+<img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/pill-states-dark.png" width="100%" alt="药丸 15 种状态（深色，离线预览）">
+
+</details>
+
+## 三块能力，一个设置页
 
 | 能力 | 解决什么问题 | 入口 |
 |---|---|---|
@@ -18,9 +50,44 @@
 | 设置页 | 开关与凭据集中管理；缺凭据、Cookie 过期时把修复入口直接送到卡片上 | 设置 → 订阅用量 → 提供商管理 |
 | 只读额度 API | 其他插件与 Agent 复用同一份额度数据，不必各自对接各家接口 | Agent 工具 `subusage_quota`、Host 服务 `subUsage.quota()` |
 
-药丸只画图形：每个额度窗口一根彩色余量条（绿 / 黄 / 橙 / 红，满 = 100% 剩余），正常时不写字；需要留意时追加一个词，如 `周 偏少`、`5时 已用尽`、`需配置`、`拉取失败`。点击弹层，顶部先给结论（额度充足 / 余量偏低 / 即将用尽 / 额度已用尽…），下面是各窗口的剩余百分比与重置倒计时；成功结果按提供商缓存 **60 秒**，手动刷新可跳过普通 TTL（仍遵守上游限流退避与 `Retry-After`）。
+药丸只画图形：每个额度窗口一根彩色余量条（绿 / 黄 / 橙 / 红，满 = 100% 剩余），正常时不写字；需要留意时追加一个词，如 `周 偏少`、`5时 已用尽`、`需配置`、`拉取失败`。成功结果按提供商缓存 **60 秒**，手动刷新可跳过普通 TTL（仍遵守上游限流退避与 `Retry-After`）。
 
 本插件**不注册模型路由**，药丸按 provider id 匹配；因此使用哪个插件提供该模型路由不影响匹配，id 对不上时才不显示。
+
+## 30 家提供商，默认开箱即用 10 家
+
+DeepSeek、火山方舟（Agent / Coding Plan 个人版与企业版席位）、Z.ai（中国与国际）、Kimi、小米 MiMo、OpenCode Go、Command Code、SuperGrok、Codex（ChatGPT 订阅）、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM——订阅窗口、余额、周期额度池都支持。**新安装默认开启 10 条**，其余在设置页一键开启；完整清单、额度类型与鉴权方式见[下方技术文档](#支持的数据--supported-data)。
+
+## 快速开始
+
+```console
+dsh plugin --profile <profile> add dsh-subusage
+```
+
+1. 安装并启用 bundle，按部署方式重载或重启（只刷新页面不保证 Host 升级）。
+2. 打开 **设置 → 订阅用量 → 提供商管理**，开启需要的提供商并填凭据——每类凭据的官网入口与填入位置见[凭据获取指引](docs/credentials.md)；MiMo 用「登录并自动导入」。
+3. 回到会话，选中该提供商的模型：输入区左侧出现药丸，点开看窗口明细。
+4. 排障：点「立即刷新」→ 看设置页顶部 `X/Y 家数据获取成功`（可点击，直接跳到第一家没读成功的）。
+
+可复现的最小示例（DeepSeek，余额型，默认开启，与推理同一把 Key）：
+
+```powershell
+# 任选一种凭据来源
+$env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需按部署方式重启
+# 或在 设置 → 订阅用量 → DeepSeek →「连接与凭据」里手动填写
+```
+
+重启后在会话中选中 DeepSeek 模型，药丸显示账户余额；也可以直接让 Agent 调用 `subusage_quota(providers: ["deepseek"])` 验证（无需界面）。
+
+## 先说清楚：哪些是实测过的
+
+**7 家在真实账号上跑通**：火山方舟 Agent Plan、火山方舟 Coding Plan、Kimi Coding、小米 MiMo、Command Code、SuperGrok、Codex (ChatGPT)。**其余只经过桩测试**——响应形态取自公开文档、第三方实现或抓包，没有在真实账号上跑通，可能随接口变化而失效；失效时在设置页关掉那一家即可，其余不受影响。验证范围与主要风险见[实测覆盖](#support-status--实测覆盖)。额度数字仅供参考，不要当计费依据。
+
+---
+
+# 技术文档
+
+> 安装、配置、排障的完整参考。快速上手看上面就够了。
 
 ## 支持的数据 / Supported data
 
@@ -146,24 +213,6 @@ dsh plugin --profile <profile> remove dsh-subusage
 - 只取压缩包：`npm pack dsh-subusage`；核对发布结果：`npm view dsh-subusage version dist-tags`。
 - 本包**没有** `preinstall` / `install` / `postinstall` / `prepare` 脚本，安装期不执行任何代码；也不需要 pnpm 的 `allowBuilds` 授权。
 
-## Quick start / 快速开始
-
-1. 安装并启用 bundle，按部署方式重载或重启。
-2. 打开 **设置 → 订阅用量 → 提供商管理**，开启需要的提供商（默认关闭的 19 条需手动开启）。
-3. 为它配置凭据：在卡片里展开「连接与凭据」填 Key / AK-SK，或把 Key 放进凭据服务 / 启动环境；MiMo 用「登录并自动导入」。**不知道去哪拿、或填了不生效** → 见[凭据获取指引](docs/credentials.md)。
-4. 回到会话，选中该提供商的模型：输入区左侧出现余量药丸（绿色成功 / 红色失败），点开看窗口明细。
-5. 排障顺序：点「立即刷新」→ 看设置页顶部 `X/Y 家数据获取成功`（可点击，跳到第一家没读成功的）。
-
-可复现的最小示例（DeepSeek，余额型，默认开启，与推理同一把 Key）：
-
-```powershell
-# 任选一种凭据来源
-$env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需按部署方式重启
-# 或在 设置 → 订阅用量 → DeepSeek →「连接与凭据」里手动填写
-```
-
-重启后在会话中选中 DeepSeek 模型，药丸显示账户余额；也可以直接让 Agent 调用 `subusage_quota(providers: ["deepseek"])` 验证（无需界面）。
-
 ## 前置：这几家需要提供方插件
 
 绝大多数提供商只要一把 API Key 就能用。但下面几家要先装**提供方插件**——它们负责注册模型路由、完成登录并持有凭据；本插件只**读取**同一份凭据，不代为登录、也不保存它们。
@@ -172,7 +221,7 @@ $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需
 | --- | --- | --- |
 | Command Code | [`@mars-sea/dsh-commandcode-provider`](https://www.npmjs.com/package/@mars-sea/dsh-commandcode-provider) | 在该插件的设置页登录，或运行 `cmd login`（兜底读 `~/.commandcode/auth.json`） |
 | SuperGrok | [`dsh-grok-kit`](https://github.com/KouzakiUmi/dsh-grok-kit) | 运行 `grok login`，登录文件 `~/.grok/auth.json` |
-| Codex（ChatGPT 订阅） | Codex 提供方插件（如 `dsh-codex-connect`） | 运行 `codex login`，登录文件 `$CODEX_HOME/auth.json` 或 `~/.codex/auth.json` |
+| Codex（ChatGPT 订阅） | [`dsh-codex-connect`](https://github.com/franksong2702/dsh-codex-connect)（npm 同名包） | 运行 `codex login`，登录文件 `$CODEX_HOME/auth.json` 或 `~/.codex/auth.json` |
 
 > **Codex 默认关闭**：它的提供方插件本身就带一个用量药丸，两个并排只是重复信息。想要本插件这一份（比如想把 Codex 和别家放在一起看）可以在**提供商管理**里手动开启。
 >
@@ -395,7 +444,9 @@ node scripts/check-browser-runtime.mjs   # 需要工作区可解析 playwright-c
 
 ![浅色 NanoGPT 用量弹层（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/usage-popover-light.png)
 
-截图声明见根目录 [`screenshots.json`](screenshots.json)。两张图都是**当前版本**的离线组件预览（虚构用量、桩网络、无凭据），已随本版本重做，底部水印明确标注「非运行中的 DSH 截图」。真实 DSH Loader、实际账号在线接口与多账户映射仍未验收，截图不代表已通过这些检查。
+药丸 15 种状态一览（浅色 / 深色）见[开头的能力展示](#15-种状态一眼分清)。
+
+截图声明见根目录 [`screenshots.json`](screenshots.json)。这些图都是**当前版本**的离线组件预览（虚构用量、桩网络、无凭据），已随本版本重做，底部水印明确标注「非运行中的 DSH 截图」。真实 DSH Loader、实际账号在线接口与多账户映射仍未验收，截图不代表已通过这些检查。
 
 ## License & security / 许可与安全
 
