@@ -7,7 +7,7 @@
 
   dsh-subusage 把你订阅的 30 家模型服务商额度装进 DeepSeek Harness 的输入框旁边——不切控制台、不猜百分比、不等报错。
 
-  [![npm version](https://img.shields.io/badge/npm-0.10.12-blue)](https://www.npmjs.com/package/dsh-subusage)
+  [![npm version](https://img.shields.io/badge/npm-0.11.0-blue)](https://www.npmjs.com/package/dsh-subusage)
   [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
   [![DSH](https://img.shields.io/badge/DSH-0.2.x-informational)](#compatibility--兼容性)
 
@@ -352,6 +352,8 @@ ark-coding-plan-byteplus ARK_CODING_PLAN_BYTEPLUS_API_KEY
 
 - 模型手里的名字往往不是这里的 provider id（它更可能看到 DSH 的路由名，例如 `zai`），所以匹配是**宽松**的：一个名字命中多条路由时**全部返回**（`zai` → 中国版 + 国际版，`ark` → 5 条），每条各自带着真实 `state`（没启用的如实标 `disabled`），由调用方自己判断要看哪条。
 - 一个名字都认不出时，返回里会**先**给一条说明（写明可用写法），**再附上全部 30 条数据**——数据先给出去，判断交给调用方，而不是回一个空结果。
+- **点名的家原样返回，其余按「有没有数据」收起**：`providers: ["kimi"]` 时被点中的家即使没配凭据也照原样给出（用户问的正是「它为什么没数据」）；**不点名时**——以及名字一个都没认出来、走全量兜底时——省略检测已关闭、未配置凭据、以及接口没报告任何额度的条目，省略条数按**家**写进 `omitted`（同一家的多个 Command Code 账户只算一家），否则三十来条路由会把真正的数字淹掉。**读取失败的条目会保留**——那是「这次没读到」，不是「没配置」，省略掉只会把排障方向带偏；认不出的名字自己那行也保留。
+- **Command Code 按账户各回一条**：账户清单读自提供方插件的 `llm-commandcode` 设置，每条带 `account`（账户名）、`accountActive`（当前激活的那个）与 `accountMode`（`fixed` 固定账户 / `auto` 自动轮换），激活账户排在最前。「还剩多少」与「现在实际用哪个账户」一次问清。
 
 **Host 服务**（Cordis `Service`，key 为 `subUsage`）：
 
@@ -360,16 +362,19 @@ const service = ctx.get("subUsage");
 const view = await service.quota({ providerIds: ["deepseek"], force: false });
 // view = {
 //   updatedAt,
-//   providers: [{ providerId, label, state, windows, extras, coverage?, freshness?, lastSuccessAt?, error? }]
+//   providers: [{ providerId, label, state, windows, extras, coverage?, freshness?, lastSuccessAt?, error?,
+//                 account?, accountActive?, accountMode? }]
 // }
 ```
 
 - `state`：`ok` | `no-key` | `no-cookie` | `error` | `disabled`
 - `windows[].percent` 是**已用**百分比（0–100）；`extras` 放余额与套餐名等补充项
-- 视图**刻意精简**：不返回设置，也不返回 `keySource` / `apiDetected` / 继承变量名等内部状态，第三方消费者拿不到任何与 Key 相关的字段
+- `account` / `accountActive` / `accountMode` 只在多账户的 Command Code 上出现（见下）；此时同一条路由会有**多条**条目（每个账户一条，`providerId` 相同），消费方按 `account` 区分
+- 视图**刻意精简**：不返回设置，也不返回 `keySource` / `apiDetected` / 继承变量名等内部状态，第三方消费者拿不到任何与 Key 相关的字段。多账户路由（Command Code）连错误文案里的**凭据引用名**也会换成账户标签（`Account 2`），内部 `apiKeyEnv` 只留在本机界面那条通道里（用户要靠它定位该往哪个 ref 写凭据）
 - 视图里**不出现值为 `undefined` 的字段**：字段缺席表示「这家没有报告」，而不是「报告了空」——带 `undefined` 的键会被调用方的 schema 校验判成型别错误
 - 单家读取失败只影响它自己的条目，其余照常返回
-- 与设置页共用同一份缓存（TTL 60 秒），频繁调用不会反复请求各家接口
+- 与设置页共用同一份缓存（TTL 60 秒），频繁调用不会反复请求各家接口；多账户各按「路由 id + 账户引用名」占一份缓存，读全部账户不会互相驱逐
+- `quota()` 本身**不过滤**条目（第三方可能正需要「这家没配」这个事实）；`subusage_quota` 工具的不点名调用才省略空条目
 
 ## Troubleshooting / 常见问题
 
@@ -390,7 +395,7 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 | 保存成功但验证失败 | 凭据已保存，检查网络、区域或账号后重试；保存与在线验证分别反馈 |
 | 保存提示配置已改变 | 另一窗口或实例更新了设置；重新读取配置后再编辑，避免旧表单覆盖新值 |
 | 升级后仍是旧界面或 RPC 不匹配 | 确认运行中的 Host 和 Client 都已重载；仅刷新页面不能保证 Host 升级 |
-| Command Code 额度与实际账户不同 | 可在药丸弹层切换提供方插件的服务账户；「自动轮换」时仍显示默认账户（顶层 Key）的用量，不跟随轮换中的实际服务账户，提供方自定义 `apiBase` 也不跟随 |
+| Command Code 额度与实际账户不同 | 在 设置 → 订阅用量 的 Command Code 面板或用量的药丸弹层里都能切换提供方插件的服务账户（同一开关）：「自动轮换」时显示默认账户（顶层 Key）的用量，不跟随轮换中的实际服务账户，提供方自定义 `apiBase` 也不跟随。想一次看全部账户的余量与当前激活项，可让 Agent 调 `subusage_quota(providers: ["commandcode"])` |
 | SuperGrok 提示认证失效 | 登录文件里的 OAuth token 会过期；在 设置 → Grok Kit 重新登录、运行 `grok login`，或让 Grok 侧使用一次以刷新共享登录文件后重试。API Key（`XAI_API_KEY`）取不到订阅周池 |
 | 火山方舟报签名或权限错误 | AK 与 SK 必须来自同一个 IAM 用户（跨来源拼凑只会 401 且看不出根因）；确认用的是 IAM Access Key 而不是方舟推理 API Key；403 多为未订阅或权限不足 |
 
