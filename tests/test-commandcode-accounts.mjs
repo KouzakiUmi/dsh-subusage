@@ -20,8 +20,8 @@ const react = {
 	useMemo: (f) => f(),
 	useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot()
 };
-vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createCommandCodeAccounts, commandCodeAccountList, commandCodeActiveId, CommandCodeAccountSwitch, createUsageStore, UsagePill, zh }; exports.apply = apply;"), {
-	window: { __ModuleLoader__: { load: (value) => { spec = value; } } },
+vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createCommandCodeAccounts, commandCodeAccountList, commandCodeActiveId, CommandCodeAccountSwitch, SubusageSection, createUsageStore, UsagePill, zh }; exports.apply = apply;"), {
+	window: { __ModuleLoader__: { load: (value) => { spec = value; } }, localStorage: { getItem: () => "commandcode", setItem() {}, removeItem() {} } },
 	document: { visibilityState: "visible", addEventListener() {}, removeEventListener() {} },
 	console, Date,
 	setTimeout: (fn) => 0, clearTimeout: () => {},
@@ -55,6 +55,8 @@ const naming = api.commandCodeAccountList({
 	accountEnrollmentTasks: [{ id: "t2", ref: "COMMANDCODE_ACCOUNT_NAMING", phase: "naming", label: "x" }]
 });
 assert.equal(naming.length, 2, "phase=naming 的登记账户仍显示（与 slots 一致）");
+const duplicated = api.commandCodeAccountList({ accounts: [{ label: "工作号", apiKeyEnv: "COMMANDCODE_ACCOUNT_WORK" }, { label: "重复引用", apiKeyEnv: "COMMANDCODE_ACCOUNT_WORK" }] });
+assert.deepEqual(plain(duplicated), [{ id: "default", label: "default" }, { id: "COMMANDCODE_ACCOUNT_WORK", label: "工作号" }], "同一凭据引用名只列一次（与 Host 侧同规则）");
 
 // ── activeAccount 判定：非空且命中列表才算固定 ───────────────────────────────
 const accounts = [{ id: "default", label: "default" }, { id: "COMMANDCODE_ACCOUNT_WORK", label: "工作号" }];
@@ -204,6 +206,11 @@ assert.equal(api.CommandCodeAccountSwitch({ cc: null, ccState: null, t }), null,
 	await store.setCommandCodeAccount("");
 	assert.equal(calls.at(-1).query.commandCodeAccount, "", "切回自动轮换按默认账户重拉");
 	assert.equal(store.getCommandCodeAccount(), "");
+	// "default" 与空串在 Host 端是同一个账户（同一缓存键、同一指纹）：归一后不再多打一次强制刷新。
+	const beforeDefault = calls.length;
+	await store.setCommandCodeAccount("default");
+	assert.equal(store.getCommandCodeAccount(), "", "默认账户归一为空串");
+	assert.equal(calls.length, beforeDefault, "已是默认账户时不重复请求");
 	store.dispose();
 }
 {
@@ -321,5 +328,61 @@ class PillHooks {
 	assert.equal(annotation.length, 0, "账户区不可用时不显示用量账户标注");
 	ph.unmount();
 	cc.dispose();
+}
+// ── 设置页：用量面板里出现与弹层同一个账户区，并显示当前激活账户 ────────────
+{
+	const WORK = "COMMANDCODE_ACCOUNT_WORK";
+	const cc = api.createCommandCodeAccounts({ describe: describeOk(namespaceRow({ accounts: [{ label: "工作号", apiKeyEnv: WORK }], activeAccount: WORK })), mutate: async () => ({ ok: true, value: null }) });
+	await cc.load();
+	const snapshot = {
+		updatedAt: "2026-10-11T00:00:00Z",
+		settings: { revision: "r1", visibility: { hideWithoutApi: true, providers: { commandcode: true } } },
+		configured: { commandcode: true },
+		entries: [{ providerId: "commandcode", label: "Command Code", state: "ok", apiDetected: true, coverage: "complete", freshness: "fresh", windows: [{ kind: "5h", percent: 10, status: "ok" }], extras: [], lastAttemptAt: "2026-10-11T00:00:00Z", lastSuccessAt: "2026-10-11T00:00:00Z" }]
+	};
+	const switched = [];
+	const usageStore = {
+		subscribe: () => () => {},
+		getSnapshot: () => snapshot,
+		readAll: async () => snapshot,
+		refresh: async () => snapshot,
+		activate: () => () => {},
+		setCommandCodeAccount: async (id) => { switched.push(id); return snapshot; }
+	};
+	const sh = new PillHooks();
+	const props = { usageStore, t, getLocale: () => "zh", cc };
+	sh.render(api.SubusageSection, props);
+	await flush();
+	const tree = sh.render(api.SubusageSection, props);
+	await flush();
+	const flat = nodes(tree);
+	// react 桩不执行函数组件，所以这里按「组件引用 + props」断言挂载，再直接调用组件核对内容。
+	const node = flat.find((n) => n.type === api.CommandCodeAccountSwitch);
+	assert.ok(node, "设置页用量面板挂上账户区（与弹层同一个组件）");
+	assert.equal(node.props.cc, cc, "账户区拿到装配层注入的控制器");
+	assert.equal(node.props.ccState.status, "ready", "账户区拿到 ready 的账户状态");
+	const block = nodes(api.CommandCodeAccountSwitch(node.props));
+	const summary = block.find((n) => n.type === "summary");
+	assert.ok(JSON.stringify(summary.children).includes("Command Code 账户："), "summary 以账户区标题开头");
+	assert.ok(JSON.stringify(summary.children).includes("工作号"), "summary 显示当前账户");
+	assert.ok(JSON.stringify(summary.children).includes("使用中"), "summary 标明该账户正在使用");
+	const buttons = block.filter((n) => n.type === "button");
+	assert.equal(buttons.length, 3, "自动轮换 + 默认账户 + 额外账户");
+	assert.equal(buttons.find((b) => JSON.stringify(b.children).includes("工作号")).props["aria-pressed"], true, "当前账户高亮");
+	assert.ok(switched.includes(WORK), "账户区 ready 后把显示账户同步给 store（上方额度跟随所选账户）");
+	sh.unmount();
+	cc.dispose();
+}
+{
+	// 未注入 cc（提供方插件未运行）时设置页照常渲染，只是没有账户区。
+	const snapshot = { updatedAt: "", settings: { revision: "r1", visibility: { hideWithoutApi: true, providers: {} } }, configured: {}, entries: [] };
+	const usageStore = { subscribe: () => () => {}, getSnapshot: () => snapshot, readAll: async () => snapshot, refresh: async () => snapshot, activate: () => () => {} };
+	const sh = new PillHooks();
+	const tree = sh.render(api.SubusageSection, { usageStore, t, getLocale: () => "zh" });
+	const node = nodes(tree).find((n) => n.type === api.CommandCodeAccountSwitch);
+	assert.ok(node, "用量面板仍然照常渲染");
+	assert.equal(node.props.cc, undefined, "没有 cc 时拿不到控制器");
+	assert.equal(api.CommandCodeAccountSwitch(node.props), null, "没有 cc 时账户区整体隐藏（不占版面）");
+	sh.unmount();
 }
 console.log("commandcode 账户切换测试全部通过 ✅");
