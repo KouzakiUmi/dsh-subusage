@@ -90,7 +90,7 @@ provider id 必须与注册这些路由的插件**逐字一致**（arkcli 官方
 
 ### SuperGrok 凭据
 
-`xai-oauth` 路由由 dsh-grok-kit 注册。插件只读 Grok CLI / dsh-grok-kit 共享的 OAuth 登录文件（`~/.grok/auth.json`，回退 `~/.dsh/.xai-oauth-auth.json`），不写、不刷新 token；API Key 路线取不到订阅周池。用量走官方 CLI 的计费代理（`cli-chat-proxy.grok.com`）。
+`xai-oauth` 路由由 dsh-grok-kit 注册。插件读取 Grok CLI / dsh-grok-kit 共享的 OAuth 登录文件（`~/.grok/auth.json`，回退 `~/.dsh/.xai-oauth-auth.json`），不保存凭据；access token 过期时借 dsh-grok-kit（≥0.2.0）的官方登录链（`new XaiOAuthSession().models.getAuth("xai")`）续约并由该链写回同一文件（同一把写锁、compare-and-write，非本插件裸刷），未安装 grok-kit 或续约失败才提示手动重新登录；API Key 路线取不到订阅周池。用量走官方 CLI 的计费代理（`cli-chat-proxy.grok.com`）。
 
 ### MiMo 登录与 Cookie
 

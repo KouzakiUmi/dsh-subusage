@@ -30,9 +30,30 @@
 
 ---
 
+## 手动填写的凭据存在哪（安全边界）
+
+在界面「连接与凭据」里手动填写的内容（普通 API Key、火山 AK/SK、MiMo Cookie）保存在本机配置文件：
+
+```
+~/.dsh/dsh-subusage.json
+```
+
+需要如实说明的边界（2026-10-12 对照 DSH Core 0.2.1-alpha.2 核实）：
+
+- 文件以 **0600 权限、目录 0700、原子 rename** 写入，只有当前用户可读；但内容是**明文 JSON**，**不加密**。
+- DSH 自带的统一凭据库（`dsh-credentials-local`）落盘同样是 **0600 权限的明文 YAML**，也不加密（没有接系统钥匙串 / DPAPI）。因此「迁到统一凭据库」并不能防本机进程读取——本插件暂不迁移，等 Core 接入系统级加密存储后再跟进；决策记录见 [development.md](development.md)。
+- 实际含义：不要把这份配置文件贴进 issue、聊天或同步盘；**截图设置页是安全的**（秘密只写不回填，界面不显示原值）。排查问题时错误文案可能含账户的凭据引用名（环境变量名），但不含 Key 本身。
+- 继承自「凭据服务 / 环境变量」的秘密不经过本文件，本插件每次用时现取、不复制落盘；本文件只存界面**手动填写**的那一份。
+- 凭据服务里的 `commandcode` / `openai-codex` 走各自提供方插件与 CLI 的登录文件，本插件只读不写、不代刷新。
+- `xai-oauth` 同样只读 `~/.grok/auth.json`，**但 access token 过期时会借 dsh-grok-kit 的官方登录链续约并由该链写回同一文件**（同一把写锁、compare-and-write，等效于 grok-kit 自己刷新，不是本插件自行裸 POST）；未安装 grok-kit 或续约失败时不写任何内容，只提示重新登录。
+
+删除某家手动凭据：对应卡片 →「清除 / 清除登录凭据」→ 保存。整份卸载插件不会自动删配置文件，需要手动删除上述路径。
+
+---
+
 ## 一、火山方舟（最容易卡住的一家）
 
-火山方舟的 **7 条路由共用同一组 IAM AK/SK**，填一次即可。
+火山方舟的 **4 条路由共用同一组 IAM AK/SK**，填一次即可。
 
 ### 为什么不能用推理 Key
 
@@ -132,7 +153,7 @@ Cookie 必须**同时包含** `api-platform_serviceToken` 与 `userId`，否则�
 | OpenCode Go | `OPENCODE_API_KEY` | OpenCode Go 控制台 |
 | MiniMax（中国 / 国际） | `MINIMAX_CN_API_KEY` / `MINIMAX_API_KEY` | MiniMax 开放平台 |
 | Codex（ChatGPT 订阅） | 无环境变量 | 运行 `codex login`；本插件只读 `~/.codex/auth.json`，不保存凭据 |
-| SuperGrok | 无环境变量 | 运行 `grok login`；本插件只读 `~/.grok/auth.json` |
+| SuperGrok | 无环境变量 | 运行 `grok login` 或在 Grok Kit 登录；本插件读 `~/.grok/auth.json`，过期时经 grok-kit 官方链续约该文件 |
 | Command Code | `COMMANDCODE_API_KEY` | 由 Command Code 提供方插件管理，本插件只读 |
 | SiliconFlow | `SILICONFLOW_API_KEY` | SiliconFlow 控制台 → API 密钥 |
 | OpenRouter | `OPENROUTER_API_KEY` | OpenRouter → Keys（查余额还需 management / provisioning key） |
