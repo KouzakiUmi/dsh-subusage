@@ -51,6 +51,14 @@ assert.equal(result.entries[0].state, "error"); assert.equal(result.entries[0].f
 const backoffCount = h.calls.length; await h.service.refresh({ providerIds: [Z], force: true }); assert.equal(h.calls.length, backoffCount);
 h.tick(120001); h.respond(() => ({ http: 401 }));
 result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equal(result.entries[0].freshness, "unknown"); assert.equal(result.entries[0].windows, undefined); assert.equal(result.entries[0].retainPrevious, false);
+// 3xx（redirect: "manual" 下的域名迁移/跳转）不是鉴权失败：必须映射 subusage/response 而不是 subusage/auth，
+// 否则用户会被误导去重新登录；401 仍保持 subusage/auth。
+h.tick(120001); h.respond(() => ({ http: 302 }));
+result = await h.service.refresh({ providerIds: [Z], force: true });
+assert.equal(result.entries[0].errorCode, "subusage/response");
+assert.notEqual(result.entries[0].errorCode, "subusage/auth", "3xx 不得误诊为鉴权失败");
+h.tick(120001); h.respond(() => ({ http: 401 }));
+result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equal(result.entries[0].errorCode, "subusage/auth");
 await h.service.save({ providerId: Z, keyUpdate: { action: "clear" } });
 result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equal(result.entries[0].state, "no-key"); assert.equal(result.entries[0].windows, undefined);
 await h.service.save({ providerId: Z, keyMode: "inherit" }); delete h.credential[Z];

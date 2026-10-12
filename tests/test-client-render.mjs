@@ -26,7 +26,7 @@ const react = {
   useEffect: () => {}
 };
 const code = readFileSync(fileURLToPath(new URL("../lib/client.js", import.meta.url)), "utf8");
-vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { SubusageSection, UsageWindowRow, PROVIDER_ORDER, PROVIDER_META }; exports.apply = apply;"), {
+vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { SubusageSection, UsageWindowRow, CommandCodePoolSummary, UsagePill, PROVIDER_ORDER, PROVIDER_META }; exports.apply = apply;"), {
   window: { __ModuleLoader__: { load: (value) => { spec = value; } } }, console
 });
 const plugin = spec.factory((name) => {
@@ -191,6 +191,23 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   const healthyCounter = flattenNodes(healthy).find(n => n.type === "button" && JSON.stringify(n.children).includes("家数据获取成功"));
   assert.equal(healthyCounter.props.disabled, true, "全部正常时不可点");
   assert.equal(JSON.stringify(flattenNodes(healthy).filter(n => n.props?.role === "tab").map(n => n.props.id)), JSON.stringify(order.map(id => `subusage-tab-${id}`)), "没有待处理项时保持登记顺序");}
+// 首次加载 gate：settings 未读到（readAll 在飞）时不闪现默认提供商。
+{
+  const order = plugin.__test.PROVIDER_ORDER;
+  const render = (snapshot) => { stateValues = []; stateIndex = 0; return plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => snapshot }, t: (key) => key, getLocale: () => "zh" }); };
+  // a. 初始快照：不渲染标签栏/标签、空状态与计数，但刷新按钮仍在。
+  const initial = render({ updatedAt: null, settings: null, configured: {}, entries: [] });
+  const nodes = flattenNodes(initial);
+  assert.equal(nodes.filter(n => n.props?.role === "tab").length, 0, "未初始化时不渲染任何提供商标签");
+  assert.equal(nodes.filter(n => n.props?.role === "tablist").length, 0, "未初始化时不渲染标签栏");
+  assert.ok(!visibleText(initial).includes("没有可显示的提供商"), "未初始化时不显示空状态文案");
+  assert.equal(nodes.filter(n => n.type === "button" && JSON.stringify(n.children).includes("家数据获取成功")).length, 0, "未初始化时不渲染计数");
+  assert.ok(visibleText(initial).includes("刷新全部"), "刷新按钮在未初始化时保持可用");
+  // b. settings 已加载（哪怕 entries 为空）：标签栏照常出现，gate 不误伤正常加载后的界面。
+  const providers = Object.fromEntries(order.map(id => [id, true]));
+  const loaded = render({ updatedAt: 1, settings: { revision: "r", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: false }, visibility: { hideWithoutApi: false, providers } }, configured: {}, entries: [] });
+  assert.equal(flattenNodes(loaded).filter(n => n.props?.role === "tab").length, order.length, "settings 加载后全部提供商标签照常出现");
+}
 // 按「本机实际装了什么路由」判定默认可见性 + 管理列表把已启用的排到前面。
 {
   const order = plugin.__test.PROVIDER_ORDER, meta = plugin.__test.PROVIDER_META;
@@ -279,4 +296,56 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 	assert.equal(emptyBar.props["aria-valuenow"], 0, "已达限额进度条为空槽");
 	assert.equal(emptyBar.children[0].props.style.width, "0%");
 }
-console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/提供商开关/无下拉布局、用量面板内联行动条、待处理排序与计数跳转、路由缺失收起与已启用前置、AFP 分组与明细拆行");
+// Command Code 自动轮换池健康摘要：三态文案 + 池耗尽时药丸染红。
+{
+	const PoolSummary = plugin.__test.CommandCodePoolSummary;
+	const t = (key) => key;
+	const mk = (over) => ({ mode: "auto", total: 3, available: 2, blockedCount: 1, unusableCount: 0, exhausted: false,
+		accounts: [
+			{ id: "default", label: "default", state: "ok", usable: true, blocked: false, windows: [{ kind: "5h", percent: 20, status: "ok" }] },
+			{ id: "W", label: "work", state: "ok", usable: false, blocked: true, windows: [{ kind: "5h", percent: 100, status: "rate-limited" }] },
+			{ id: "N", label: "none", state: "no-key", usable: false, blocked: false, windows: [] }
+		], ...over });
+	// 部分受限：容量文案 + 不可用账户说明，不出现「耗尽」结论。
+	const partial = PoolSummary({ pool: mk({ unusableCount: 1 }), cc: null, t });
+	assert.ok(visibleText(partial).includes("ccPoolCapacity"), "部分受限给容量文案");
+	assert.ok(visibleText(partial).includes("ccPoolUnusable"), "无凭据账户单独说明");
+	assert.ok(!visibleText(partial).includes("ccPoolExhausted"), "仍有可用账户，不下耗尽结论");
+	// 全健康。
+	const healthy = PoolSummary({ pool: mk({ available: 3, blockedCount: 0, unusableCount: 0, accounts: mk({}).accounts.map(a => ({ ...a, blocked: false, usable: a.state === "ok" })) }), cc: null, t });
+	assert.ok(visibleText(healthy).includes("ccPoolAllHealthy"), "全健康给「均可轮换」文案");
+	// 全部有凭据账户限额：耗尽结论 + alert 角色。
+	const exhaustedPool = mk({ available: 0, blockedCount: 2, unusableCount: 1, exhausted: true,
+		accounts: [
+			{ id: "default", label: "default", state: "ok", usable: false, blocked: true, windows: [{ kind: "5h", percent: 100, status: "rate-limited" }] },
+			{ id: "W", label: "work", state: "ok", usable: false, blocked: true, windows: [{ kind: "5h", percent: 100, status: "rate-limited" }] },
+			{ id: "N", label: "none", state: "no-key", usable: false, blocked: false, windows: [] }
+		] });
+	const exhausted = PoolSummary({ pool: exhaustedPool, cc: null, t });
+	assert.ok(visibleText(exhausted).includes("ccPoolExhausted"), "全部限额给耗尽文案");
+	assert.equal(flattenNodes(exhausted).some(n => n.props?.role === "alert"), true, "耗尽用 alert 角色");
+	// 单账户池（只有默认）不渲染——没有轮换可谈。
+	assert.equal(PoolSummary({ pool: { ...mk({}), total: 1 }, cc: null, t }), null, "单账户池不渲染摘要");
+	assert.equal(PoolSummary({ pool: null, cc: null, t }), null, "无池不渲染");
+
+	// 池耗尽时药丸/横幅必须染红：默认账户本身健康，但池里所有有凭据账户都限额。
+	// 直接渲染 UsagePill（hook 顺序与 renderPill 相同：snapshot/failed/failState/refreshing/open）。
+	const renderCC = (entry, open) => {
+		stateValues = [{ entry, updatedAt: 0 }, null, undefined, false, open];
+		stateIndex = 0;
+		return plugin.__test.UsagePill({
+			providerId: "commandcode", label: "Command",
+			readEntry: async () => entry, t: (key) => key, getLocale: () => "zh", cc: null, setCommandCodeAccount: () => {}
+		});
+	};
+	const healthyCC = { state: "ok", coverage: "complete", freshness: "fresh", windows: [{ kind: "5h", percent: 20, status: "ok" }], extras: [], accountPool: mk({ available: 2, blockedCount: 1, exhausted: false }) };
+	const healthyTree = renderCC(healthyCC, false);
+	assert.ok(!JSON.stringify(healthyTree).includes("ccPoolExhausted"), "部分受限药丸不显示耗尽");
+	const exhaustedCC = { state: "ok", coverage: "complete", freshness: "fresh", windows: [{ kind: "5h", percent: 20, status: "ok" }], extras: [], accountPool: exhaustedPool };
+	const exhaustedTree = renderCC(exhaustedCC, true);
+	assert.ok(visibleText(exhaustedTree).includes("statusExhausted") || visibleText(exhaustedTree).includes("pillLimited"), "池耗尽时药丸按限额染红");
+	assert.ok(visibleText(exhaustedTree).includes("ccPoolExhausted"), "弹层给出池耗尽结论");
+	console.log("PASS Command Code 轮换池摘要三态与池耗尽染红");
+}
+
+console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/提供商开关/无下拉布局、用量面板内联行动条、待处理排序与计数跳转、首次加载 gate、路由缺失收起与已启用前置、AFP 分组与明细拆行、CC 轮换池摘要");

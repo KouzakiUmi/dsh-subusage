@@ -28,7 +28,7 @@ const react = {
   useMemo: (fn, deps) => harness.memo(fn, deps),
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot()
 };
-vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, canShowUsage, validateCookieText, settingsPatch, draftFor, SubusageSection, UsagePill, UsageWindowRow, computeStatus, providerVisible, zh }; exports.apply = apply;"), {
+vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, canShowUsage, validateCookieText, settingsPatch, draftFor, SubusageSection, UsagePill, UsageWindowRow, computeStatus, providerVisible, parseSettings, localError, zh, en, PROVIDER_ORDER }; exports.apply = apply;"), {
   window: { localStorage: { getItem: (key) => memory.get(key), setItem: (key, value) => memory.set(key, value) }, __ModuleLoader__: { load: (value) => { spec = value; } } },
   document, console, Date: FakeDate,
   setInterval: (fn, ms) => { const id = ++nextTimer; intervals.set(id, { fn, ms }); return id; }, clearInterval: (id) => intervals.delete(id),
@@ -511,4 +511,32 @@ assert.equal(volcStore.getSnapshot().entries.find(e => e.providerId === ids[0]).
 volcStore.dispose();
 // New providers stay off even with missing visibility fields from an older settings snapshot.
 for (const id of ["zai-coding", "synthetic", "nanogpt"]) assert.equal(api.providerVisible(publicSettings(), id, entry(id)), false);
+// Ark 账号级订阅不按推理路由收起：未安装 arkcli 路由时单家刷新仍要发 RPC（刷新过滤器必须与
+// providerVisible 的 volc 豁免同口径），而启用但未安装路由的普通厂商照旧被过滤。
+const arkFilterCalls = [];
+const allEnabledSettings = { revision: "ark-r1", keyModes: {}, hasKeys: {}, xiaomi: {}, volc: {}, visibility: { hideWithoutApi: true, ark: true, providers: Object.fromEntries(api.PROVIDER_ORDER.map(id => [id, true])) } };
+const noRoutes = Object.fromEntries(api.PROVIDER_ORDER.map(id => [id, false]));
+const arkFilterStore = api.createUsageStore((method, query) => {
+	arkFilterCalls.push({ method, id: query?.providerIds?.[0] });
+	const body = { entries: method === "read" ? [] : [entry(query.providerIds[0])], settings: allEnabledSettings, configured: noRoutes, updatedAt: new FakeDate(clock).toISOString() };
+	return Promise.resolve(body);
+});
+await arkFilterStore.readAll();
+arkFilterCalls.length = 0;
+await arkFilterStore.refresh(["arkcli-agent-plan"], false);
+await arkFilterStore.refresh(["kimi-coding"], false);
+assert.ok(arkFilterCalls.some(c => c.method === "refresh" && c.id === "arkcli-agent-plan"), "未安装路由的 Ark 仍发单家刷新 RPC");
+assert.ok(!arkFilterCalls.some(c => c.method === "refresh" && c.id === "kimi-coding"), "未安装路由的普通厂商仍被过滤");
+arkFilterStore.dispose();
+// 客户端 save 校验器必须接受 Host 合法的火山组开关补丁（双端 schema 对齐），非法类型仍拒绝。
+assert.doesNotThrow(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { ark: false } }), "火山组开关补丁必须被客户端接受");
+assert.doesNotThrow(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { hideWithoutApi: false, ark: true } }), "混合可见性补丁必须被客户端接受");
+assert.throws(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { ark: "yes" } }), "ark 非布尔必须拒绝");
+// Host 失败原因按 errorCode 本地化：英文界面不再直接显示中文 Host message；无 code / 未知 code 回退原文。
+const enT = (k) => api.en[k] || k, zhT = (k) => api.zh[k] || k;
+assert.equal(api.localError("subusage/auth", "登录或凭据已失效", enT), api.en.errAuth, "已知 code 出英文文案");
+assert.equal(api.localError("subusage/auth", "登录或凭据已失效", zhT), api.zh.errAuth, "已知 code 出中文文案");
+assert.equal(api.localError(undefined, "HTTP 502", t), "HTTP 502", "传输层无 code 保留原文");
+assert.equal(api.localError("subusage/brand-new-code", "新错误", t), "新错误", "未知 code 保留原文");
+assert.equal(api.localError("subusage/network", "", t), t("errNetwork"), "原文为空仍按 code 出文案");
 console.log("PASS provider management switches/no-dropdown/filtering/persistence payloads/dirty guard/pill subscription/race + refresh lock isolation");

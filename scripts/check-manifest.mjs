@@ -43,6 +43,13 @@ else if (Object.keys(pkg.dependencies || {}).some((k) => k.startsWith("@deepseek
 if (!/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(pkg.version || "")) fail(`version 不是 semver: ${pkg.version}`);
 else ok(`version = ${pkg.version}`);
 
+// lib/index.js 的 VERSION 常量必须与 package.json 的 version 一致
+// (User-Agent 用它拼出来,硬编码滞后两版的教训;UA 改为 `dsh-subusage/${VERSION}` 后由这里把关)
+const indexVersion = readFileSync(join(root, "lib", "index.js"), "utf8").match(/^const VERSION = "([^"]+)";/m)?.[1];
+if (indexVersion === undefined) fail('lib/index.js 缺少 VERSION 常量(应为顶格 const VERSION = "x.y.z";)');
+else if (indexVersion !== pkg.version) fail(`lib/index.js VERSION(${indexVersion}) 与 package.json version(${pkg.version}) 不一致`);
+else ok(`lib/index.js VERSION = ${indexVersion} 与 package.json 一致`);
+
 // npm 映射前提:repository 指回本仓库
 if (!pkg.repository || !/github\.com[:/]KouzakiUmi\/dsh-subusage/.test(
 	typeof pkg.repository === "string" ? pkg.repository : pkg.repository.url || ""

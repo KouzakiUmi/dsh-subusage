@@ -75,6 +75,14 @@ assert.throws(() => save.parameters[0].codec.schema.parse({ providerId: 'xai-oau
 // 这样用户拿到的是可读原因，而不是网关的 "boundary validation" 通用报错。
 assert.equal(save.parameters[0].codec.schema.parse({ providerId: 'not-supported' }).providerId, 'not-supported', '未知 id 的形状合法，交由 persist 拒绝');
 assert.throws(() => save.parameters[0].codec.schema.parse({ providerId: '' }), '空 providerId 仍拒绝');
+// 火山组开关补丁（只含 visibility.ark）两端 parser 必须都接受：客户端白名单曾漏掉 ark，
+// 形状契约测试只比对 typeSymbol 字符串、覆盖不到解析语义，这里显式双端守护。
+for (const contract of [host.subUsageRemote, mounted]) {
+	const codec = contract.descriptors.find(d => d.method === 'save').parameters[0].codec.schema;
+	assert.equal(codec.parse({ expectedRevision: 'r1', visibility: { ark: false } }).visibility.ark, false, '纯 ark 组开关补丁合法');
+	assert.equal(codec.parse({ expectedRevision: 'r1', visibility: { hideWithoutApi: false, ark: true } }).visibility.ark, true, '混合可见性补丁合法');
+	assert.throws(() => codec.parse({ expectedRevision: 'r1', visibility: { ark: 'yes' } }), 'ark 非布尔必须拒绝');
+}
 // Client 规范化后必须能被 Host 的最终 Cookie Header 校验接受。
 const clientSource = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 const cookieFunction = clientSource.match(/function normalizeCookieText\(raw\) \{[\s\S]*?\n\t\t\}/);
@@ -90,4 +98,28 @@ for (const raw of [
   const accepted = save.parameters[0].codec.schema.parse({ providerId: 'xiaomi-token-plan-cn', cookieUpdate: { action: 'replace', value: normalized } });
   assert.equal(accepted.cookieUpdate.value, normalized);
 }
-console.log('PASS Host/Client 六方法 RPC 描述符、登录参数及 Cookie 校验一致');
+// 双端 provider 表必须同源：新增厂商漏改一端不会报错——漏 Host 药丸取不到数，
+// 漏 Client 则设置页/药丸缺项。这里以 Host 的 IDS 为单一真源做集合断言。
+// Client 工厂不导出内表（生产 bundle 不暴露），用 vm 替换锚点把它物化出来。
+const clientInnerSource = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
+let clientTables;
+vm.runInNewContext(
+	clientInnerSource.replace(
+		'exports.apply = apply;',
+		'exports.__contract = { PROVIDER_META, PROVIDER_ORDER }; exports.apply = apply;'
+	),
+	{ window: { __ModuleLoader__: { load: (v) => { clientTables = v; } } }, console }
+);
+const clientFactory = clientTables.factory(() => react);
+const clientTable = clientFactory.__contract;
+assert.ok(clientTable && clientTable.PROVIDER_META && clientTable.PROVIDER_ORDER, 'Client 内表可物化');
+assert.deepEqual([...host.IDS].sort(), [...clientTable.PROVIDER_ORDER].sort(), 'Client PROVIDER_ORDER 与 Host IDS 集合一致（不多不少）');
+assert.deepEqual([...host.IDS].sort(), Object.keys(clientTable.PROVIDER_META).sort(), 'Client PROVIDER_META 与 Host IDS 键集合一致');
+for (const id of host.IDS) {
+	const hostMeta = host.PROVIDERS[id], clientMeta = clientTable.PROVIDER_META[id];
+	assert.equal(clientMeta.label !== undefined && clientMeta.short !== undefined, true, `${id} 有 label/short`);
+	assert.equal(clientMeta.managedByPlugin === true, hostMeta.managedByPlugin === true, `${id} managedByPlugin 两端一致`);
+	assert.equal(clientMeta.defaultEnabled === false, hostMeta.defaultEnabled === false, `${id} 默认开关两端一致`);
+	assert.equal(clientMeta.envName, hostMeta.envName, `${id} envName 两端一致`);
+}
+console.log('PASS Host/Client 六方法 RPC 描述符、登录参数、Cookie 校验与 provider 表一致性');
