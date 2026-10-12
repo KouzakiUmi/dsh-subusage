@@ -11,7 +11,7 @@
 
 ## 1. 清单与默认开关
 
-27 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）只维护在 [README 的「支持的数据」](../README.md#支持的数据--supported-data) 一处，避免同一份事实在两处漂移：**默认开启 10 条、默认关闭 17 条**（`PROVIDERS[id].defaultEnabled !== false`；Codex 默认关闭是因为它的提供方插件自带用量药丸）。设置页里那 27 条会合并成 **24 张卡片**——火山方舟的 4 条路由共用一个组开关。
+28 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）只维护在 [README 的「支持的数据」](../README.md#支持的数据--supported-data) 一处，避免同一份事实在两处漂移：**默认开启 11 条、默认关闭 17 条**（`PROVIDERS[id].defaultEnabled !== false`；Codex 默认关闭是因为它的提供方插件自带用量药丸）。设置页里那 28 条会合并成 **25 张卡片**——火山方舟的 4 条路由共用一个组开关。
 
 新增厂商须同时改 `PROVIDERS`、`PROVIDER_META` / `PROVIDER_ORDER`、帮助文案、README 与默认值测试；未获明确需求的新订阅商一律 `defaultEnabled: false`，原有偏好通过存储合并保留。
 
@@ -25,10 +25,11 @@
 
 | 模型商 | 窗口 | 明细 |
 |---|---|---|
-| DeepSeek | 无窗口（余额型） | 账户余额（`balance_infos` 的币种与总额）；`is_available=false` 提示充值，不显示成 0 |
+| DeepSeek API（`deepseek`） | 无窗口（余额型） | 账户余额（`balance_infos` 的币种与总额）；`is_available=false` 提示充值，不显示成 0 |
+| DeepSeek 账号（`deepseek-account`） | 无窗口（余额型） | 复用本机 `deepseekAccount` 服务返回的充值余额；默认开启、无独立 Key。别名 `deepseek-official` 指向本条 |
 | Z.ai（中国 / 国际） | 5 小时、每周（按响应） | Token / Credits 配额、套餐档 |
 | Kimi | 5 小时 + 7 天或月度（按账户下发） | 已用百分比、套餐档 |
-| Xiaomi MiMo | 本周期额度池 | 用量明细、重置时间、套餐与余额 |
+| Xiaomi MiMo | 本周期额度池 | 用量明细、重置时间、套餐与余额。**没有窗口时（无订阅或套餐读不到）才回落到纯余额药丸**，套餐仍可读时窗口优先 |
 | OpenCode Go | 滚动、每周、每月 | 已用百分比、重置时间 |
 | Command Code | 5 小时、每周、月额度池 | 已用 / 上限（月总额来自套餐快照）、重置 / 账期、`planId`、月剩余、已购 + 赠送余额 |
 | SuperGrok | 周期池（通常每周，旧账户为月账期） | 统一用量池已用百分比（剩余 = 100 − 已用）、重置时间、套餐名、已购加量余额（美元） |
@@ -45,7 +46,7 @@
 | DeepInfra | 无窗口（余额型） | 可用余额 = `−stripe_balance`（接口用负数表示预付资金）；欠款时单独提示，不显示成负余额 |
 | Chutes | 通用限额窗口 | `{quota, used}` 绝对量；接口不给重置时刻，故不显示重置时间 |
 | Ollama Cloud | session / 周 / 月 | `limits.*.usage` 是 **0–1 小数**；缺层跳过该窗口而不判失败 |
-| ZenMux | 5 小时 / 周滚动窗口 | `usage_percentage` 是 **0–1 小数**，另附 flows 明细与 `resets_at`；有 Management Key 时显示 PAYG 余额。两个端点各拿各的——余额被拒不影响配额 |
+| ZenMux | 5 小时 / 周滚动窗口 | `usage_percentage` 是 **0–1 小数**，另附 flows 明细与 `resets_at`；有 Management Key 时显示 PAYG 余额。两个端点各拿各的——余额被拒不影响配额；**订阅端点失败时保留余额但标部分数据并写明「套餐状态暂不可确认」，不据此宣称未订阅** |
 | LiteLLM | 独立 Key / User / Team 预算周期 | 各层已用 / 预算、百分比和可用重置；**没有预算上限时不编造百分比**，只如实显示已用金额 |
 
 非公开控制台接口可能变更；缺失或非法百分比不会当作零用量。部分数据、未知额度和暂时失败有明确状态，不能据此保证推理接口一定可用。
@@ -55,6 +56,17 @@
 > 个人版语音/Harness 与企业 API 的日规则描述存在差异，本插件保留接口分组，不从模型名猜额外豁免。总览提示“部分能力额度已用尽”，不等于所选模型一定受限；具体接口字段与边界见[开发说明](development.md#额度语义修正0112)。
 
 Kimi 的窗口集合随套餐体系变化：老套餐（节奏命名，如 Allegro）返回 5 小时与 7 天，新套餐（Go / Plus 命名）返回 5 小时与月度总额，因此同一插件在不同账号上显示的窗口数可以不同；月度池里的 Code 份额不是独立预算，不单独成窗。插件按接口实际下发的窗口解析，不要求固定集合。
+
+### 余额的显示与预警
+
+余额型条目（`deepseek`、`deepseek-account`、`siliconflow`、`novita`、`hyperbolic`、`deepinfra`、`vercel-ai-gateway`）**不要求本机装有对应的模型路由**：官方余额与本机账号余额都独立于推理入口，手动模式或已存 Key 的账号照样能查。火山方舟同样按账号级管控面而非推理路由收起。
+
+药丸与弹层对余额的规则（与 [UX 设计](design-ux.md) 的 `computeStatus` 章节一致）：
+
+- **有有效套餐窗口时窗口优先**，余额只在弹层 extras 里出现。负余额不抹掉仍然有效的套餐窗口；套餐耗尽也不因为钱包里还有余额就被盖过——官方接口明确给出 PAYG / included 续用建议时，那条建议仍单独保留。
+- **纯余额药丸只在「没有窗口且数据完整」时出现**，即读取成功、`coverage` 为完整。缓存、部分数据或读取失败仍是降级态，余额只在依据行里补充。
+- **分级阈值是产品预警，不是汇率换算**，也不代表「还能跑多少次」：人民币 < 1 元红、1–5 元黄、≥ 5 元灰；美元 < 0.2 红、0.2–1 黄、≥ 1 灰。`credits` 及其它没有跨厂商统一价值的单位，只在**已解析的非正余额**时标红，正余额保持灰色——不同厂商的 credits 面值不可比，按绝对量分级只会凭空制造价值感。
+- **累计花费不套用余额阈值**。`spend` / `*-spend` 是已花金额，不是可用余额。
 
 ## 4. 逐家补充说明
 
@@ -116,6 +128,19 @@ provider id 必须与注册这些路由的插件**逐字一致**（arkcli 官方
 
 到期只是**提醒**：插件不会因为倒计时归零就停用 Cookie，是否真的失效仍以官方接口返回为准。官方已判定凭据失效时，药丸显示的是失效原因而非剩余时间（唯一例外是「已过期」本身）。若浏览器报告的 Cookie 过期时间早于 24 小时，以更早者为准；旧版本保存的 Cookie 没有计时记录，界面会明确说明「未记录登录时间」。
 
+### DeepSeek API 与 DeepSeek 账号
+
+两条入口**完全独立**：各自的开关、各自的缓存条目、各自的余额来源，互不共享也不互相覆盖。
+
+| | `deepseek`（DeepSeek API） | `deepseek-account`（DeepSeek 账号） |
+|---|---|---|
+| 鉴权 | `DEEPSEEK_API_KEY`，与推理同一把 Key | **没有凭据可填**：复用本机 `deepseekAccount` 服务的登录态 |
+| 网络 | `GET https://api.deepseek.com/user/balance` | **不发起任何请求**，DSH 自己完成鉴权与投影 |
+| 新安装默认 | 开 | 开 |
+| 别名 | — | `deepseek-official` |
+
+账号入口**不读取、导出或保存 OAuth token，也不使用 `DEEPSEEK_API_KEY`**；请在 DSH 的 设置 → 账号与余额 登录。本插件拿到的是投影后的余额列表，只解析币种与金额并据此显示余额，不保留原始对象。它与其它余额型条目一样不要求本机装有对应模型路由。
+
 ### Command Code 账户
 
 Command Code 的凭据由提供方插件 `@mars-sea/dsh-commandcode-provider` 管理，本插件只读继承，并在**两处**提供同一份账户切换：药丸弹层底部，以及 设置 → 订阅用量 的 Command Code 用量面板（同一个控制器、同一个组件、与提供方插件设置页同一开关）。「自动轮换」时仍显示默认账户（顶层 Key）的用量，不跟随轮换中的实际服务账户；提供方自定义 `apiBase` 也不跟随。月总额按已知套餐快照推算，未知套餐只显示月剩余；月池耗尽不代表已购 / 赠送池不可用。
@@ -132,5 +157,6 @@ Command Code 的凭据由提供方插件 `@mars-sea/dsh-commandcode-provider` �
 | 会话 / 登录文件型 | `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`（Command Code 计费）、`cli-chat-proxy.grok.com`（SuperGrok 计费代理）、`chatgpt.com/backend-api`（Codex 订阅用量） |
 | 火山方舟管控面 | `open.volcengineapi.com` |
 | 自建网关 | 用户自填的 LiteLLM proxy 地址（只去掉 `/v1` 这类版本段，其余路径原样保留） |
+| 复用宿主账号请求链 | `deepseek-account`：调用本机 `deepseekAccount` 服务，由 DSH 完成鉴权与余额请求；宿主服务可能按自身配置联网，本插件不另发 HTTP、不复制 token |
 
 除上面这些，插件不访问其他网络地址；MiMo 自动登录会额外打开官方平台页面，由你在该页面自行完成登录。

@@ -5,9 +5,9 @@
 
   **选中的模型还剩多少额度，输入框旁边一眼可见。**
 
-  dsh-subusage 把已支持的 27 条模型提供商路由额度装进 DeepSeek Harness 的输入框旁边——不切控制台、不猜百分比、不等报错。
+  dsh-subusage 把已支持的 28 个提供商数据入口的额度与余额装进 DeepSeek Harness 的输入框旁边——不切控制台、不猜百分比、不等报错。
 
-  [![npm version](https://img.shields.io/badge/npm-0.11.2-blue)](https://www.npmjs.com/package/dsh-subusage)
+  [![npm version](https://img.shields.io/badge/npm-0.12.0-blue)](https://www.npmjs.com/package/dsh-subusage)
   [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
   [![DSH](https://img.shields.io/badge/DSH-0.2.x-informational)](#compatibility--兼容性)
 
@@ -23,7 +23,7 @@
 | 额度散落在五六家控制台，查一次余额要开五个标签页 | 药丸常驻输入框旁：选中哪家模型就看哪家，多窗口自动取最差一窗 |
 | Agent 跑到一半撞上 429，才知道额度用尽 | 弹层先给结论再给依据：「即将用尽 · 最紧张：每周 · 剩 5% · 3 天后重置」 |
 | Cookie、OAuth 悄悄过期，报错才发现 | MiMo Cookie 提前 2 小时变黄、30 分钟变橙、过期变红；认证失效直说原因与修法 |
-| 每家插件各管各的凭据，格式五花八门 | 一个设置页集中管理 27 条路由的开关与凭据，缺什么补什么 |
+| 每家插件各管各的凭据，格式五花八门 | 一个设置页集中管理 28 条路由的开关与凭据，缺什么补什么 |
 
 ## 状态，一眼分清
 
@@ -46,13 +46,32 @@
 | 设置页 | 开关与凭据集中管理；缺凭据、Cookie 过期时把修复入口直接送到卡片上 | 设置 → 订阅用量 → 提供商管理 |
 | 只读额度 API | 其他插件与 Agent 复用同一份额度数据，不必各自对接各家接口 | Agent 工具 `subusage_quota`、Host 服务 `subUsage.quota()` |
 
-药丸只画图形：每个额度窗口一根彩色余量条（绿 / 黄 / 橙 / 红，满 = 100% 剩余），正常时不写字；需要留意时追加一个词，如 `周 偏少`、`5时 已用尽`、`需配置`、`拉取失败`。成功结果按提供商缓存 **60 秒**，手动刷新可跳过普通 TTL（仍遵守上游限流退避与 `Retry-After`）。
+套餐药丸以图形为主：每个额度窗口一根彩色余量条（绿 / 黄 / 橙 / 红，满 = 100% 剩余），正常时不写字；需要留意时追加一个词，如 `周 偏少`、`5时 已用尽`、`需配置`、`拉取失败`。一般成功结果按提供商缓存 **60 秒**，手动刷新可跳过普通 TTL（仍遵守上游限流退避与 `Retry-After`）；DeepSeek 账号入口每次调用宿主余额链，不复用本插件的旧余额缓存，避免切换账号后显示另一份钱包。
 
 本插件**不注册模型路由**，药丸按 provider id 匹配；因此使用哪个插件提供该模型路由不影响匹配，id 对不上时才不显示。
 
-## 27 条提供商路由，默认开启 10 条
+## 28 个提供商数据入口，默认开启 11 个
 
-DeepSeek、火山方舟（Agent / Coding Plan 个人版与企业版席位）、Z.ai（中国与国际）、Kimi、小米 MiMo、OpenCode Go、Command Code、SuperGrok、Codex（ChatGPT 订阅）、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM——订阅窗口、余额、周期额度池都支持。**新安装默认开启 10 条**，其余在设置页一键开启；完整清单、额度类型与鉴权方式见[下方技术文档](#支持的数据--supported-data)。
+DeepSeek API、DeepSeek 账号、火山方舟（Agent / Coding Plan 个人版与企业版席位）、Z.ai（中国与国际）、Kimi、小米 MiMo、OpenCode Go、Command Code、SuperGrok、Codex（ChatGPT 订阅）、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM——订阅窗口、余额、周期额度池都支持。**新安装默认开启 11 条**，其余在设置页一键开启；完整清单、额度类型与鉴权方式见[下方技术文档](#支持的数据--supported-data)。
+
+### 0.12.0：双 DeepSeek 入口、余额药丸与折叠详情
+
+本次发布包括以下改进；发布包不自动更新你的本机运行环境，也不代替真实账号验收：
+
+- **Command Code 轮换池**逐账户行标明具体受限周期，详情默认折叠为「点击查看详情」，展开后限高滚动。
+- **余额药丸分级**：药丸直接显示金额与单位，不再一律中性灰。人民币 < 1 元红、1–5 元黄、≥ 5 元灰；美元 < 0.2 红、0.2–1 黄、≥ 1 灰；`credits` 及其它无统一价值单位只在已解析的非正余额时标红，正余额保持灰色而不按绝对量虚构价值。这些是**产品预警阈值，不是汇率换算，也不是「还能跑多少次」的保证**。累计花费不套用余额阈值。
+- **新增 `deepseek-account`（DeepSeek 账号）**：默认开启，复用 DSH 本机 `deepseekAccount` 服务的登录态读取充值余额；不读取、导出或保存 OAuth token，也不使用独立 API Key。与 `deepseek`（DeepSeek API）的开关、缓存和余额完全独立；`deepseek-official` 这个名字指向账号入口。纯余额型条目（两个 DeepSeek 入口与 SiliconFlow、Novita、Hyperbolic、DeepInfra、Vercel AI Gateway）不要求本机装有对应模型路由。
+- **MiMo 无订阅不再画成 0%**：只有「用量组为空 / 零容量」配合可读的套餐详情才判未订阅；零容量不生成 0% 用量窗口。套餐读取失败仍标部分数据，余额读取失败仍保留已成功的用量。
+- **ZenMux 订阅端点失败**保留余额并标部分数据，明确写「套餐状态暂不可确认」，不宣称未订阅。
+
+35 个测试文件、清单与语法检查、深浅主题各 11 个余额场景及 40 账户折叠验收已通过。离线预览使用虚构数据，不代表新账号入口或无订阅响应已经真实在线验收——详见[开发说明](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md)。
+
+<details>
+<summary>余额药丸与套餐优先：0.12.0 深色离线预览</summary>
+
+<img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/balance-pills-dark.png" width="586" alt="余额药丸分单位预警、MiMo 无套餐与套餐优先，真实组件离线渲染，使用虚构金额">
+
+</details>
 
 ## 额度与续用：0.11.2 的关键修正
 
@@ -69,23 +88,27 @@ DeepSeek、火山方舟（Agent / Coding Plan 个人版与企业版席位）、Z
 ## 快速开始
 
 ```console
-dsh plugin --profile <profile> add dsh-subusage
+dsh plugin --profile web add dsh-subusage
 ```
+
+`web` 仅为示例 Profile，替换为实际目标；Desktop 应使用目标桌面壳提供的 DSH Desktop CLI，不从普通公共 CLI 管理 `desktop`。
 
 1. 安装并启用 bundle，按部署方式重载或重启（只刷新页面不保证 Host 升级）。
 2. 打开 **设置 → 订阅用量 → 提供商管理**，开启需要的提供商并填凭据——每类凭据的官网入口与填入位置见[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)；MiMo 用「登录并自动导入」。
 3. 回到会话，选中该提供商的模型：输入区左侧出现药丸，点开看窗口明细。
 4. 排障：点「立即刷新」→ 看设置页顶部 `X/Y 家数据获取成功`（可点击，直接跳到第一家没读成功的）。
 
-可复现的最小示例（DeepSeek，余额型，默认开启，与推理同一把 Key）：
+**DSH 已登录账号**：默认开启的「DeepSeek 账号」直接读取宿主账号余额，不需要复制 OAuth token 或填写 API Key；用 `subusage_quota(providers: ["deepseek-account"])` 查询。
+
+**独立 API Key**：使用「DeepSeek API」（`deepseek`），与账号入口分别管理，不接 OAuth：
 
 ```powershell
 # 任选一种凭据来源
 $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需按部署方式重启
-# 或在 设置 → 订阅用量 → DeepSeek →「连接与凭据」里手动填写
+# 或在 设置 → 订阅用量 → DeepSeek API →「连接与凭据」里手动填写
 ```
 
-重启后在会话中选中 DeepSeek 模型，药丸显示账户余额；也可以直接让 Agent 调用 `subusage_quota(providers: ["deepseek"])` 验证（无需界面）。
+启动环境变更需要按部署方式重载；手动保存 Key 后可直接刷新。选中对应模型时药丸显示余额，也可让 Agent 调用 `subusage_quota(providers: ["deepseek"])` 查询独立 API 余额。两种余额读取均不要求安装模型路由；不会把两份余额相加或互相替代。
 
 ## 先说清楚：哪些是实测过的
 
@@ -99,11 +122,12 @@ $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需
 
 ## 支持的数据 / Supported data
 
-共 **27 条 provider id**：新安装**默认开启 10 条、默认关闭 17 条**（数字与清单取自 [`lib/index.js`](lib/index.js) 顶部的 `PROVIDERS`，展示顺序与短名取自 [`lib/client.js`](lib/client.js) 顶部的 `PROVIDER_META` / `PROVIDER_ORDER`）。
+共 **28 条 provider id**：新安装**默认开启 11 条、默认关闭 17 条**（数字与清单取自 [`lib/index.js`](lib/index.js) 顶部的 `PROVIDERS`，展示顺序与短名取自 [`lib/client.js`](lib/client.js) 顶部的 `PROVIDER_META` / `PROVIDER_ORDER`）。
 
 | 提供商 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|---|
-| DeepSeek | `deepseek` | 余额（账户） | Bearer，与推理同一把 Key | 开 |
+| DeepSeek API | `deepseek` | 余额（账户） | Bearer，与推理同一把 Key | 开 |
+| DeepSeek 账号 | `deepseek-account` | 余额（本机账号充值） | 复用 DSH `deepseekAccount` 登录态，无独立 Key | 开 |
 | Z.ai（中国） | `zai-coding-cn` | 订阅窗口 | Bearer（团队档另加组织 / 项目请求头） | 开 |
 | Kimi Coding | `kimi-coding` | 订阅窗口 | Bearer | 开 |
 | Xiaomi MiMo | `xiaomi-token-plan-cn` | 周期额度池 | 官方平台 Cookie（含登录流程） | 开 |
@@ -156,7 +180,7 @@ $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需
 
 其余提供商**只经过桩测试**——响应形态取自公开文档、第三方实现或抓包，**没有在真实账号上跑通过**：
 
-> Z.ai（中国与国际）、OpenCode Go、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、DeepSeek、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM，以及火山方舟的**团队版席位**。
+> Z.ai（中国与国际）、OpenCode Go、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、DeepSeek API、DeepSeek 账号、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM，以及火山方舟的**团队版席位**。
 
 它们可能可用，也可能因为接口变更、字段差异或权限要求而失败。上表也只是既有账号、当时版本的验证记录，不是持续可用性保证。
 
@@ -194,7 +218,7 @@ $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需
 
 ```console
 # npm 包名（推荐：预构建，免构建授权）
-dsh plugin --profile <profile> add dsh-subusage
+dsh plugin --profile web add dsh-subusage
 
 # GitHub 固定 Commit（DSH STORE / awesome-dsh-plugin 只接受这种来源）
 dsh plugin --profile <profile> add 'git+https://github.com/KouzakiUmi/dsh-subusage.git#<40 位完整 Commit>'
@@ -238,7 +262,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 
 - **设置页路径**：设置 → **订阅用量** → 提供商管理。「没有检测到API的默认隐藏」默认开启；首次没有可见条目时管理区自动展开。关闭的提供商仍可配置凭据，只是不会发起用量请求。
 - **凭据从哪来**：每一类凭据的**官网入口、环境变量名与界面填入位置**都写在[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)——包括火山的 IAM AK/SK（子用户还要挂 `ArkReadOnlyAccess` 且不限制到项目）、MiMo 的平台会话 Cookie、以及各家 API Key 的对照表。**注意推理 Key 与额度凭据不通用。**
-- **默认开关策略**：新安装默认开启 10 条、默认关闭 17 条（**Codex 默认关闭**——它的提供方插件自带用量药丸）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
+- **默认开关策略**：新安装默认开启 11 条、默认关闭 17 条（**Codex 默认关闭**——它的提供方插件自带用量药丸）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
 - **火山方舟是一组**：4 条路由共用同一组 IAM AK/SK，所以设置页只呈现**一张卡片、一个开关**（本机已装的第一条路由作为代表，都没装则用第一条），卡片里写明本机实际装了哪几条。这些 provider id 并没有合并——药丸仍按 id 匹配路由。旧插件 `@volcengine/ark-plan-api` 的两个国内路由（`ark-coding-plan-cn` / `ark-agent-plan-cn`）**已移除**：它们与 arkcli 的路由查同一份订阅，并列显示只会让人以为买了两个套餐；装了旧插件的用户，药丸仍按那两个 id 显示同一份数据（入口归并到 arkcli 路由）。
 - **火山方舟不按路由收起**：它的额度走**账号级管控面**，一组 AK/SK 就能查到名下所有套餐（`GetCodingPlanUsage` 与 `GetAFPUsage` 是同一套协议、同一组凭据）。推理路由装没装只影响模型能不能用，**不影响额度能不能查**——所以只持有 Coding Plan、却没在 DSH 里配 coding-plan 路由时，那条额度照样会显示（前提是配了 AK/SK）。
 - **凭据来源优先级**（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；切到自定义（`manual`）模式时只使用保存的手动 Key。界面会区分这三种来源。
@@ -253,7 +277,8 @@ dsh plugin --profile <profile> remove dsh-subusage
 
 | 模型商 | 默认继承变量 | 说明 |
 |---|---|---|
-| DeepSeek | `DEEPSEEK_API_KEY` | 余额型：`GET /user/balance` 返回账户余额，**与推理是同一把 Key** |
+| DeepSeek API | `DEEPSEEK_API_KEY` | 余额型：`GET /user/balance` 返回账户余额，**与推理是同一把 Key** |
+| DeepSeek 账号 | 无 | `deepseek-account` 路由；只读 DSH「账号与余额」中已登录账号的充值余额，**没有继承变量、也不使用独立 API Key**，请在 DSH 的账号与余额页面登录 |
 | Z.ai（中国） | `ZAI_CODING_CN_API_KEY` | 团队套餐另填组织、项目 ID（作为 `bigmodel-organization` / `bigmodel-project` 请求头） |
 | Z.ai（国际） | `ZAI_CODING_API_KEY` | 独立国际 Coding Plan Key，鉴权用裸 `authorization`，不带 `Bearer` |
 | Kimi | `KIMI_CODING_API_KEY` | 需要 Kimi Coding Key，不是 Moonshot 开放平台 Key |
@@ -325,7 +350,7 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 | `~/.grok/auth.json`（回退 `~/.dsh/.xai-oauth-auth.json`） | Grok CLI / dsh-grok-kit 的 OAuth 登录 | 平时只读；过期时经 grok-kit 官方链续约并写回同一文件，不自行裸刷 |
 | `~/.commandcode/auth.json` | Command Code CLI（`cmd login`）的 Key | **只读**兜底 |
 
-**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`chatgpt.com/backend-api`、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#网络端点)。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
+**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`chatgpt.com/backend-api`、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#网络端点)。**`deepseek-account` 不自行发起 HTTP 请求**——它复用 DSH 的 `deepseekAccount` 服务，由宿主完成鉴权与余额请求（宿主服务可能按自身配置联网）；本插件不读取、导出或保存 OAuth token。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
 
 **命令、进程与安装期行为**
 

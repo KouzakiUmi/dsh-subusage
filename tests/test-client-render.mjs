@@ -26,7 +26,7 @@ const react = {
   useEffect: () => {}
 };
 const code = readFileSync(fileURLToPath(new URL("../lib/client.js", import.meta.url)), "utf8");
-vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { SubusageSection, UsageWindowRow, CommandCodePoolSummary, UsagePill, PROVIDER_ORDER, PROVIDER_META }; exports.apply = apply;"), {
+vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { SubusageSection, UsageWindowRow, CommandCodePoolSummary, UsagePill, PROVIDER_ORDER, PROVIDER_META, zh, en }; exports.apply = apply;"), {
   window: { __ModuleLoader__: { load: (value) => { spec = value; } } }, console
 });
 const plugin = spec.factory((name) => {
@@ -132,7 +132,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   assert.equal(selects.length, 0, "设置页不使用任何下拉列表");
   // 火山方舟剩下的 5 条路由在设置页合并成**一张**卡片（共用一个组开关），所以是
   // (30 − 6) 张 provider 卡片 + 1 个「没有检测到 API 的默认隐藏」开关 = 25。
-  assert.equal(all.filter(n => n.props?.role === "switch").length, 25, "提供商卡片与默认隐藏开关均可见（Ark 组已合并）");
+  assert.equal(all.filter(n => n.props?.role === "switch").length, 26, "提供商卡片与默认隐藏开关均可见（Ark 组已合并，新增独立 DeepSeek 账号入口）");
   if (provider === "xiaomi-token-plan-cn") {
     assert.ok(visibleText(section).includes("登录并自动导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));
@@ -345,7 +345,36 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 	const exhaustedTree = renderCC(exhaustedCC, true);
 	assert.ok(visibleText(exhaustedTree).includes("statusExhausted") || visibleText(exhaustedTree).includes("pillLimited"), "池耗尽时药丸按限额染红");
 	assert.ok(visibleText(exhaustedTree).includes("ccPoolExhausted"), "弹层给出池耗尽结论");
-	console.log("PASS Command Code 轮换池摘要三态与池耗尽染红");
+	// 真文案：限额必须指出层级，周连坐5h不冒充两个独立额度都耗尽。
+	for (const [locale, expected] of [[plugin.__test.zh, "每周额度已用尽"], [plugin.__test.en, "Week quota used up"]]) {
+		const localT = key => locale[key] || key;
+		const summary = PoolSummary({ pool: mk({ accounts: [{ id: "W", state: "ok", blocked: true, usable: false, windows: [
+			{ kind: "5h", percent: 1, status: "rate-limited", cascade: true, detail: { blockedBy: ["week"] } },
+			{ kind: "week", percent: 100, status: "rate-limited" }
+		] }] }), cc: null, t: localT });
+		assert.ok(visibleText(summary).includes(expected));
+		assert.ok(!visibleText(summary).includes(`${localT("w5h")} /`), "只标连坐的根限额");
+	}
+	const localT = key => plugin.__test.zh[key] || key;
+	const rowText = windows => visibleText(PoolSummary({ pool: mk({ accounts: [{ id: "W", state: "ok", blocked: true, usable: false, windows }] }), cc: null, t: localT }));
+	assert.ok(rowText([{ kind: "month", percent: 100, status: "rate-limited" }]).includes("每月额度已用尽"));
+	assert.ok(rowText([{ kind: "week", percent: 100, status: "rate-limited" }, { kind: "month", percent: 100, status: "rate-limited" }]).includes("每周 / 每月额度已用尽"));
+	assert.ok(rowText([{ kind: "5h", percent: 1, status: "rate-limited", cascade: true, detail: { blockedBy: ["week"] } }]).includes("每周额度已用尽"), "根窗未下发仍保留blockedBy依据");
+	assert.ok(rowText([]).includes("额度受限（周期未知）"), "未知窗口不猜全部耗尽");
+	const paid = PoolSummary({ pool: mk({ accounts: [{ id: "W", state: "ok", blocked: false, usable: true, availability: "paygo", windows: [{ kind: "week", percent: 100, status: "rate-limited" }] }] }), cc: null, t: localT });
+	assert.ok(visibleText(paid).includes("按量续用"));
+	assert.ok(!visibleText(paid).includes("每周额度已用尽"), "PAYG行仍表明实际续用路径");
+	// 原生details默认收起，容量结论留在外面；多账户展开后限高滚动、仍可切换。
+	const pins = [];
+	const many = PoolSummary({ pool: mk({ total: 40, accounts: Array.from({ length: 40 }, (_, i) => ({ id: `A${i}`, label: `账户${i}`, state: "ok", blocked: true, usable: false, windows: [{ kind: "week", percent: 100, status: "rate-limited" }] })) }), cc: { switchTo: id => pins.push(id) }, t: localT });
+	const details = flattenNodes(many).find(n => n.type === "details");
+	assert.ok(details && details.props?.open !== true, "不随数量自动展开");
+	assert.ok(flattenNodes(details).some(n => n.type === "summary" && visibleText(n).includes("点击查看详情")));
+	assert.ok(flattenNodes(details).some(n => n.props?.style?.maxHeight === 240 && n.props.style.overflowY === "auto"));
+	assert.equal(flattenNodes(details).filter(n => n.type === "button").length, 40);
+	flattenNodes(details).find(n => n.type === "button").props.onClick();
+	assert.deepEqual(pins, ["A0"], "折叠不破坏点击固定账户");
+	console.log("PASS Command Code 轮换池状态、周期层级、中英、多限额/连坐/PAYG与默认折叠滚动");
 }
 
 console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/提供商开关/无下拉布局、用量面板内联行动条、待处理排序与计数跳转、首次加载 gate、路由缺失收起与已启用前置、AFP 分组与明细拆行、CC 轮换池摘要");

@@ -58,7 +58,8 @@ const RESET_5H = "2026-10-09T12:00:00.000Z", RESET_7D = "2026-10-15T00:00:00.000
 	const none = normalizeCodexUsage({});
 	assert.deepEqual(none.windows, []);
 	assert.equal(JSON.stringify(none.extras), JSON.stringify([{ kind: "note", value: "未检测到订阅额度窗口" }]));
-	// credits：只有真正报告了可用余额才显示，不把「无额度」画成 0。
+	// credits：显示明确报告的有限钱包数额（包括 0），has_credits=false 不虚构钱包。
+	assert.equal(normalizeCodexUsage({ credits: { has_credits: true, unlimited: false, balance: "0" } }).extras.find(e => e.kind === "balance").value, "0", "明确钱包零余额仍可展示，但不代表可续用");
 	assert.equal(normalizeCodexUsage({ rate_limit: { primary_window: { used_percent: 1 } }, credits: { has_credits: true, unlimited: false, balance: "62500" } }).extras[0].value, "62500");
 	// plan_type 给套餐档位（真机实测值 "plus"）。
 	assert.equal(normalizeCodexUsage({ rate_limit: { primary_window: { used_percent: 1 } }, plan_type: "plus" }).extras[0].value, "plus");
@@ -68,7 +69,7 @@ const RESET_5H = "2026-10-09T12:00:00.000Z", RESET_7D = "2026-10-15T00:00:00.000
 	assert.deepEqual(live.windows.map(w => w.kind), ["5h", "week"]);
 	assert.equal(live.extras.length, 1, "has_credits=false 不显示余额");
 	assert.equal(live.extras[0].value, "plus");
-	for (const credits of [{ has_credits: false, balance: "62500" }, { has_credits: true, unlimited: true, balance: "62500" }, { has_credits: true, balance: "0" }, { has_credits: true }]) {
+	for (const credits of [{ has_credits: false, balance: "62500" }, { has_credits: true, unlimited: true, balance: "62500" }, { has_credits: true }]) {
 		assert.equal(normalizeCodexUsage({ rate_limit: { primary_window: { used_percent: 1 } }, credits }).extras.filter(e => e.kind === "balance").length, 0, `不该显示余额：${JSON.stringify(credits)}`);
 	}
 	assert.throws(() => normalizeCodexUsage({ rate_limit: { primary_window: { used_percent: "x" } } }), "非法百分比报错");

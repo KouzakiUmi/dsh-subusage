@@ -4,11 +4,12 @@
 
 > 本文件是决策记录，不是接入指引。当前行为、凭据与窗口语义见 [README](../README.md)。
 
-## 已支持（27 条 provider id）
+## 已支持（28 条 provider id，0.12.0 起含独立 DeepSeek 账号入口）
 
 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|
-| `deepseek` | 余额（账户） | Bearer，与推理同 Key | 开 |
+| `deepseek` | 独立 API Key 余额 | 官方 API Bearer；不接 OAuth | 开 |
+| `deepseek-account` | DSH 本机账号充值余额（0.12.0） | 复用宿主账号服务，不读取 token；与 API 入口独立 | 开 |
 | `zai-coding-cn` / `zai-coding` | 订阅窗口 | 中国 Bearer（团队档另加组织/项目头）/ 国际裸 `authorization` | 中国开 / 国际关 |
 | `kimi-coding` | 订阅窗口 | Bearer | 开 |
 | `xiaomi-token-plan-cn` | 周期额度池 | 官方平台 Cookie（含登录流程） | 开 |

@@ -69,6 +69,21 @@ UI 继续复用已有 `computeStatus()`；排序亦使用该结论，窗口行�
 
 本轮本地验收：全量离线回归、清单与四个 JS 入口语法检查、diff 空白检查均通过；独立 Chrome 执行真实 Client 组件的 PAYG / 自动池 / Pro 单周 / 三层预算 / AFP 部分能力五种预览，文案及横向、弹层上下边界均通过。全程虚构数据、禁止 HTTP，不替代真实 DSH RPC/企业接口验收；发布版本为 0.11.2，GitHub 与 npm 按现有 CI 发布；未安装或重启实际 DSH 环境。
 
+## 0.12.0：余额分级、DeepSeek 账号与 MiMo / ZenMux 语义
+
+0.12.0 复用既有 Host/Client 管道，不新增 RPC、不改 `state` 枚举。发布与部署分开：本轮发布不安装或重启实际 DSH，也未完成新账号链路的真实在线验收。
+
+- **余额是纯客户端展示层的事，Host 不参与分级**。`balanceVisual()` 只读 entry 的 `extras[kind === "balance"]`，按字符串自身的单位判定：人民币 < 1 红、1–5 黄、≥ 5 灰；美元 < 0.2 红、0.2–1 黄、≥ 1 灰。`credits` 及其它没有跨厂商统一面值的单位只在**已解析的非正余额**时标红，正余额一律灰色——各厂商 credits 不可比，按绝对量分级等于凭空制造价值感。阈值是产品预警，不是汇率换算，也不代表「还能跑多少次」。**累计花费不套用阈值**：`spend` / `*-spend` 是已花金额，不是可用余额。
+- **窗口优先，余额不越权**。有有效套餐窗口时窗口始终是药丸主态，负余额不抹掉有效套餐，套餐耗尽也不因为钱包里还有余额就被盖过；官方明确给出 PAYG / included 建议时（`computeStatus` 的 advice 分支）该建议独立保留，并可叠加余额金额作为 short。纯余额药丸只在**无窗口且 `coverage === "complete"`** 时出现；缓存 / 部分数据 / 读取失败仍是降级态，余额只在依据行里补充。
+- **余额型条目不要求模型路由**。`deepseek`、`deepseek-account`、`siliconflow`、`novita`、`hyperbolic`、`deepinfra`、`vercel-ai-gateway` 进 `BALANCE_ONLY_IDS`，与火山方舟一样不受 `providerRoutable` 约束：官方余额与本机账号余额都独立于推理入口，处于手动模式或已存 Key 的账号照样能查。刚保存 Key 的旧 no-key 条目不能继续隐藏。
+- **`deepseek-account`（默认开启）**：通过 `identity()` 调本机 `deepseekAccount` 服务的 `getState()` 判断登录态（`status === "credential-stored"` 才算可用，`keySource` 报 `account-service`），余额由 `getBalance()` 取得并套 10 秒超时。**不读取 / 导出 / 保存 OAuth token，也不使用 `DEEPSEEK_API_KEY`**，并且**不自行发起 HTTP 请求**——复用 DSH 的账号请求链（宿主服务可能联网），拿到的是投影后的余额列表而非原始响应。**该来源不复用本插件的旧 TTL 结果，每次刷新重新调用宿主余额服务，仅合并同时进行的请求；余额不写入配置 JSON**（落盘的只有设置与凭据）；它与 `deepseek` 各占独立缓存条目、独立开关与独立余额，互不顶替。别名 `deepseek-official` 指向账号入口，`deepseek` 的展示名改为「DeepSeek API」以区分。未登录时报 `subusage/no-key` 并给出「请在 DSH 的账号与余额页面登录；此入口不使用 API Key」的行动项——缺登录态不是读取失败。
+- **MiMo：`subscribed:false` 只在有正面证据时给**。条件是套餐详情**可读**（`detail.data` 为对象或显式 `null`）、两个端点 `code` 正常、套餐名与套餐码确实缺失，且用量侧呈现为「空用量组」或「所有池 `limit===0 && used===0 && percent===0`」。**零容量一律不生成 0% 用量窗口**——零容量不是「额度没用」，把它画成 0% 会同时谎报额度充足并盖掉真正的余额药丸。套餐端点读取失败仍标 partial、**不给 `subscribed`**，因为「没读到」不是「没订阅」。余额端点现在与另外两个端点一样独立 catch：余额失败不再 `Promise.all` 拖掉已成功的套餐用量，只在 extras 里说明「余额暂不可读；套餐用量已更新」；余额与套餐都读不到才报错。
+- **ZenMux：订阅端点失败不等于未订阅**。余额读到就保留，并强制 `coverage = "partial"` 且追加「余额已读取；套餐状态暂不可确认」；`subscribed` 语义不适用于本家（不是方舟的套餐路由），不得据单端点失败推断没买套餐。
+
+验证范围：`node tests/run-all.mjs` 的 **35 个测试文件全部通过**，清单、相关 JS 语法与 `git diff --check` 通过。新增 `tests/test-balance-modes.mjs` 覆盖双入口独立身份/缓存、无模型路由刷新、宿主余额超时、分单位阈值、MiMo / ZenMux 独立端点降级及 Codex 明确零余额。深浅主题各 11 个真实组件离线场景通过金额、预警、套餐优先与无横向溢出检查；预览仍是虚构数据，**未替代真实 DSH / 账号验收**。发布按现有 main / 版本标签工作流执行；不安装或重启实际 DSH。
+
+离线余额画廊：`node scripts/render-ui-preview.mjs 530 deepseek dark pill balance-gallery`（浅色用 `light`），然后 `node scripts/check-balance-preview.mjs`。仅已解析的币种参与金额阈值；正常金额继承主题文字色，预警金额用主题混色提升深浅主题可读性。
+
 ## 3. RPC v0.2 契约
 
 Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，测试机械比较 service、namespace、method、wire、codec typeSymbol。
@@ -159,7 +174,16 @@ foreach ($theme in @('dark', 'light')) {
 node scripts/check-browser-runtime.mjs
 ```
 
-浏览器检查需要工作区可解析 `playwright-core` 且已安装 Google Chrome；不会下载浏览器。它检查 Cookie 域/路径隔离、25 个开关（27 条路由合并为 24 张提供商卡片 + 1 个默认隐藏开关）、预览桩下 13 个可见标签与 14 张关闭卡片、无下拉列表和横向溢出，并将 PNG 写到 `debug/ui-preview/`。
+浏览器检查需要工作区可解析 `playwright-core` 且已安装 Google Chrome；不会下载浏览器。它检查 Cookie 域/路径隔离、26 个开关（28 条路由合并为 25 张提供商卡片 + 1 个默认隐藏开关）、预览桩下 13 个可见标签与 14 张关闭卡片、无下拉列表和横向溢出，并将 PNG 写到 `debug/ui-preview/`。
+
+0.12.0 轮换池改进的专项验收（虚构 40 个账户、禁止 HTTP）：
+
+```console
+node scripts/render-ui-preview.mjs 360 commandcode dark pill pool-many
+node scripts/check-pool-details.mjs
+```
+
+检查默认折叠、点击/键盘展开与收起、具体限额周期、展开后 240px 内部滚动，以及窄屏无横向溢出；不访问实际账号或切换真实服务账户。
 
 单独生成浅色药丸弹层 HTML：
 
@@ -257,7 +281,7 @@ node --input-type=module -e "import {chromium} from 'playwright-core'; import {r
 - **`output.schema` 不发给模型**（`dsh-tools` 的投影只保留 `name` / `description` / `parameters`；`output` / `execute` / `finalizeContent` / `timeoutMs` / 呈现回调「绝不会泄漏到协议上」）。因此：**「怎么用」只能写在 `description` 与参数说明里**，而 `output.schema` 的职责是**校验返回值**（`createSuccessResult` → `ToolOutputError`）与 UI 展示。两者不可互相替代。改动 `output.schema` 后必须用真实校验器验证一遍，方法见 `debug/verify-tool-schema.mjs`（debug/ 不入库）：从 `@deepseek-ai/dsh-tools/lib/index.js` 导入 `defineTool` / `validateJsonSchemaValue`，用真实 `quota()` 输出跑校验——0.10.5 就是这样抓到 `errorCode` 越界与 `undefined` 字段这两个会直接炸的问题的。
 - 用量面板内联行动条（UX）：`tests/test-usage-action.mjs` 钉住判定（缺凭据/凭据被拒/已过期 → 重新登录/2 小时与 30 分钟档/正常倒计时不打扰/计时不可解析不编造），`tests/test-client-render.mjs` 钉住渲染（MiMo 失效时面板出现行动条与按钮，正常状态没有）。行动条只负责「把入口送到眼前」，凭据编辑复用同一份编辑器，避免两套字段与校验漂移（沿用本仓库既有的「两入口共用同一渲染」约定）。
 - 余额型聚合商六家：`tests/test-aggregators.mjs` 逐个钉住单位换算（Novita 1/10000、Hyperbolic 美分、DeepInfra 取负、Chutes 绝对量、Ollama 0–1 小数、Vercel 十进制字符串）与边界（`{quota:0}` 不猜比例、Ollama 缺层跳过、DeepInfra 欠款分支），并在 Host 端逐一断言端点与鉴权头（**Ollama Cloud 是裸 `Authorization`**）。**未做**任何真实 Key 的在线验证。
-- MiniMax 国际版改为默认关闭（用户要求：实际使用少）。`tests/test-minimax.mjs` 补上默认值断言并在用例前显式开启两家，`tests/test-client-behavior.mjs` 的可见 tab 列表改用 MiniMax CN。（当时的 15/9 计数已被后续批次改写，**当前值以 `lib/index.js` 的 `PROVIDERS` 为准**——现为默认关闭 17 条、默认开启 10 条；设置页合并 Ark 后是 24 张卡片。）
+- MiniMax 国际版改为默认关闭（用户要求：实际使用少）。`tests/test-minimax.mjs` 补上默认值断言并在用例前显式开启两家，`tests/test-client-behavior.mjs` 的可见 tab 列表改用 MiniMax CN。（当时的 15/9 计数已被后续批次改写，**当前值以 `lib/index.js` 的 `PROVIDERS` 为准**——现为默认关闭 17 条、默认开启 11 条；设置页合并 Ark 后是 25 张卡片。）
 - OpenRouter：`tests/test-openrouter.mjs` 覆盖限额窗口与 `limit_reset` 映射、免费档日窗口、**余额端点 403 的静默降级**（只少余额，条目仍 `ok`）、`limit_remaining` 越界不产生负用量、无可用信息才报错、Host 端到端两请求与 Client 注册。**未做**真实 Key 的在线验证（无凭据）。
 - DeepSeek 官方余额：`tests/test-deepseek.mjs` 覆盖归一化（不产窗口、字符串金额、多币种取第一条可解析项、货币码不合规时只显示金额、`is_available=false` 提示充值、非法值报错）、Host 端到端（默认开启、Bearer 与推理同 Key、密钥不回显）与 Client 注册。**未做**真实 Key 的在线验证。
 - 顺序约定：新 provider 一律**追加在 `PROVIDER_ORDER` 末尾**。本轮把 Codex 插在中间时，测试里三处按位置写的 `ids[N]` 断言全部错位（改用 id 字面量断言后恢复）；追加在末尾则不影响既有索引。

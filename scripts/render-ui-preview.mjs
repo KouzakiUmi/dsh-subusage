@@ -74,11 +74,12 @@ if (scenario === 'pro') quota = { ...entry(providerId, 10, 'week'), extras: [{ k
 if (scenario === 'budgets') quota = { ...entry(providerId, 100, 'period'), windows: [['key', 100, 10, 10], ['team', 1, 1, 100], ['user', 20, 20, 100]].map(([budgetScope, percent, used, limit]) => ({ kind: 'period', budgetScope, percent, status: percent >= 100 ? 'rate-limited' : 'ok', detail: { used, limit, unit: 'USD' } })) };
 if (scenario === 'scope') quota = { ...afpQuota, windows: afpQuota.windows.map(w => ({ ...w, detail: { ...w.detail, used: Math.round((w.kind === 'day' ? 100 : w.percent) / 100 * w.detail.limit * 1e6) / 1e6, scope: w.kind === 'month' ? 'all' : w.kind === 'day' ? 'daily-capabilities' : 'text' }, ...(w.kind === 'day' ? { percent: 100, status: 'rate-limited' } : {}) })) };
 if (scenario === 'pool') quota = { ...entry(providerId, 100, '5h'), accountPool: { mode: 'auto', total: 2, available: 1, blockedCount: 1, unusableCount: 0, exhausted: false, accounts: [{ id: 'default', state: 'ok', usable: false, blocked: true, windows: [{ kind: '5h', percent: 100, status: 'rate-limited' }] }, { id: 'COMMANDCODE_ACCOUNT_WORK', label: '工作号', state: 'ok', usable: true, blocked: false, windows: [{ kind: '5h', percent: 10, status: 'ok' }] }] } };
+if (scenario === 'pool-many') quota = { ...entry(providerId, 93.7, 'month'), accountPool: { mode: 'auto', total: 40, available: 1, blockedCount: 39, unusableCount: 0, exhausted: false, accounts: Array.from({ length: 40 }, (_, i) => ({ id: i ? `COMMANDCODE_ACCOUNT_${i}` : 'default', label: `示例账户 ${i}`, state: 'ok', usable: !i, blocked: !!i, windows: [{ kind: i % 2 ? 'week' : 'month', percent: i ? 100 : 93.7, status: i ? 'rate-limited' : 'ok' }] })) } };
 if (pillPreview) previewStates = [{ entry: quota, updatedAt: clock }, null, undefined, false, true];
 // Command Code 药丸弹层的账户切换区：虚构两个额外账户，固定项高亮；不发起任何网络请求。
 let cc;
 if (pillPreview && providerId === 'commandcode') {
-  const row = { ns: 'llm-commandcode', revision: 3, value: { accounts: [{ label: '工作号', apiKeyEnv: 'COMMANDCODE_ACCOUNT_WORK' }, { label: '备用号', apiKeyEnv: 'COMMANDCODE_ACCOUNT_SPARE' }], activeAccount: scenario === 'pool' ? '' : 'COMMANDCODE_ACCOUNT_WORK' } };
+  const row = { ns: 'llm-commandcode', revision: 3, value: { accounts: scenario === 'pool-many' ? quota.accountPool.accounts.slice(1).map(a => ({ label: a.label, apiKeyEnv: a.id })) : [{ label: '工作号', apiKeyEnv: 'COMMANDCODE_ACCOUNT_WORK' }, { label: '备用号', apiKeyEnv: 'COMMANDCODE_ACCOUNT_SPARE' }], activeAccount: ['pool', 'pool-many'].includes(scenario) ? '' : 'COMMANDCODE_ACCOUNT_WORK' } };
   cc = createCommandCodeAccounts({
     describe: async () => ({ ok: true, value: { writable: true, namespaces: [row] } }),
     mutate: async () => ({ ok: false, error: { message: 'offline preview' } })
@@ -86,7 +87,32 @@ if (pillPreview && providerId === 'commandcode') {
   await cc.load();
 }
 const pillLabel = providerId === 'commandcode' ? 'Command Code' : PROVIDER_META[providerId]?.label || providerId;
-const tree = pillPreview ? UsagePill({ providerId, label: pillLabel, readEntry: () => {}, t: key => zh[key] || key, getLocale: () => 'zh-CN', cc }) : SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => result }, t: key => zh[key] || key, getLocale: () => 'zh-CN' });
+let tree = pillPreview ? UsagePill({ providerId, label: pillLabel, readEntry: () => {}, t: key => zh[key] || key, getLocale: () => 'zh-CN', cc }) : SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => result }, t: key => zh[key] || key, getLocale: () => 'zh-CN' });
+if (scenario === 'balance-gallery') {
+  const samples = [
+    ['account', 'DeepSeek 账号 · 本机余额', 'deepseek-account', '49.99 CNY', []],
+    ['api-low', 'DeepSeek API · 人民币偏低', 'deepseek', '0.50 CNY', []],
+    ['cny-warn', '人民币 · 预警档', 'siliconflow', '3.00 CNY', []],
+    ['usd-low', '美元 · 偏低档', 'novita', '0.10 USD', []],
+    ['usd-warn', '美元 · 预警档', 'openrouter', '0.50 USD', []],
+    ['credits', 'credits · 不跨厂商折算', 'commandcode', '0.1 credits', []],
+    ['credits-zero', 'credits · 已无余额', 'commandcode', '0 credits', []],
+    ['mimo-balance', 'MiMo · 已确认无套餐', 'xiaomi-token-plan-cn', '0.50 CNY', []],
+    ['mimo-plan', 'MiMo · 有套餐，负余额不盖过套餐', 'xiaomi-token-plan-cn', '-1.19 CNY', [{ kind: 'sub', percent: 10, status: 'ok' }]],
+    ['mimo-full', 'MiMo · 套餐耗尽，钱包不能掩盖', 'xiaomi-token-plan-cn', '49.99 CNY', [{ kind: 'sub', percent: 100, status: 'rate-limited' }]],
+    ['mimo-unknown', 'MiMo · 套餐读取失败，不能说未订阅', 'xiaomi-token-plan-cn', '12.00 CNY', [], 'partial']
+  ];
+  tree = react.createElement('div', { id: 'balance-gallery', style: { display: 'grid', gap: 12 } },
+    react.createElement('h2', { style: { margin: '0 0 4px', fontSize: 17 } }, '余额与套餐药丸 · 离线验收'),
+    ...samples.map(([id, caption, provider, value, windows, coverage = 'complete']) => {
+      const sample = { ...entry(provider, 0), windows, coverage, cookieExpiresAt: undefined, extras: [{ kind: 'balance', value }], ...(provider === 'deepseek-account' ? { keySource: 'account-service' } : {}) };
+      previewStateIndex = 0;
+      previewStates = [{ entry: sample, updatedAt: clock }, null, undefined, false, false];
+      const pill = UsagePill({ providerId: provider, label: PROVIDER_META[provider]?.label || provider, readEntry: () => {}, t: key => zh[key] || key, getLocale: () => 'zh-CN' });
+      return react.createElement('section', { 'data-balance-case': id, style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(128,128,128,.2)' } },
+        react.createElement('span', { style: { fontSize: 12, minWidth: 0 } }, caption), pill);
+    }));
+}
 const escape = value => String(value).replace(/[&<>\"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const unitless = new Set(['opacity', 'zIndex', 'fontWeight', 'lineHeight', 'flex', 'flexGrow', 'flexShrink', 'order', 'gridColumn']);
 function render(node) {
@@ -109,7 +135,7 @@ function render(node) {
 }
 const sidebar = !pillPreview && width >= 400 ? `<aside><b>设置</b>${['账号与余额', '通用设置', '模型', '内置插件', 'xAI Grok', 'Agent 预设', '订阅用量', '插件市场'].map(x => `<div${x === '订阅用量' ? ' class="active"' : ''}>${x}</div>`).join('')}</aside>` : '';
 const html = `<!doctype html><html lang="zh-CN"><meta charset="UTF-8"><title>订阅用量离线布局预览</title><style>*{box-sizing:border-box}body{margin:0;background:${theme === 'light' ? '#fafafa' : '#292929'};color:${theme === 'light' ? '#202124' : '#eee'};color-scheme:${theme};font-family:Arial,"Microsoft YaHei",sans-serif;font-size:13px}main{display:flex;padding:14px 12px;gap:12px}aside{width:180px;flex-shrink:0;padding:0 8px}aside b{display:block;margin:4px 0 24px;font-size:16px}aside div{padding:12px 10px;border-radius:8px;margin:4px 0}.active{background:#414141}article{width:${width + 32}px;min-width:0}button,select,input,textarea{font-family:inherit}details{padding-top:8px;border-top:1px solid #454545}progress{display:block}a{color:${theme === 'light' ? '#1a73e8' : '#82b1ff'}}footer{font-size:11px;opacity:.55;padding:8px 28px}</style><main>${sidebar}<article>${render(tree)}</article></main><footer>离线组件布局预览 · 虚构用量数据 · 非运行中的 DSH 截图</footer></html>`;
-const outputHtml = pillPreview ? html.replace('<article>', '<article style="display:flex;justify-content:flex-end;align-items:flex-end;height:920px;max-width:100%">') : html;
+const outputHtml = pillPreview && scenario !== 'balance-gallery' ? html.replace('<article>', '<article style="display:flex;justify-content:flex-end;align-items:flex-end;height:920px;max-width:100%">') : html;
 mkdirSync(resolve('debug/ui-preview'), { recursive: true });
 const suffix = process.argv[3] ? `-${providerId}-${theme}${openCredentials ? '-credentials' : pillPreview ? '-pill' : ''}` : '';
 const output = resolve(`debug/ui-preview/settings-${width}${suffix}${scenario ? '-' + scenario.replace(/[^a-z0-9-]/gi, '') : ''}.html`);

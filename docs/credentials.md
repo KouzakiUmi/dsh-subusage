@@ -146,7 +146,8 @@ Cookie 必须**同时包含** `api-platform_serviceToken` 与 `userId`，否则�
 
 | 提供商 | 环境变量 | 去哪拿 |
 |---|---|---|
-| DeepSeek | `DEEPSEEK_API_KEY` | DeepSeek 开放平台 → API Keys（与推理同一把） |
+| DeepSeek API | `DEEPSEEK_API_KEY` | DeepSeek 开放平台 → API Keys（与推理同一把） |
+| DeepSeek 账号 | **无环境变量，也不填 Key** | 在 DSH **设置 → 账号与余额**登录。本插件只读本机 `deepseekAccount` 服务返回的充值余额，不读取 / 导出 / 保存 OAuth token，也不读 `DEEPSEEK_API_KEY` |
 | Z.ai（中国） | `ZAI_CODING_CN_API_KEY` | 智谱开放平台 → API Keys；团队档另需组织 / 项目 ID |
 | Z.ai（国际） | `ZAI_CODING_API_KEY` | Z.ai 平台 → API Keys |
 | Kimi | `KIMI_CODING_API_KEY` | Kimi 开放平台 → API Keys |
