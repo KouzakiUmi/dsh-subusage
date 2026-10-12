@@ -31,6 +31,7 @@ jobs:
           node --check lib/index.js
           node --check lib/client.js
           node --check lib/mimo-login.js
+          node --check lib/volcengine.js
 
       - name: Pack and validate release asset
         run: |

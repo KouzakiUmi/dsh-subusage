@@ -2,6 +2,37 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.11.1：SuperGrok 自动续约、Command Code 轮换池健康度与审查修复
+
+### SuperGrok token 过期时借 dsh-grok-kit 官方链自动续约（2026-10-12）
+
+- **问题**：grok-kit 面板显示「已登录」，本插件却显示 token 已于某时刻过期。根因是两边刷新时机不对称：grok-kit 的 OAuth 刷新是**懒触发**（仅聊天/搜索遇 401、启动拉模型列表时才刷，无后台定时器），用户一段时间没用 Grok 聊天，`~/.grok/auth.json` 就停在旧 token；而本插件每分钟读用量、是最常发现过期的一方，旧设计却「只读不刷」。本机实测：token 6 小时即过期（04:49 登录、10:49 过期），grok-kit 最后一次活动停在 07:48。
+- **修复**：过期时动态加载兄弟插件 `dsh-grok-kit`（弱依赖，`import()` 失败即降级），调用其 0.2.0 导出的 `XaiOAuthSession.models.getAuth("xai")`——与 grok-kit 聊天/搜索是**同一条官方刷新链**：共享文件 store、写锁内二次检查、compare-and-write 写回同一个 `~/.grok/auth.json`，多个消费者并发只刷一次。这不是自己裸 POST token 端点（那才会绕过写锁顶掉 refresh-token 轮换）；grok-kit 与 Grok CLI 反而共享续约结果。**本节取代 0.10.6 起各版本「只读、不刷新 token」的旧行为描述**（Codex 仍保持纯只读不变）。
+- **不信任返回值、只信文件**：`getAuth` 成功/失败后一律重读登录文件确认新 token 与新过期时间；因此「getAuth 拿不到写锁失败、但并发进程已把文件刷新」的场景也照样续约成功（pi-ai 在锁内发现「别人已刷」时会静默返回 undefined，重读文件正好把这种静默失败转成成功续约）。外层 20s 总预算（pi-ai 内部另含 15s 刷新超时），用完即 `dispose()` 会话。模块解析**只缓存成功结果**：未安装/旧版时每次过期都会重试加载，中途装好 grok-kit 无需重启 DSH。
+- **三级降级文案**：续约成功→照常拉用量；兄弟插件缺失/旧版（无 `XaiOAuthSession` 导出）/模块解析失败→提示「未能加载 dsh-grok-kit（≥0.2.0）」+ 手动登录步骤；刷新链报错（如 `invalid_grant`）→明示「自动刷新失败」+ 上游原因（截 200 字）+ 重新登录指引。未过期不加载 grok-kit，零额外开销。
+- **测试**：`tests/test-supergrok.mjs` 过期场景由「直接报错不发请求」改为五个用例——续约成功（新 token 计费、旧 token 零请求、会话 dispose）、刷新链抛错（失败原因进文案、不发计费请求）、兄弟插件三种缺失形态 + loader 抛错均安全降级、getAuth 失败但文件被并发刷新仍成功、未过期不加载刷新链。另在桌面 profile 实测原生 ESM 可加载 dsh-grok-kit 且真实 store/provider 解析正确（未代用户执行真实凭据刷新）。
+
+### Command Code 自动轮换池健康度（业务层优化，2026-10-12）
+
+- **问题**：自动轮换模式下药丸/面板只显示顶层 Key（默认账户）单账户额度，但真实请求会落到池中任意账户——默认账户健康不代表池健康（其余账户可能已全部 5h 限额），乐观数字会误导用户。
+- **业务口径修正**：不能简单取「池中最紧张账户」染红——账户间是**独立配额**，轮换器会避开已限额的账户，单账户限额不是立即失败信号。只有**所有配置了凭据的账户都限额**（池耗尽）才是要 429 的时刻；部分限额只是容量降级。
+- **Host**：新增 `commandCodePool()`，仅在**自动轮换**模式（固定账户不挂）把 `accountPool` 摘要挂到默认账户 entry：逐账户 `usable / blocked / unusable` 分类、`available/blockedCount/unusableCount/exhausted` 汇总。复用各账户自己的 TTL/inflight 缓存（默认账户复用主链路 entry），每分钟自动刷新不会真打 N 次计费接口；点名单个额外账户时不挂。
+- **Client**：弹层与设置页新增 `CommandCodePoolSummary`（直接函数调用、与视觉原语同约定）——池标题 + 可用/限额计数、逐账户圆点与最差窗口、点账户行可固定到它；**池耗尽时**用池中一条 rate-limited 窗口喂给 `computeStatus`，药丸与横幅如实染红，部分限额不染红只在摘要提示。双语文案齐备。
+- **测试**：新增 `tests/test-commandcode-pool.mjs`（部分受限/全耗尽/全未配置/固定模式/点名账户/缓存零新增请求）与 `test-client-render` 的摘要三态 + 池耗尽染红断言。
+- **另**：产出 [MiMo 登录摩擦优化设计](mimo-login-redesign.md)（私有 persistent context + 超时弹性 + 临期提醒），待评审，未实施。
+
+### 审查修复（2026-10-12）
+
+- **Ark 未装路由时单家刷新空转（功能 bug）**：Client 单家刷新过滤器此前对所有 provider 套用 `providerRoutable`，但火山方舟额度是账号级管控面订阅、显隐本就豁免路由检查；导致「AK/SK 名下有套餐、本机未装对应 arkcli 路由」的条目在定时刷新、重置补拉或点击「刷新当前」时都不发请求，只有「刷新全部」能更新。现刷新过滤器对 volc 同样豁免，与 `providerVisible` 同口径；`test-client-behavior` 补充对拍断言。
+- **Client save 校验器漏 `visibility.ark`（双端 schema 漂移）**：Host 的 `parseSettings` 接受火山组开关补丁，而 Client 白名单此前仅放行 `providers` 与 `hideWithoutApi`；网关出站当前不校验虽未致障，但属埋雷。Client 补充 `ark` 字段及布尔校验；`test-contract` 增加双端 parser 对同一合法补丁都接受、非法类型都拒绝的语义对齐用例（此前契约测试只比对 `typeSymbol` 字符串，覆盖不到解析语义）。
+- **错误消息中英混杂（i18n）**：Host 的失败 message 是中文兜底，英文界面直接渲染。Client 新增 errorCode→中英双语文案的 `localError()` 层（覆盖 13 个 `subusage/*` code），`computeStatus` 横幅、弹层失败行、设置页横幅、工具栏错误及保存通知全部走它；中文界面文案不变；中文原文保留在节点 `title` 供排障；未知 code 与传输层错误回退原文不丢信息。
+- **文档事实订正**：provider 总数 30→**27**、默认关 20→**17**、火山路由 7/5→**4** 条（个人版 2 + 团队版 2）、卡片 25→**24**；README 与 `docs/provider-coverage.md` 移除已下线的 BytePlus（`ark-coding-plan-byteplus`）「当前支持」条目与环境变量；Codex 默认状态由错误的「开」订正为「关」；代码注释 8 处「7 条」同步订正。
+- **删除死代码 `severity()`**：旧的药丸阈值函数（阈值 80% 与现行 71/91 口径不符），`computeStatus` 体系建立后已无任何引用。
+- **Codex 注释自相矛盾订正**：`PROVIDER_META.openai-codex` 注释同时写「默认开启」与「默认关闭」，删除前者，与 `defaultEnabled: false` 一致。
+- **设置页首次加载不再闪现**：首次 `readAll` 飞行期间 `providerVisible` 对缺失 `settings` / `configured` 一律「未知放行」，标签栏会先闪现默认开启项、顶部出现「0/N 家成功」。现未初始化时不渲染标签栏、空状态与成功计数（刷新按钮保留，初始化失败仍可靠「刷新全部」恢复）；`test-client-render` 增加「初始隐藏 / 加载后出现」双侧断言。
+- **Host 域健壮性清理**：① User-Agent 由硬编码、滞后两版的 `dsh-subusage/0.10.10` 改为读 `lib/index.js` 的 `VERSION` 常量，`check-manifest` 新增「VERSION 必须与 package.json 一致」校验（缺失/不一致直接失败，已用改错自证）；② `fetchJson` 把 3xx（`redirect:"manual"` 下的跳转）与 401/403 分开映射——前者归 `subusage/response`（意外重定向），不再被误诊成「凭据失效」诱导用户重登录，条件加显式括号；③ SuperGrok 的 token 过期时刻不再硬编码 `Asia/Shanghai`，改跟随系统时区；④ CI 语法检查补上漏网的 `lib/volcengine.js`。
+- **双端 provider 表一致性纳入契约测试**：Host 正式导出 `IDS` / `PROVIDERS`，`test-contract` 新增断言 Client 的 `PROVIDER_META` 键集与 `PROVIDER_ORDER` 必须与 Host `IDS` 集合完全相同，并逐家核对 `envName`、`managedByPlugin`、`defaultEnabled`；新增厂商只改一端以后会直接让 CI 变红。
+
 ## 0.11.0：Command Code 多账户额度与设置页账户区
 
 - **设置页也能切换 Command Code 账户**：Command Code 的用量面板里挂上**与药丸弹层同一个组件、同一个控制器**（`CommandCodeAccountSwitch`）——自动轮换 / 默认账户 / 各额外账户、当前项高亮、失败回读与降级文案两处完全一致，不必再跳到提供方插件的设置页。折叠标题直接回答「现在是哪一个账户」：固定账户写「账户名 · 使用中」，自动轮换写「自动轮换」（附选项数量）。切换后设置页把当前账户同步给共享 store，上方面板与药丸一起改看所选账户的额度。

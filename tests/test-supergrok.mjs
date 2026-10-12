@@ -1,6 +1,7 @@
 // SuperGrok / X Premium 订阅（xai-oauth）：normalizeSuperGrok（GetGrokCreditsConfig 响应）
 // + 共享登录文件凭据直连 Grok CLI 计费代理。凭据来源为 ~/.grok/auth.json（grok login /
-// dsh-grok-kit 登录写入）与旧版 ~/.dsh/.xai-oauth-auth.json，只读不写、不刷新 token。
+// dsh-grok-kit 登录写入）与旧版 ~/.dsh/.xai-oauth-auth.json。token 过期时借 dsh-grok-kit 的
+// 官方会话链（XaiOAuthSession.getAuth）续约同一文件；兄弟插件不可用或刷新失败才退回手动提示。
 // 不访问真实网络、真实 ~/.grok 或 ~/.dsh。
 import assert from "node:assert/strict";
 import { homedir } from "node:os";
@@ -62,11 +63,12 @@ assert.ok(!normalizeSuperGrok(billing({ creditUsagePercent: 1, prepaidBalance: {
 assert.ok(!normalizeSuperGrok(billing({ creditUsagePercent: 1, prepaidBalance: undefined }), settings()).extras.some(x => x.kind === "balance"), "未报告的余额不冒充 0");
 
 // ── 服务路径：共享登录文件解析、请求头、并行拉取、错误映射 ─────────────────
-function harness({ grokText, dshText, respond, stored } = {}) {
+function harness({ grokText, dshText, respond, stored, grokKit, useDefaultLoader } = {}) {
 	const files = new Map([[GROK_AUTH, grokText], [DSH_AUTH, dshText]].filter(([, v]) => v !== undefined));
 	if (stored) files.set("memory/config", JSON.stringify(stored));
 	let now = Date.parse("2026-01-01T00:00:00Z");
 	const calls = [];
+	const kitCalls = [];
 	let response = respond ?? ((url) => url.includes("billing") ? billing() : settings());
 	const io = {
 		readFileSync(path) {
@@ -76,8 +78,14 @@ function harness({ grokText, dshText, respond, stored } = {}) {
 		mkdirSync() {}, writeFileSync(path, value) { files.set(path, value); }, chmodSync() {}, renameSync() {}
 	};
 	const ctx = { get() {}, llm: { listProviders: () => [{ id: X }] }, effect() {} };
+	// 默认显式返回「未安装兄弟插件」：测试主机即使装着 dsh-grok-kit，也绝不让真实刷新链/网络参与。
+	// useDefaultLoader 例外：不注入，走模块里真实的 loadGrokKit（tmpdir 副本中 import 必然失败，
+	// 用于覆盖其 catch→undefined 降级路径本身）。
+	const resolveGrokKit = useDefaultLoader
+		? undefined
+		: async () => { kitCalls.push("load"); return grokKit ?? null; };
 	const service = new SubUsageService(ctx, {
-		io, configPath: "memory/config", now: () => now,
+		io, configPath: "memory/config", now: () => now, resolveGrokKit,
 		fetch: async (url, options) => {
 			calls.push({ url, options });
 			const value = await response(url, options);
@@ -86,7 +94,7 @@ function harness({ grokText, dshText, respond, stored } = {}) {
 			return { ok: true, status: 200, headers: { get: () => null }, text: async () => typeof value === "string" ? value : JSON.stringify(value) };
 		}
 	});
-	return { service, calls, tick: (ms) => now += ms, files };
+	return { service, calls, kitCalls, tick: (ms) => now += ms, files };
 }
 const SLOT = "https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828";
 const grokDoc = (slot = {}) => JSON.stringify({ [SLOT]: { key: "oauth-bearer", user_id: "user-1", refresh_token: "r", auth_mode: "oidc", ...slot } });
@@ -106,19 +114,113 @@ for (const call of served.calls) {
 }
 assert.deepEqual(entry.extras, [{ kind: "plan", value: "SuperGrok" }, { kind: "balance", value: "0.00 USD" }]);
 
-// ── 过期 token：不发请求，直接说「去刷一次」，而不是笼统的「凭据已失效」──────
-// 登录文件里的 access token 短命（实测 ~24h），本插件刻意不代刷（refresh-token 轮换归 Grok CLI /
-// grok-kit 的锁协议）。但不读 expires_at 的话，用户看到的只是上游 401 转成的「登录或凭据已失效」，
-// 而他那边的 Grok Kit 明明写着「已登录」——两边对不上，只会以为插件坏了。
+// ── 过期 token：借 dsh-grok-kit 官方会话链续约，而不是只读不刷或自己裸 POST ──
+// 登录文件里的 access token 短命，而 grok-kit 的自动刷新是懒触发（仅聊天/搜索遇过期才刷）；
+// 本插件每分钟读用量、最常发现过期，故过期时走 getAuth("xai") 官方链（同一文件 store、写锁内
+// 二次检查、compare-and-write），刷新后重读文件拿新 token。以下均不访问真实网络/真实 grok-kit。
+const EXPIRED = "2025-12-31T00:00:00.000Z";
+const RENEWED = "2026-06-01T00:00:00.000Z";
+// 模拟 dsh-grok-kit 导出：XaiOAuthSession 实例只有 models.getAuth 与 dispose 被本插件使用。
+const sessions = [];
+const fakeKit = (getAuth) => ({
+	XaiOAuthSession: class {
+		constructor() { sessions.push(this); this.getAuthCalls = 0; this.disposed = false;
+			this.models = { getAuth: async (provider, opts) => { this.getAuthCalls++; return getAuth(this, provider, opts); } }; }
+		dispose() { this.disposed = true; }
+	}
+});
 {
-	const expired = harness({ grokText: grokDoc({ expires_at: "2025-12-31T00:00:00.000Z" }) });
-	const stale = (await expired.service.refresh({ providerIds: [X], force: true })).entries[0];
+	// 场景 1：续约成功——计费请求带新 token，旧 token 一枪不发，会话被 dispose。
+	const h = harness({
+		grokText: grokDoc({ expires_at: EXPIRED }),
+		grokKit: fakeKit(() => {
+			h.files.set(GROK_AUTH, grokDoc({ key: "new-bearer", expires_at: RENEWED }));
+			return { source: "OAuth", auth: { apiKey: "new-bearer" } };
+		})
+	});
+	const entry = (await h.service.refresh({ providerIds: [X], force: true })).entries[0];
+	assert.equal(entry.state, "ok", "续约后照常拉用量");
+	assert.equal(entry.keySource, "auth-file");
+	assert.equal(sessions.at(-1).getAuthCalls, 1, "经 grok-kit 官方链刷新一次");
+	assert.equal(sessions.at(-1).disposed, true, "会话用完即 dispose");
+	assert.deepEqual(h.kitCalls, ["load"]);
+	assert.equal(h.calls.length, 2, "billing 与 settings 各一枪");
+	for (const call of h.calls) assert.equal(call.options.headers.authorization, "Bearer new-bearer", "请求带的是续约后的新 token");
+	assert.ok(!h.calls.some(c => String(c.options.headers.authorization).includes("oauth-bearer")), "旧 token 绝不发出");
+	h.service.dispose();
+}
+{
+	// 场景 2：刷新链抛错（refresh_token 失效等）——明确报告「自动刷新失败」与上游原因，引导重新登录，不发计费请求。
+	const h2 = harness({
+		grokText: grokDoc({ expires_at: EXPIRED }),
+		grokKit: fakeKit(() => { throw new Error("xAI OAuth token refresh failed (HTTP 400): invalid_grant"); })
+	});
+	const stale = (await h2.service.refresh({ providerIds: [X], force: true })).entries[0];
 	assert.equal(stale.state, "error");
 	assert.equal(stale.errorCode, "subusage/auth");
-	assert.ok(stale.error.includes("过期") && stale.error.includes("已于"), "要说是过期，不是笼统的凭据失效");
-	assert.ok(stale.error.includes("Grok CLI") && stale.error.includes("不代刷"), "给出可执行的下一步，并说明为什么不代刷");
-	assert.equal(expired.calls.length, 0, "已过期就不发这一枪");
-	expired.service.dispose();
+	assert.ok(stale.error.includes("自动刷新失败"), "要说是自动刷新失败");
+	assert.ok(stale.error.includes("invalid_grant"), "带上上游原因，便于排错");
+	assert.ok(stale.error.includes("重新登录"), "给出可执行的下一步");
+	assert.equal(h2.calls.length, 0, "刷新失败就不发计费请求");
+	assert.equal(sessions.at(-1).disposed, true, "失败路径也 dispose 会话");
+	h2.service.dispose();
+}
+{
+	// 场景 3：兄弟插件不可用（未安装 / resolveGrokKit 抛错 / 旧版本无 XaiOAuthSession 导出）——
+	// 退回旧的手动提示，不崩溃、不发请求。
+	for (const grokKit of [null, {}, { XaiOAuthSession: null }]) {
+		const h3 = harness({ grokText: grokDoc({ expires_at: EXPIRED }), grokKit });
+		const e = (await h3.service.refresh({ providerIds: [X], force: true })).entries[0];
+		assert.equal(e.state, "error");
+		assert.equal(e.errorCode, "subusage/auth");
+		assert.ok(e.error.includes("未能加载 dsh-grok-kit"), `不可用分支提示（kit=${JSON.stringify(Object.keys(grokKit ?? {}))}）`);
+		assert.ok(!e.error.includes("自动刷新失败"), "未尝试刷新时不能说是刷新失败");
+		assert.equal(h3.calls.length, 0);
+		h3.service.dispose();
+	}
+	const throwing = harness({ grokText: grokDoc({ expires_at: EXPIRED }), grokKit: undefined });
+	throwing.service.resolveGrokKit = async () => { throw new Error("boom"); };
+	const e2 = (await throwing.service.refresh({ providerIds: [X], force: true })).entries[0];
+	assert.equal(e2.state, "error");
+	assert.ok(e2.error.includes("未能加载 dsh-grok-kit"), "加载器抛错也按不可用降级");
+	throwing.service.dispose();
+}
+{
+	// 场景 3b：真实 loadGrokKit 的降级路径（不注入 loader）。测试副本在 tmpdir，动态
+	// import("dsh-grok-kit") 沿副本路径解析必然失败，loadGrokKit 的 catch 必须把它变成
+	// undefined → 走「未能加载」降级，而不是把模块解析错误抛给用户。
+	const real = harness({ grokText: grokDoc({ expires_at: EXPIRED }), useDefaultLoader: true });
+	const e3 = (await real.service.refresh({ providerIds: [X], force: true })).entries[0];
+	assert.equal(e3.state, "error");
+	assert.equal(e3.errorCode, "subusage/auth");
+	assert.ok(e3.error.includes("未能加载 dsh-grok-kit"), "真实 loadGrokKit 解析失败时静默降级");
+	assert.ok(!e3.error.includes("自动刷新失败"), "解析失败不算刷新失败");
+	assert.equal(real.calls.length, 0, "降级路径不发计费请求");
+	real.service.dispose();
+}
+{
+	// 场景 4：getAuth 自己失败（如拿不到写锁），但文件已被并发的另一进程刷新——以文件观察为准，续约成功。
+	// 刷新协议本来就是锁内二次检查 + compare-and-write：谁刷成都落同一文件，本插件不依赖 getAuth 的返回值。
+	const h4 = harness({
+		grokText: grokDoc({ expires_at: EXPIRED }),
+		grokKit: fakeKit(() => {
+			h4.files.set(GROK_AUTH, grokDoc({ key: "raced-bearer", expires_at: RENEWED }));
+			throw new Error("xai-oauth: credential store lock wait timed out");
+		})
+	});
+	const entry = (await h4.service.refresh({ providerIds: [X], force: true })).entries[0];
+	assert.equal(entry.state, "ok", "并发进程已刷新文件时照样成功");
+	assert.equal(h4.calls.length, 2, "billing 与 settings 各一枪，every 断言不能建立在空数组上");
+	assert.ok(h4.calls.every(c => c.options.headers.authorization === "Bearer raced-bearer"));
+	h4.service.dispose();
+}
+{
+	// 场景 5：未过期不加载 grok-kit——零额外耦合开销。
+	const fresh = harness({ grokText: grokDoc({ expires_at: RENEWED }) });
+	assert.equal((await fresh.service.refresh({ providerIds: [X], force: true })).entries[0].state, "ok");
+	assert.equal(fresh.kitCalls.length, 0, "token 未过期不碰刷新链");
+	assert.equal(fresh.calls.length, 2);
+	fresh.service.dispose();
 }
 {
 	// 未过期照常请求：别把好 token 判死。

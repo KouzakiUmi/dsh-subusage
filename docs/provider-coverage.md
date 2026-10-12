@@ -4,7 +4,7 @@
 
 > 本文件是决策记录，不是接入指引。当前行为、凭据与窗口语义见 [README](../README.md)。
 
-## 已支持（30 条 provider id）
+## 已支持（27 条 provider id）
 
 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|
@@ -14,14 +14,13 @@
 | `xiaomi-token-plan-cn` | 周期额度池 | 官方平台 Cookie（含登录流程） | 开 |
 | `opencode-go` | 订阅窗口 | Bearer | 开 |
 | `commandcode` | 5h / 周 / 月额度池 | 提供方插件的凭据链 | 开 |
-| `openai-codex` | ChatGPT 订阅窗口 | 只读 Codex CLI 的 OAuth 登录文件 | 开 |
-| `xai-oauth` | 周期池 | 只读 Grok CLI 的 OAuth 登录文件 | 开 |
+| `openai-codex` | ChatGPT 订阅窗口 | 只读 Codex CLI 的 OAuth 登录文件 | 关（提供方插件自带用量药丸） |
+| `xai-oauth` | 周期池 | 共享 Grok CLI 登录文件，过期经 grok-kit 官方链续约 | 开 |
 | `minimax-cn` | 短周期 / 周 | Bearer | 开 |
 | `arkcli-agent-plan` / `arkcli-coding-plan` | 订阅窗口（AFP / 按次数） | 管控面 IAM AK/SK 签名 | 开 |
 | `minimax` | 短周期 / 周 | Bearer | 关（国际版实际使用少） |
 | `synthetic` | 滚动订阅池 | Bearer | 关 |
 | `arkcli-agent-plan-team` / `arkcli-coding-plan-team` | 席位额度（AFP / 百分比） | 同 AK/SK，另需查看席位的权限 | 关 |
-| `ark-coding-plan-cn` / `ark-agent-plan-cn` / `ark-coding-plan-byteplus` | 订阅窗口（AFP） | IAM AK/SK 签名 | 关 |
 | `siliconflow` | 余额 | Bearer，与推理同 Key | 关 |
 | `openrouter` | 限额窗口 + 余额 | 推理 Key（余额需 management key） | 关 |
 | `novita` / `hyperbolic` / `deepinfra` / `chutes` / `ollama-cloud` / `vercel-ai-gateway` | 余额或配额 | 各自推理 Key（Ollama 用裸 Authorization） | 关 |
@@ -29,7 +28,7 @@
 | `zenmux` | 5h 配额 + PAYG 余额 | **Management API Key** | 关 |
 | `litellm` | 预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
 
-> 火山方舟有**两套 provider id**：`arkcli-*` 是官方 CLI（`arkcli helper configure`）写的路由，`ark-*` 是旧插件 `@volcengine/ark-plan-api` 写的路由。哪个 id 生效取决于你用哪种方式安装——**药丸按 id 精确匹配**，装错一边就不会显示。企业版/团队版权限特殊，默认关闭。
+> 火山方舟以官方 CLI（`arkcli helper configure`）写入的 `arkcli-*` 为准：个人版 2 条 + 团队版 2 条，共 **4 条**，共用一组 IAM AK/SK。旧插件 `@volcengine/ark-plan-api` 的两个国内 id（`ark-agent-plan-cn` / `ark-coding-plan-cn`）已从 Host 移除，但 Client 入口（`ROUTE_PROVIDER_ALIAS`）会把它们**归并**到对应的 arkcli 路由——装了旧插件的用户选中那些模型时，药丸仍显示同一份订阅数据，不需要改装。BytePlus 站点（`ark-coding-plan-byteplus`）本机无账号可验证，已整条移除：Host 不识别、Client 也不归并。企业版 / 团队版需要查看席位的权限，默认关闭。
 
 
 ## 评估后不接入
