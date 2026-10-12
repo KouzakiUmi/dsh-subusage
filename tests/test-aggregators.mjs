@@ -46,7 +46,7 @@ const { SubUsageService, normalizeNovitaBalance, normalizeHyperbolicBalance, nor
 	assert.equal(ollama.coverage, "complete");
 	const partial = normalizeOllamaCloudUsage({ limits: { weekly: { usage: 0.1 } } });
 	assert.deepEqual(partial.windows.map(w => w.kind), ["week"]);
-	assert.equal(partial.coverage, "partial");
+	assert.equal(partial.coverage, "complete", "合法已报告窗口不按数量判缺失");
 	assert.throws(() => normalizeOllamaCloudUsage({ limits: {} }));
 	assert.throws(() => normalizeOllamaCloudUsage({ limits: { session: { usage: -1 } } }));
 
@@ -78,7 +78,7 @@ const { SubUsageService, normalizeNovitaBalance, normalizeHyperbolicBalance, nor
 	// 只有余额：算读到数据，但没有窗口只能标 partial。
 	const onlyBalance = normalizeZenmux(undefined, { data: { currency: "usd", total_credits: 3 } });
 	assert.deepEqual(onlyBalance.windows, []);
-	assert.equal(onlyBalance.coverage, "partial");
+	assert.equal(onlyBalance.coverage, "complete", "成功余额查询不要求订阅窗口");
 	assert.equal(onlyBalance.extras[0].value, "3 USD");
 	assert.throws(() => normalizeZenmux(undefined, undefined), "两个端点都空要报错");
 	assert.throws(() => normalizeZenmux({ data: { quota_5_hour: { usage_percentage: "x" } } }, undefined), "非法百分比不当作 0");

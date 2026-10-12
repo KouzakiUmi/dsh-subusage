@@ -43,12 +43,12 @@ for (const [planId, cap] of [["individual-pro", 30], ["INDIVIDUAL_PRO_V1", 80], 
 }
 for (const planId of ["unknown-plan", "individual-goatfake", "individual-prototype"]) {
  const unknown = normalizeCommandCode(body({}, { planId, monthlyCredits: 55.86 }));
- assert.ok(!unknown.windows.some(w => w.kind === "month")); assert.equal(unknown.coverage, "partial");
+ assert.ok(!unknown.windows.some(w => w.kind === "month")); assert.equal(unknown.coverage, "complete", "未知套餐不编造月总额，但已报告窗口和月余额可用");
  assert.ok(unknown.extras.some(x => x.kind === "monthly-balance" && x.value === "55.86 credits"));
 }
 for (const monthlyCredits of [undefined, null, "55.86", NaN, Infinity]) {
  const missing = normalizeCommandCode(body({}, { monthlyCredits }));
- assert.ok(!missing.windows.some(w => w.kind === "month")); assert.equal(missing.coverage, "partial");
+ assert.ok(!missing.windows.some(w => w.kind === "month")); assert.equal(missing.coverage, "complete", "缺失月余额不抹杀已报告的有效短期窗口");
  assert.ok(!missing.extras.some(x => x.kind === "monthly-balance"));
 }
 assert.equal(normalizeCommandCode(body({}, { monthlyCredits: -1 })).windows.find(w => w.kind === "month").status, "rate-limited");
@@ -82,7 +82,7 @@ assert.throws(() => normalizeCommandCode(null), (e) => e.code === "subusage/resp
 // ── 无窗口时 partial；未报告的余额/套餐不冒充 ────────────────────────────
 const noWindow = normalizeCommandCode({ credits: { planId: "individual-pro-v1", freeCredits: 5 } });
 assert.deepEqual(noWindow.windows, []);
-assert.equal(noWindow.coverage, "partial");
+assert.equal(noWindow.coverage, "complete", "已报告余额不要求订阅窗口");
 assert.deepEqual(noWindow.extras, [{ kind: "plan", value: "individual-pro-v1" }, { kind: "balance", value: "5 credits" }]);
 const noBalance = normalizeCommandCode(body({}, { purchasedCredits: undefined, freeCredits: undefined }));
 assert.ok(!noBalance.extras.some((x) => x.kind === "balance"), "未报告的余额字段不显示");

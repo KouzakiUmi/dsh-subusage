@@ -18,12 +18,12 @@ assert.equal(normalizeMinimax(make({ current_interval_total_count: 0, current_in
 const legacy = normalizeMinimax(make({ model_name: "MiniMax-M*", current_interval_remaining_percent: undefined, current_interval_total_count: 1500, current_interval_usage_count: 1497, current_weekly_remaining_percent: undefined, current_weekly_total_count: 0, current_weekly_usage_count: 0 }));
 assert.equal(legacy.windows[0].percent, 0.2);
 assert.equal(legacy.windows[0].detail.used, 3);
-assert.equal(legacy.windows.length, 1); assert.equal(legacy.coverage, "partial");
+assert.equal(legacy.windows.length, 1); assert.equal(legacy.coverage, "complete", "不适用周池不构成缺数据");
 const mixed = make(); mixed.model_remains.unshift({ model_name: "video", current_interval_remaining_percent: 0 });
 assert.deepEqual(normalizeMinimax(mixed).windows.map(w => w.percent), [20, 40], "忽略视频池且不加总共享模型池");
 assert.equal(normalizeMinimax(make({ current_weekly_status: 3 })).windows.length, 1);
 const unknown = normalizeMinimax(make({ current_interval_status: 3, current_weekly_status: 3, current_interval_total_count: 0, current_weekly_total_count: 0 }));
-assert.deepEqual(unknown.windows, []); assert.equal(unknown.coverage, "partial");
+assert.deepEqual(unknown.windows, []); assert.equal(unknown.coverage, "complete", "官方报告无上限不是数据缺失");
 const exhausted = normalizeMinimax(make({ current_weekly_status: 2 }));
 assert.equal(exhausted.windows[1].percent, 100); assert.equal(exhausted.windows[0].cascade, true);
 assert.equal(normalizeMinimax(make({ current_interval_remaining_percent: 0.01 })).windows[0].status, "ok");

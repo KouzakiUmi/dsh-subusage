@@ -1,13 +1,13 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/title.png" width="100%" alt="dsh-subusage —— 模型选择器旁的余量药丸，右侧是同一界面的浅色与深色用量弹层（真实渲染截图）">
+  <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/title.png" width="100%" alt="dsh-subusage —— 模型选择器旁的余量药丸，右侧是同一界面的浅色与深色用量弹层（真实组件离线渲染示例）">
 
   # 订阅用量显示
 
   **选中的模型还剩多少额度，输入框旁边一眼可见。**
 
-  dsh-subusage 把你订阅的 30 家模型服务商额度装进 DeepSeek Harness 的输入框旁边——不切控制台、不猜百分比、不等报错。
+  dsh-subusage 把已支持的 27 条模型提供商路由额度装进 DeepSeek Harness 的输入框旁边——不切控制台、不猜百分比、不等报错。
 
-  [![npm version](https://img.shields.io/badge/npm-0.11.1-blue)](https://www.npmjs.com/package/dsh-subusage)
+  [![npm version](https://img.shields.io/badge/npm-0.11.2-blue)](https://www.npmjs.com/package/dsh-subusage)
   [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
   [![DSH](https://img.shields.io/badge/DSH-0.2.x-informational)](#compatibility--兼容性)
 
@@ -25,9 +25,9 @@
 | Cookie、OAuth 悄悄过期，报错才发现 | MiMo Cookie 提前 2 小时变黄、30 分钟变橙、过期变红；认证失效直说原因与修法 |
 | 每家插件各管各的凭据，格式五花八门 | 一个设置页集中管理 27 条路由的开关与凭据，缺什么补什么 |
 
-## 15 种状态，一眼分清
+## 状态，一眼分清
 
-药丸不写字也能传达状态：每个额度窗口一根彩条（绿 / 黄 / 橙 / 红，满格 = 100% 剩余），需要留意时才追加一个词。下面是全部状态的离线预览（虚构用量数据）：
+药丸不写字也能传达状态：每个额度窗口一根彩条（绿 / 黄 / 橙 / 红，满格 = 100% 剩余），需要留意时才追加一个词。下面是已发布基础状态的离线预览（虚构用量数据）；0.11.2 新增的续用/预算/能力范围状态见下节：
 
 <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/pill-states-light.png" width="100%" alt="药丸 15 种状态（浅色，离线预览）">
 
@@ -50,9 +50,21 @@
 
 本插件**不注册模型路由**，药丸按 provider id 匹配；因此使用哪个插件提供该模型路由不影响匹配，id 对不上时才不显示。
 
-## 30 家提供商，默认开箱即用 10 家
+## 27 条提供商路由，默认开启 10 条
 
 DeepSeek、火山方舟（Agent / Coding Plan 个人版与企业版席位）、Z.ai（中国与国际）、Kimi、小米 MiMo、OpenCode Go、Command Code、SuperGrok、Codex（ChatGPT 订阅）、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM——订阅窗口、余额、周期额度池都支持。**新安装默认开启 10 条**，其余在设置页一键开启；完整清单、额度类型与鉴权方式见[下方技术文档](#支持的数据--supported-data)。
+
+## 额度与续用：0.11.2 的关键修正
+
+- **Codex Pro / ProLite / ProMax**：合法单周窗口正常展示，不再因没有 5 小时窗而黄警；多工作区查询携带账户身份，企业支出限制与 Credits 单独保留。
+- **ZenMux / Novita / LiteLLM**：补齐 ZenMux 周窗；Novita 接受官方金额字符串；LiteLLM 的 Key、用户、团队预算分别展示，任何一层都不会被更宽松的预算覆盖。
+- **包含额度耗尽不等于服务停摆**：Command Code 有已购余额时显示“按量续用”；NanoGPT 使用接口路由建议，未知余额/策略明确待确认。其他厂商未核验的续用条件不作保证。
+- **轮换与能力范围**：自动轮换池尚有健康账户，不因默认账户限额报全池耗尽；AFP 文本周限制不连坐日能力池，共享月额度仍影响各能力。部分能力耗尽只提示范围，不冒充整个套餐不可用。
+- **数据完整性**：合法单窗、无上限和纯余额成功不是“不完整”；真实端点读取失败仍可标部分覆盖。金额或窗口未知时不编造百分比。
+
+以上均已通过离线回归；不代表真实企业席位、新旧私有接口或付费资格已经在线验收。详细契约与仍待核验范围见[开发说明](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md#额度语义修正0112)。
+
+[快速开始](#快速开始) · [支持清单](#支持的数据--supported-data) · [实测范围](#support-status--实测覆盖) · [凭据指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md) · [更新记录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/changelog.md)
 
 ## 快速开始
 
@@ -61,7 +73,7 @@ dsh plugin --profile <profile> add dsh-subusage
 ```
 
 1. 安装并启用 bundle，按部署方式重载或重启（只刷新页面不保证 Host 升级）。
-2. 打开 **设置 → 订阅用量 → 提供商管理**，开启需要的提供商并填凭据——每类凭据的官网入口与填入位置见[凭据获取指引](docs/credentials.md)；MiMo 用「登录并自动导入」。
+2. 打开 **设置 → 订阅用量 → 提供商管理**，开启需要的提供商并填凭据——每类凭据的官网入口与填入位置见[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)；MiMo 用「登录并自动导入」。
 3. 回到会话，选中该提供商的模型：输入区左侧出现药丸，点开看窗口明细。
 4. 排障：点「立即刷新」→ 看设置页顶部 `X/Y 家数据获取成功`（可点击，直接跳到第一家没读成功的）。
 
@@ -116,11 +128,11 @@ $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需
 | Chutes | `chutes` | 通用限额窗口 | Bearer | 关 |
 | Ollama Cloud | `ollama-cloud` | session / 周 / 月 | 裸 `Authorization`（不加 `Bearer`） | 关 |
 | Vercel AI Gateway | `vercel-ai-gateway` | 余额 | Bearer | 关 |
-| ZenMux | `zenmux` | 5 小时滚动窗口 + PAYG 余额 | **Management API Key** | 关 |
-| LiteLLM | `litellm` | 预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
+| ZenMux | `zenmux` | 5 小时 / 周窗口 + PAYG 余额 | **Management API Key** | 关 |
+| LiteLLM | `litellm` | Key / 用户 / 团队预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
 
-- 各家的**窗口语义、明细字段与单位换算**（例如 ZenMux / Ollama 的 0–1 小数、Novita 的 1/10000 USD、Kimi 随套餐变化的窗口集合）见 [提供商清单与额度语义](docs/providers.md)。
-- 评估过但**不接入**的厂商与理由见 [提供商覆盖与取舍](docs/provider-coverage.md)（含已由用户决策跳过的 Anthropic）。
+- 各家的**窗口语义、明细字段与单位换算**（例如 ZenMux / Ollama 的 0–1 小数、Novita 的 1/10000 USD、Kimi 随套餐变化的窗口集合）见 [提供商清单与额度语义](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md)。
+- 评估过但**不接入**的厂商与理由见 [提供商覆盖与取舍](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/provider-coverage.md)（含已由用户决策跳过的 Anthropic）。
 
 非公开控制台接口可能变更；缺失或非法百分比不会被当作零用量；「读取成功」只表示接口读取健康度，不保证仍有额度。
 
@@ -146,13 +158,13 @@ $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需
 
 > Z.ai（中国与国际）、OpenCode Go、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、DeepSeek、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM，以及火山方舟的**团队版席位**。
 
-它们可能可用，也可能因为接口变更、字段差异或权限要求而失败。**本插件只保证上面那张表里的**。
+它们可能可用，也可能因为接口变更、字段差异或权限要求而失败。上表也只是既有账号、当时版本的验证记录，不是持续可用性保证。
 
 如果你用了其中之一，不管成功还是失败，都欢迎[开 issue](https://github.com/KouzakiUmi/dsh-subusage/issues)——附上提供商名称、错误文案与 DSH 版本即可（**不要贴 Key 或 Cookie**）。失败和成功一样有用：失败帮我们修适配，成功帮我们把这一行挪进上表。
 
 ### 主要风险
 
-- **额度数字仅供参考，不要当计费依据。** 各家的额度接口都是未公开或半公开的，字段语义可能随时变化；本插件不做任何换算，读到什么显示什么。
+- **额度数字仅供参考，不要当计费依据。** 部分额度接口未公开或半公开，字段语义可能变化；插件会按已核验单位换算金额与百分比，不猜缺失额度。
 - **未验证的提供商会随接口变化而失效**（见上一节）。失效时在设置页关掉那一家的检测即可，其余不受影响；欢迎开 issue 帮我们补上。
 - **凭据以明文落盘**：本插件的配置不是加密凭据库；Windows 上真正的访问边界取决于目录 ACL，`chmod` 不能替代它。
 - **火山方舟是账号级读取**：一组 IAM AK/SK 能查到该账号名下**所有**套餐（Agent Plan、Coding Plan、团队席位）。把装了本插件的机器或配置文件交给别人时请注意这一点。
@@ -166,11 +178,11 @@ $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需
 | 核心 peer 范围 | `@deepseek-ai/dsh` 及各核心包均为 `>=0.2.0-rc.1 <0.2.1-0 \|\| >=0.2.1-0 <0.3.0-0` | [`package.json`](package.json) 的 `peerDependencies` |
 | Node.js | `>=22.19.0` | `engines` 与 `dsh.compatibility.node` |
 | 已验证的 Core 版本 | `0.2.0-rc.2`、`0.2.1-alpha.1`、`0.2.1-alpha.2` | 实机运行；逐版本状态与验证方式见 `dsh.compatibility.dshReleases` |
-| 最后验证日期 | `2026-10-11` | [开发与验证说明](docs/development.md) |
+| 最后验证日期 | `2026-10-11` | [开发与验证说明](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md) |
 
 > **范围里那个 `||` 分支不是冗余。** node-semver 只有在范围中**某个比较符与该版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时，才放行预发布版本。所以 `>=0.2.0-rc.1 <0.3.0-0` 这种看起来覆盖 0.2.x 的写法会**静默排除** `0.2.1-alpha.1`——而它正是当前活跃版本。必须为每个 minor 元组各写一个带预发布标签的分支。
 
-`dsh.compatibility.dshReleases` 逐版本声明已知状态：**只有实际验证过的标 `compatible`**，其余一律 `unknown`——没有证据不猜。本插件只依赖 Core 的**公开扩展 API 面**（Cordis 服务 `llm`/slots/locale/remote/settings/modelDirectories、4 个核心包的公开导出、client 基座的公开模块），不碰内部组件、不依赖桌面壳版本——这是 0.2.x 各版本实际全兼容的原因；`dshReleases` 记录的是**实测证据**，不是依赖声明。实际验证范围（在线接口、真实账号、浏览器像素验收等）见 [开发与验证说明](docs/development.md)。这是树外 Host / Client bundle，通过 `cordis.patch.yml` 插入，不修改 DSH 核心、安装树或 ASAR。
+`dsh.compatibility.dshReleases` 逐版本声明已知状态：**只有实际验证过的标 `compatible`**，其余一律 `unknown`——没有证据不猜。本插件只依赖 Core 的**公开扩展 API 面**（Cordis 服务 `llm`/slots/locale/remote/settings/modelDirectories、4 个核心包的公开导出、client 基座的公开模块），不碰内部组件、不依赖桌面壳版本——这是 0.2.x 各版本实际全兼容的原因；`dshReleases` 记录的是**实测证据**，不是依赖声明。实际验证范围（在线接口、真实账号、浏览器像素验收等）见 [开发与验证说明](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md)。这是树外 Host / Client bundle，通过 `cordis.patch.yml` 插入，不修改 DSH 核心、安装树或 ASAR。
 
 ## Install / 安装
 
@@ -225,7 +237,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 ## Configuration / 配置
 
 - **设置页路径**：设置 → **订阅用量** → 提供商管理。「没有检测到API的默认隐藏」默认开启；首次没有可见条目时管理区自动展开。关闭的提供商仍可配置凭据，只是不会发起用量请求。
-- **凭据从哪来**：每一类凭据的**官网入口、环境变量名与界面填入位置**都写在[凭据获取指引](docs/credentials.md)——包括火山的 IAM AK/SK（子用户还要挂 `ArkReadOnlyAccess` 且不限制到项目）、MiMo 的平台会话 Cookie、以及各家 API Key 的对照表。**注意推理 Key 与额度凭据不通用。**
+- **凭据从哪来**：每一类凭据的**官网入口、环境变量名与界面填入位置**都写在[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)——包括火山的 IAM AK/SK（子用户还要挂 `ArkReadOnlyAccess` 且不限制到项目）、MiMo 的平台会话 Cookie、以及各家 API Key 的对照表。**注意推理 Key 与额度凭据不通用。**
 - **默认开关策略**：新安装默认开启 10 条、默认关闭 17 条（**Codex 默认关闭**——它的提供方插件自带用量药丸）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
 - **火山方舟是一组**：4 条路由共用同一组 IAM AK/SK，所以设置页只呈现**一张卡片、一个开关**（本机已装的第一条路由作为代表，都没装则用第一条），卡片里写明本机实际装了哪几条。这些 provider id 并没有合并——药丸仍按 id 匹配路由。旧插件 `@volcengine/ark-plan-api` 的两个国内路由（`ark-coding-plan-cn` / `ark-agent-plan-cn`）**已移除**：它们与 arkcli 的路由查同一份订阅，并列显示只会让人以为买了两个套餐；装了旧插件的用户，药丸仍按那两个 id 显示同一份数据（入口归并到 arkcli 路由）。
 - **火山方舟不按路由收起**：它的额度走**账号级管控面**，一组 AK/SK 就能查到名下所有套餐（`GetCodingPlanUsage` 与 `GetAFPUsage` 是同一套协议、同一组凭据）。推理路由装没装只影响模型能不能用，**不影响额度能不能查**——所以只持有 Coding Plan、却没在 DSH 里配 coding-plan 路由时，那条额度照样会显示（前提是配了 AK/SK）。
@@ -252,7 +264,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | Command Code | `COMMANDCODE_API_KEY` | 凭据由提供方插件管理，本页只读继承；兜底读取 `~/.commandcode/auth.json`（`cmd login`） |
 | SuperGrok | 无 | `xai-oauth` 路由；读取 dsh-grok-kit / Grok CLI 共享的 OAuth 登录文件 `~/.grok/auth.json`（旧版 `~/.dsh/.xai-oauth-auth.json`），不保存凭据。access token 过期时**借 dsh-grok-kit（≥0.2.0）的官方登录链自动续约**——同一文件、同一把写锁、compare-and-write，不会顶掉共享登录态（本插件绝不自行裸 POST 刷新）；未安装 grok-kit 或续约失败时才提示手动重新登录。API Key（`XAI_API_KEY`）取不到订阅周池 |
 | Codex | 无 | `openai-codex` 路由；只读 Codex CLI 的 ChatGPT 订阅登录文件（`$CODEX_HOME/auth.json` 或 `~/.codex/auth.json`，要求 `auth_mode` 为 `chatgpt`），不保存、不刷新 token |
-| 火山方舟 Ark（4 条路由） | `VOLC_ACCESSKEY` + `VOLC_SECRETKEY` | 额度查询要 **IAM Access Key 的 AK/SK 配对**，与推理 API Key（`ARKCLI_*_API_KEY` / `ARK_*_API_KEY`）**不是同一套**；5 条路由共用一组 AK/SK。这一组 AK/SK 能**同时**查到 Agent Plan 与 Coding Plan（含团队版席位）——不存在「Coding Plan 专用查询 key」 |
+| 火山方舟 Ark（4 条路由） | `VOLC_ACCESSKEY` + `VOLC_SECRETKEY` | 额度查询要 **IAM Access Key 的 AK/SK 配对**，与推理 API Key（`ARKCLI_*_API_KEY` / `ARK_*_API_KEY`）**不是同一套**；4 条路由共用一组 AK/SK。这一组 AK/SK 能**同时**查到 Agent Plan 与 Coding Plan（含团队版席位）——不存在「Coding Plan 专用查询 key」 |
 | SiliconFlow | `SILICONFLOW_API_KEY` | 余额型：`GET /v1/user/info` 返回账户余额，**与推理是同一把 Key** |
 | OpenRouter | `OPENROUTER_API_KEY` | key 限额与用量用推理 key 即可；**账户余额需要 management / provisioning key**，普通 key 会被 403 拒——此时静默降级为只显示限额，不判失败 |
 | Synthetic | `SYNTHETIC_API_KEY` | 模型订阅请求额度 |
@@ -261,12 +273,12 @@ dsh plugin --profile <profile> remove dsh-subusage
 | Hyperbolic | `HYPERBOLIC_API_KEY` | 余额型；金额单位是**美分** |
 | DeepInfra | `DEEPINFRA_API_KEY` | 余额型 |
 | Chutes | `CHUTES_API_KEY` | 通用限额窗口 |
-| Ollama Cloud | `OLLAMA_API_KEY` | 余额型；鉴权是**裸 `Authorization`**（本插件已按其要求发送） |
+| Ollama Cloud | `OLLAMA_API_KEY` | 订阅窗口型；鉴权是**裸 `Authorization`**（本插件已按其要求发送） |
 | Vercel AI Gateway | `AI_GATEWAY_API_KEY` | 余额型；金额是**十进制字符串** |
 | ZenMux | `ZENMUX_MANAGEMENT_API_KEY` | 额度端点**只认 Management API Key**（推理 key 不适用），所以变量名单独区分。在 <https://zenmux.ai/platform/management> 创建该 key |
 | LiteLLM | `LITELLM_API_KEY` + 代理地址 | 自建网关：除虚拟 Key（**与推理同一把**）还要在凭据区填写自己的 proxy 地址。管理端点在 **proxy 根**——填了 `/v1` 也会被去掉，不会拼成 `/v1/key/info` |
 
-按 provider id 的字面映射（补齐上表按语义分组、未逐条列出的 5 条火山路由，逐条对应 `PROVIDERS[id].envName`）：
+按 provider id 的字面映射（补齐上表按语义分组、未逐条列出的 4 条火山路由，逐条对应 `PROVIDERS[id].envName`）：
 
 ```text
 deepseek                 DEEPSEEK_API_KEY
@@ -298,7 +310,7 @@ arkcli-agent-plan-team   ARKCLI_AGENT_PLAN_TEAM_API_KEY
 arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 ```
 
-解析顺序（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；自定义（`manual`）模式只使用保存的手动 Key。Cookie 与登录文件型凭据不走这条链，见 [MiMo 登录与 Cookie](docs/providers.md#mimo-登录与-cookie) 与 [Codex ChatGPT 订阅凭据](docs/providers.md#codex-chatgpt-订阅凭据)。修改启动环境后是否需要重启取决于目标部署，不能把「我已经改了环境变量」当作运行进程已经读到。
+解析顺序（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；自定义（`manual`）模式只使用保存的手动 Key。Cookie 与登录文件型凭据不走这条链，见 [MiMo 登录与 Cookie](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#mimo-登录与-cookie) 与 [Codex ChatGPT 订阅凭据](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#codex-chatgpt-订阅凭据)。修改启动环境后是否需要重启取决于目标部署，不能把「我已经改了环境变量」当作运行进程已经读到。
 
 </details>
 
@@ -313,7 +325,7 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 | `~/.grok/auth.json`（回退 `~/.dsh/.xai-oauth-auth.json`） | Grok CLI / dsh-grok-kit 的 OAuth 登录 | 平时只读；过期时经 grok-kit 官方链续约并写回同一文件，不自行裸刷 |
 | `~/.commandcode/auth.json` | Command Code CLI（`cmd login`）的 Key | **只读**兜底 |
 
-**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`chatgpt.com/backend-api`、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](docs/providers.md#网络端点)。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
+**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`chatgpt.com/backend-api`、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#网络端点)。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
 
 **命令、进程与安装期行为**
 
@@ -342,10 +354,10 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 | `providers` | `string[]`（可选） | 限定范围。可传本插件的 provider id（`deepseek`、`zai-coding-cn`、`kimi-coding`…），也可直接传厂商名（`zai`、`kimi`、`mimo`、`minimax`、`commandcode`、`grok`、`codex`、`ark`、`deepseek`…）；大小写与 `-` `.` `_` 都无关。省略即读取全部 |
 | `refresh` | `boolean`（可选） | `true` 绕过最多 60 秒的缓存，仅在确需最新数字时使用 |
 
-调用约定（**结果永远不为空**）：
+调用约定（无可读条目时返回汇总与下一步，不伪造额度）：
 
 - 模型手里的名字往往不是这里的 provider id（它更可能看到 DSH 的路由名，例如 `zai`），所以匹配是**宽松**的：一个名字命中多条路由时**全部返回**（`zai` → 中国版 + 国际版，`ark` → 4 条），每条各自带着真实 `state`（没启用的如实标 `disabled`），由调用方自己判断要看哪条。
-- 一个名字都认不出时，返回里会**先**给一条说明（写明可用写法），**再附上全部 27 条数据**——数据先给出去，判断交给调用方，而不是回一个空结果。
+- 一个名字都认不出时，返回里会**先**给一条说明（写明可用写法），**再读取全部路由，并按下述规则保留有数据或读取失败的条目**——数据先给出去，判断交给调用方，而不是回一个空结果。
 - **点名的家原样返回，其余按「有没有数据」收起**：`providers: ["kimi"]` 时被点中的家即使没配凭据也照原样给出（用户问的正是「它为什么没数据」）；**不点名时**——以及名字一个都没认出来、走全量兜底时——省略检测已关闭、未配置凭据、以及接口没报告任何额度的条目，省略条数按**家**写进 `omitted`（同一家的多个 Command Code 账户只算一家），否则二十多条路由会把真正的数字淹掉。**读取失败的条目会保留**——那是「这次没读到」，不是「没配置」，省略掉只会把排障方向带偏；认不出的名字自己那行也保留。
 - **Command Code 按账户各回一条**：账户清单读自提供方插件的 `llm-commandcode` 设置，每条带 `account`（账户名）、`accountActive`（当前激活的那个）与 `accountMode`（`fixed` 固定账户 / `auto` 自动轮换），激活账户排在最前。「还剩多少」与「现在实际用哪个账户」一次问清。
 
@@ -357,12 +369,13 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 // view = {
 //   updatedAt,
 //   providers: [{ providerId, label, state, windows, extras, coverage?, freshness?, lastSuccessAt?, error?,
-//                 account?, accountActive?, accountMode? }]
+//                 account?, accountActive?, accountMode?, availability?, availabilityReason? }]
 // }
 ```
 
 - `state`：`ok` | `no-key` | `no-cookie` | `error` | `disabled`
-- `windows[].percent` 是**已用**百分比（0–100）；`extras` 放余额与套餐名等补充项
+- `windows[].percent` 是**已用**百分比（0–100）；`extras` 放余额与套餐名等补充项。`budgetScope` / `detail.scope` 区分多预算和能力范围
+- `availability?` 为 `included | paygo | blocked | unknown`，`availabilityReason?` 解释依据；读取成功、余额或健康百分比不能单独保证续用资格
 - `account` / `accountActive` / `accountMode` 只在多账户的 Command Code 上出现（见下）；此时同一条路由会有**多条**条目（每个账户一条，`providerId` 相同），消费方按 `account` 区分
 - 视图**刻意精简**：不返回设置，也不返回 `keySource` / `apiDetected` / 继承变量名等内部状态，第三方消费者拿不到任何与 Key 相关的字段。多账户路由（Command Code）连错误文案里的**凭据引用名**也会换成账户标签（`Account 2`），内部 `apiKeyEnv` 只留在本机界面那条通道里（用户要靠它定位该往哪个 ref 写凭据）
 - 视图里**不出现值为 `undefined` 的字段**：字段缺席表示「这家没有报告」，而不是「报告了空」——带 `undefined` 的键会被调用方的 schema 校验判成型别错误
@@ -376,7 +389,7 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 |---|---|
 | 药丸不显示 | 依次确认：当前模型的 provider id 是否与上表一致（自定义 id 不会自动映射）→ 该家检测开关是否开启 → 是否被「没有检测到API的默认隐藏」收起（可在设置页临时关掉它）→ 运行中的 Host 与 Client 是否都已重载 |
 | 设置页没有提供商标签 | 展开提供商管理，确认开关和凭据；无凭据的条目默认隐藏，可临时关闭自动隐藏查看指引 |
-| 提示「无凭据 / 未检测到 Key」 | 先确认填的是**额度凭据**而不是推理 Key（两者不通用，见[凭据获取指引](docs/credentials.md)），再按该家小节核对来源、环境变量与权限 |
+| 提示「无凭据 / 未检测到 Key」 | 先确认填的是**额度凭据**而不是推理 Key（两者不通用，见[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)），再按该家小节核对来源、环境变量与权限 |
 | 提示「已保存」但仍是「无凭据」 | 凭据编辑要点「**保存设置**」才提交（提供商开关才是立即保存）；确认后若仍为空，把界面文案反馈上来 |
 | 某家读取失败，其他家正常 | 单家失败只影响自己的条目。按文案分类处理：认证类（401 / 凭据被拒）换对应产品与区域的凭据；权限 / 未订阅类（403）检查账号权限与套餐；限流类等待退避后重试 |
 | 显示认证失效 | 检查是否用了对应产品 / 区域的订阅 Key；MiMo 重新登录或导入 Cookie；旧额度不会当作有效数据保留 |
@@ -427,9 +440,9 @@ node scripts/render-ui-preview.mjs 530 nanogpt light pill
 node scripts/check-browser-runtime.mjs   # 需要工作区可解析 playwright-core 且本机装有 Google Chrome
 ```
 
-文档入口：[凭据获取指引](docs/credentials.md)（每类凭据的官网入口、环境变量与填入位置、报错对照）、[开发与验证](docs/development.md)（RPC 契约、缓存与凭据约定、离线预览与实机验收范围）、[提供商清单与额度语义](docs/providers.md)、[提供商覆盖与取舍](docs/provider-coverage.md)、[UX 设计](docs/design-ux.md)、[发布与市场收录](docs/publish.md)、[更新记录](docs/changelog.md)、[审查记录](docs/code-review.md)。
+文档入口：[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)（每类凭据的官网入口、环境变量与填入位置、报错对照）、[开发与验证](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md)（RPC 契约、缓存与凭据约定、离线预览与实机验收范围）、[提供商清单与额度语义](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md)、[提供商覆盖与取舍](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/provider-coverage.md)、[UX 设计](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/design-ux.md)、[发布与市场收录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/publish.md)、[更新记录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/changelog.md)、[审查记录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/code-review.md)。
 
-> 打包说明：`package.json` 的 `files` 白名单是 `lib` / `cordis.patch.yml` / `README.md` / `LICENSE`，因此 `assets/title.svg`、`assets/screenshots/` 与 `docs/` **不进 npm 包**——顶部 title 图与下面的界面预览只在 GitHub 页面显示。改动白名单属于发布决策，需单独处理。
+> 打包说明：`package.json` 的 `files` 白名单是 `lib` / `cordis.patch.yml` / `README.md` / `LICENSE`，因此 `assets/title.svg`、`assets/screenshots/` 与 `docs/` **不进 npm 包**——图片通过 GitHub 绝对地址加载，npm 页面无需把图片打进包也能显示。改动白名单属于发布决策，需单独处理。
 
 ### 界面预览
 
@@ -443,9 +456,22 @@ node scripts/check-browser-runtime.mjs   # 需要工作区可解析 playwright-c
 
 ![浅色 NanoGPT 用量弹层（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/usage-popover-light.png)
 
-药丸 15 种状态一览（浅色 / 深色）见[开头的能力展示](#15-种状态一眼分清)。
+药丸 15 种状态一览（浅色 / 深色）见[开头的能力展示](#状态一眼分清)。
 
-截图声明见根目录 [`screenshots.json`](screenshots.json)。这些图都是**当前版本**的离线组件预览（虚构用量、桩网络、无凭据），已随本版本重做，底部水印明确标注「非运行中的 DSH 截图」。真实 DSH Loader、实际账号在线接口与多账户映射仍未验收，截图不代表已通过这些检查。
+截图声明见根目录 [`screenshots.json`](screenshots.json)。上述四张保留 0.10.11 的基础界面预览；下方三张为 0.11.2 新增语义状态的真实组件离线预览（虚构用量、桩网络、无凭据），底部水印明确标注「非运行中的 DSH 截图」。真实 DSH Loader、实际账号在线接口与多账户映射仍未验收，截图不代表已通过这些检查。
+
+### 新增：额度耗尽与整体续用分开表达
+
+<details>
+<summary>查看 0.11.2 的按量续用、轮换池与部分能力限制（虚构数据）</summary>
+
+![包含额度耗尽但可按量续用](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/paygo-dark.png)
+
+![默认账户限额但轮换池仍可用](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/account-pool-dark.png)
+
+![日能力池耗尽不等于全部套餐不可用](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/scoped-quota-dark.png)
+
+</details>
 
 ## License & security / 许可与安全
 

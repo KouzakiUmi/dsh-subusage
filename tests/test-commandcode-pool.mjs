@@ -11,7 +11,7 @@ const RESET = "2026-01-01T05:00:00Z";
 // fiveHour used/cap：used>=cap（cap>0）即 rate-limited。
 const body = (used, cap) => ({ credits: { planId: "individual-goat", monthlyCredits: 55.86 }, windowLimits: { fiveHour: { used, cap, exceeded: false, resetAt: RESET } } });
 
-function harness({ accounts, activeAccount = "", accountCredential = {}, topUsed = 1, respondExtra, topCredential = { value: "top-key" } } = {}) {
+function harness({ accounts, activeAccount = "", accountCredential = {}, topUsed = 1, respondExtra, responseBody, topCredential = { value: "top-key" } } = {}) {
 	const files = new Map();
 	const calls = [];
 	const io = {
@@ -31,7 +31,7 @@ function harness({ accounts, activeAccount = "", accountCredential = {}, topUsed
 			const key = String(options?.headers?.authorization ?? "").replace("Bearer ", "");
 			let used = topUsed;
 			if (respondExtra) used = respondExtra(key) ?? topUsed;
-			return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(body(used, 4)) };
+			return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(responseBody ? responseBody(key) : body(used, 4)) };
 		}
 	});
 	return { service, calls, refresh: () => service.refresh({ providerIds: [C], force: false }) };
@@ -121,4 +121,46 @@ const findPool = async (h) => (await h.refresh()).entries.find(e => e.providerId
 	console.log("PASS 池逐账户读取命中缓存，不重复打接口");
 }
 
+// 默认账户耗尽但备用健康：状态数据必须显示池仍有容量。
+{
+	const h = harness({ accounts: [{ label: "工作号", apiKeyEnv: WORK }], accountCredential: KEYS, respondExtra: byKey({ "top-key": 4, "work-key": 1 }) });
+	const pool = await findPool(h);
+	assert.equal(pool.available, 1);
+	assert.equal(pool.exhausted, false);
+	assert.equal(pool.accounts.find(a => a.id === "default").blocked, true);
+	h.service.dispose();
+}
+// 默认未配置不应遮盖备用账户容量；未知读取失败不能假定全池耗尽。
+{
+	const h = harness({ accounts: [{ label: "工作号", apiKeyEnv: WORK }], accountCredential: KEYS, topCredential: {} });
+	const pool = await findPool(h);
+	assert.equal(pool.available, 1);
+	assert.equal(pool.accounts[0].state, "no-key");
+	assert.equal(pool.exhausted, false);
+	h.service.dispose();
+}
+{
+	const h = harness({ accounts: [{ label: "工作号", apiKeyEnv: WORK }], accountCredential: KEYS, respondExtra: byKey({ "top-key": 4, "work-key": "invalid" }) });
+	const pool = await findPool(h);
+	assert.equal(pool.unusableCount, 1);
+	assert.equal(pool.exhausted, false, "备用读取失败属于未知，不宣称全池耗尽");
+	h.service.dispose();
+}
+{
+	const h = harness({ accounts: [{ label: "工作号", apiKeyEnv: WORK }], accountCredential: KEYS, responseBody: key => key === "work-key" ? { credits: { planId: "custom-enterprise" } } : body(4, 4) });
+	const pool = await findPool(h);
+	assert.equal(pool.available, 0, "只有套餐名、不完整配额不能计入健康容量");
+	assert.equal(pool.accounts.find(a => a.id === WORK).state, "ok", "接口合法响应只是配额未知，非读取失败");
+	assert.equal(pool.accounts.find(a => a.id === WORK).availability, "unknown");
+	assert.equal(pool.exhausted, false, "空的未知备用不证明全池耗尽");
+	h.service.dispose();
+}
+{
+	const h = harness({ accounts: [{ label: "工作号", apiKeyEnv: WORK }], accountCredential: KEYS, responseBody: key => ({ ...body(4, 4), credits: { ...body(4, 4).credits, ...(key === "work-key" ? { purchasedCredits: 10 } : {}) } }) });
+	const pool = await findPool(h);
+	assert.equal(pool.available, 1, "已购余额续用账户可贡献轮换容量");
+	assert.equal(pool.accounts.find(a => a.id === WORK).availability, "paygo");
+	assert.equal(pool.exhausted, false);
+	h.service.dispose();
+}
 console.log("Command Code 轮换池聚合测试全部通过 ✅");

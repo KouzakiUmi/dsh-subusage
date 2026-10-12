@@ -135,4 +135,27 @@ assert.equal(computeStatus(entry({ windows: [w("sub", 80)] }), args()).color, "#
 }
 assert.ok(computeStatus(entry(), args()).title.includes("noUsageData"), "既无窗口也无余额才回落占位");
 
-console.log("PASS computeStatus 分支矩阵：加载/关闭/用尽/连坐/Cookie 三档/需配置/失败/缓存/档位/仅余额 与优先级交错用例");
+// ── 新套餐：包含额度、支付路径与实际可用性分开 ───────────────────────────
+for (const availability of ["paygo", "included", "unknown"]) {
+	const st = computeStatus(entry({ availability, windows: [w("week", 100)] }), args());
+	assert.equal(st.key, availability);
+	assert.notEqual(st.color, "#ef4444", "续用建议或未知不能硬判整体不可用");
+}
+assert.equal(computeStatus(entry({ availability: "blocked", availabilityReason: "spend-control" }), args()).key, "restricted");
+assert.equal(computeStatus(entry({ availability: "unknown", windows: [w("week", 10)] }), args()).key, "unknown", "明确续用未知不能被健康百分比盖过");
+assert.equal(computeStatus(entry({ availability: "paygo", extras: [{ kind: "balance", value: "10 USD" }] }), args()).key, "paygo", "无订阅窗口仍保留PAYG路由结论");
+assert.equal(computeStatus(entry({ availability: "paygo", freshness: "stale", retainPrevious: true, windows: [w("week", 100)] }), args()).key, "blocked", "缓存建议不当作当前续用保证");
+const pool = { mode: "auto", total: 2, available: 1, blockedCount: 1, unusableCount: 0, exhausted: false, accounts: [] };
+for (const state of ["ok", "no-key", "error"]) {
+	const st = computeStatus(entry({ state, windows: [w("5h", 100)], accountPool: pool }), args({ providerId: "commandcode" }));
+	assert.equal(st.key, "pool", "默认账户异常但备用可用，整体状态来自池");
+	assert.notEqual(st.color, "#ef4444");
+}
+assert.equal(computeStatus(entry({ accountPool: { ...pool, available: 0, exhausted: false, accounts: [{ state: "error" }] } }), args()).key, "pool-unknown");
+assert.equal(computeStatus(entry({ accountPool: { ...pool, available: 0, exhausted: false, accounts: [{ state: "ok", availability: "unknown" }] } }), args()).key, "pool-unknown");
+assert.equal(computeStatus(entry({ extras: [{ kind: "quota-status", value: "unlimited" }] }), args()).key, "unlimited", "已报告无上限不冒充没数据");
+const scoped = [w("day", 100, { detail: { scope: "daily-capabilities" } }), w("5h", 10, { detail: { scope: "text" } }), w("month", 20, { detail: { scope: "all" } })];
+assert.equal(computeStatus(entry({ windows: scoped }), args()).key, "scope", "部分能力日池耗尽不能写成全套餐耗尽");
+assert.equal(computeStatus(entry({ windows: [...scoped, w("month", 100, { detail: { scope: "all" } })] }), args()).key, "blocked", "共享月池耗尽仍约束全能力");
+assert.ok(computeStatus(entry({ extras: [{ kind: "spend", value: "1 USD" }] }), args()).title.includes("spendLabel"), "已花费不得标为余额");
+console.log("PASS computeStatus：旧分支与支付续用、企业限制、轮换池、能力范围新矩阵");

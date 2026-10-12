@@ -35,7 +35,7 @@ const RESET = "2026-11-01T00:00:00.000Z";
 	assert.equal(withBudget.coverage, "complete");
 	// user/team 的预算视图优先于 key 自身的 info。
 	const scoped = normalizeLitellm({ info: { spend: 5, max_budget: 10 } }, { spend: 80, max_budget: 100, budget_reset_at: RESET });
-	assert.equal(scoped.windows[0].percent, 80, "优先用 user/team 视图");
+	assert.deepEqual(scoped.windows.map(w => w.percent), [50, 80], "Key 与上级预算独立保留");
 	// 没有预算上限：没有百分比可算，只如实给已用金额，不编造进度。
 	const noBudget = normalizeLitellm({ info: { spend: 12.345 } });
 	assert.deepEqual(noBudget.windows, [], "无上限不产窗口");
@@ -101,7 +101,7 @@ const RESET = "2026-11-01T00:00:00.000Z";
 		assert.equal(entry.state, "ok");
 		assert.equal(JSON.stringify(h.calls.map(c => c.url)), JSON.stringify(["https://gw.corp/litellm/key/info", "https://gw.corp/litellm/user/info?user_id=u-1"]), "端点落在 proxy 根，不带 /v1");
 		assert.equal(h.calls[0].options.headers.authorization, `Bearer ${h.key}`, "虚拟 Key 与推理同一把");
-		assert.equal(entry.windows[0].percent, 20, "用 user/info 的 40/200");
+		assert.deepEqual(entry.windows.map(w => w.percent), [25, 20], "Key25/100与User40/200同时约束");
 		assert.ok(!JSON.stringify(result).includes(h.key), "响应不回显 Key");
 		h.service.dispose();
 	}
@@ -122,7 +122,28 @@ const RESET = "2026-11-01T00:00:00.000Z";
 		assert.equal(entry.windows[0].percent, 50, "退回 key 自身的 5/10");
 		h.service.dispose();
 	}
-	console.log("PASS LiteLLM Host：缺地址给凭据指引、端点落在 proxy 根、team 优先与 scoped 降级");
+	for (const denyUser of [false, true]) {
+		const h = harness(calls => async (url, options) => {
+			calls.push({ url, options });
+			let payload;
+			if (url.endsWith("/key/info")) payload = { info: { team_id: "t-9", user_id: "u-1", spend: 10, max_budget: 10 } };
+			else if (url.includes("/team/info")) payload = { team_info: { spend: 1, max_budget: 100 } };
+			else if (denyUser) return { ok: false, status: 403, headers: { get: () => null }, text: async () => "{}" };
+			else payload = { user_info: { spend: 20, max_budget: 100 } };
+			return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(payload) };
+		});
+		let result = await h.service.read();
+		result = await h.service.save({ expectedRevision: result.settings.revision, providerId: ID, litellm: { baseUrl: "https://gw.corp" } });
+		result = await h.service.save({ expectedRevision: result.settings.revision, visibility: { providers: { [ID]: true } } });
+		const entry = (await h.service.refresh({ providerIds: [ID], force: true })).entries[0];
+		assert.equal(h.calls.length, 3, "Key/Team/User同时查询，不做二选一");
+		assert.equal(entry.state, "ok");
+		assert.deepEqual(entry.windows.map(w => w.budgetScope), denyUser ? ["key", "team"] : ["key", "team", "user"]);
+		assert.equal(entry.windows[0].percent, 100, "较严格Key预算不被健康上级覆盖");
+		assert.equal(entry.coverage, denyUser ? "partial" : "complete", "权限不足只降级对应范围");
+		h.service.dispose();
+	}
+	console.log("PASS LiteLLM Host：端点地址、三层预算并取、嵌套响应与单范围权限降级");
 }
 
 // ── [4] Client：注册、草稿与补丁 ─────────────────────────────────────────

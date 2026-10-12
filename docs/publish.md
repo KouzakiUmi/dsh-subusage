@@ -25,6 +25,8 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 ## npm
 
+0.11.2 发布准备已同步包版本、Host 标识、文档及七张截图声明。以对应版本标签的 Actions 状态、Release 资产和 npm registry 实际结果为发布完成依据；本地测试通过不等于已发布。
+
 包名：[dsh-subusage](https://www.npmjs.com/package/dsh-subusage)。`0.7.0` 已于 2026-10-05 发布；后续发布必须使用未发布过的新版本。npm 包与 GitHub 提交快照可能包含不同的文档更新，请分别检查版本与来源。
 
 `0.8.1` 已于 2026-10-08 经 `release.yml` 的 Trusted Publishing 发布，registry 的 latest 已核对为 0.8.1。首次发布后查询短暂读到旧元数据，工作流因此报验证失败，但上传已完成；恢复时应先查询 registry，不能把工作流失败直接等同于版本未发布。
@@ -49,7 +51,7 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 ### Trusted Publisher 配置
 
-按 [npm 官方指南](https://docs.npmjs.com/trusted-publishers/) 在包设置中配置 GitHub Actions：owner 为 `KouzakiUmi`，repository 为 `dsh-subusage`，workflow filename 为 **`release.yml`**。用户已确认此信任绑定；未受信任的 `ci.yml` 不尝试发布 npm。当前工作流不声明 deployment environment；若 npm 信任绑定了 environment，须同步工作流设置。
+按 [npm 官方指南](https://docs.npmjs.com/trusted-publishers/) 在包设置中配置 GitHub Actions：owner 为 `KouzakiUmi`，repository 为 `dsh-subusage`，workflow filename 为 **`release.yml`**。用户已确认此信任绑定；未受信任的 `ci.yml` 不尝试发布 npm。当前 `release` job 声明 `environment: npm`；npm 信任绑定与 GitHub 的 environment 规则须和此名称一致。
 
 发布 job 使用 GitHub 托管 runner、`id-token: write` 与 Node 24（包含支持 OIDC 的 npm CLI）。要求 npm CLI 至少 11.5.1、Node 至少 22.14.0。`setup-node` 不设置 `registry-url`，脚本显式指定公共 registry，不生成空的令牌认证项。身份令牌由 GitHub 自动提供，不写入日志或仓库。
 
@@ -116,18 +118,21 @@ tarball: https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh
 
 ## 截图维护
 
-根目录 [screenshots.json](../screenshots.json) 与 `package.json` 相邻，声明四张仓库内图片，顺序即展示顺序：
+根目录 [screenshots.json](../screenshots.json) 与 `package.json` 相邻，声明七张仓库内图片，顺序即展示顺序：
 
 ```json
 [
   "assets/screenshots/settings-dark.png",
   "assets/screenshots/usage-popover-light.png",
   "assets/screenshots/pill-states-light.png",
-  "assets/screenshots/pill-states-dark.png"
+  "assets/screenshots/pill-states-dark.png",
+  "assets/screenshots/paygo-dark.png",
+  "assets/screenshots/account-pool-dark.png",
+  "assets/screenshots/scoped-quota-dark.png"
 ]
 ```
 
-第一张展示深色设置页、MiMo 凭据入口及提供商管理；第二张展示浅色 NanoGPT 用量弹层（状态横幅 + 各窗口剩余百分比）；后两张是药丸 15 种状态画廊（浅色 / 深色）。四张均为 0.10.11 离线组件测试截图，包含虚构数据及预览标记。
+第一张展示深色设置页、MiMo 凭据入口及提供商管理；第二张展示浅色 NanoGPT 用量弹层（状态横幅 + 各窗口剩余百分比）；后两张是药丸 15 种状态画廊（浅色 / 深色）。前四张为 0.10.11 基础界面预览；新增三张为 0.11.2 的按量续用、轮换池与部分能力限制，均执行真实 Client 组件、使用虚构数据并标明离线预览，不代表真实账号验收。
 
 更新截图时，用当前组件生成预览并检查布局，复制所选 PNG 到 `assets/screenshots/`，再同步声明和 README。具体生成方法见 [开发说明](development.md#离线浏览器与截图)。不要将 `debug/` 路径写入声明，该目录被 Git 忽略；不要放入真实 Key、Cookie 或账户数据。
 

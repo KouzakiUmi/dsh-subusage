@@ -50,6 +50,25 @@
 3. 实机跑一轮：安装/升级 → 设置页渲染 → 药丸 → `subusage_quota` 查询。
 4. 按证据更新 `dshReleases`、README 兼容表与本文件「最后验证汇总」；证据不足就保持 `unknown` 并写明缺什么。
 
+## 额度语义修正（0.11.2）
+
+0.11.2 不新增 RPC、不改变 `state` 枚举，只扩展已有 entry / quota 视图；版本发布不代表部署到实际运行环境：
+
+- `coverage`：已报告且适用的窗口/余额是否完整，不按“两窗/三窗”计数。MiniMax 无上限、Codex Pro 单周窗、Ollama 合法月窗、余额型成功都可 complete；LiteLLM 上级预算端点或 Command Code 订阅端点实际失败仍 partial。
+- `availability?`：可选 `included | paygo | blocked | unknown`，与 `windows[].percent/status` 分离，是**带依据的建议，不是下一次请求成功保证**。`availabilityReason?` 保存固定机器标识，不输出原始响应或凭据。缺少证据不输出该字段。
+- Command Code：只把已购 `purchasedCredits>0` 当作窗口耗尽后的 PAYG 路径，未核实的赠金不假定能绕过。轮换池的 usable 包括已知 PAYG；默认账户异常但备用健康，整体状态由池计算；读取失败属于未知，不能据已知受限账户推断全池耗尽。
+- NanoGPT：读取推荐模式和订阅配额建议；PAYG 建议还要有已取得的有限正余额、策略未拒绝才能标 paygo；未知条件标 unknown，不强迫订阅专用 Key 走付费。
+- Codex：Pro / ProLite / ProMax 缺时长按周处理，其他未知档位用通用窗口；保持旧个人响应兼容。保留企业 Credits 与 spend_control；accountId 随 `ChatGPT-Account-Id` 发送并进入缓存指纹。额外特性池未映射到模型前标 partial，不假装覆盖完成。
+- AFP：`detail.scope` 为 text / daily-capabilities / all；仅同范围或 all 根限额级联。月额度共享，文本周不能影响独立日能力。个人版语音/Harness 与企业 API 的日规则描述不同，当前不进一步猜能力绑定；总览提示“部分能力额度已用尽”，不把它判成全部服务停摆。
+- LiteLLM：Key/User/Team 独立预算窗口，`budgetScope` 区分展示与 React 行 key；并行读取已知 User 与 Team，解析真实嵌套响应，同时兼容旧平铺形态。没有预算上限只显示 spend，不制造百分比。
+- 方舟 404：只有明确 `NotFound.BillingType` / `OperationDenied.NotSubscribed` 信封解释为未订阅；其他 404 不吞掉。
+
+UI 继续复用已有 `computeStatus()`；排序亦使用该结论，窗口行仍展示基础额度。工具输出 schema 与文本同步带续用建议；无需新增公共模块或打包器（Client 当前仅 require React，直接抽 Host ESM 会破坏独立加载契约）。
+
+验证重点：官方金额字符串、单窗口、企业支出限制、同 token 工作区缓存、多级预算、PAYG 与未知路由、默认/备用账户反向组合、范围级联、未订阅信封。未知新套餐接口、席位与推理 Key 关联、厂商额外付费开关字段不凭营销页面编造。
+
+本轮本地验收：全量离线回归、清单与四个 JS 入口语法检查、diff 空白检查均通过；独立 Chrome 执行真实 Client 组件的 PAYG / 自动池 / Pro 单周 / 三层预算 / AFP 部分能力五种预览，文案及横向、弹层上下边界均通过。全程虚构数据、禁止 HTTP，不替代真实 DSH RPC/企业接口验收；发布版本为 0.11.2，GitHub 与 npm 按现有 CI 发布；未安装或重启实际 DSH 环境。
+
 ## 3. RPC v0.2 契约
 
 Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，测试机械比较 service、namespace、method、wire、codec typeSymbol。
@@ -140,7 +159,7 @@ foreach ($theme in @('dark', 'light')) {
 node scripts/check-browser-runtime.mjs
 ```
 
-浏览器检查需要工作区可解析 `playwright-core` 且已安装 Google Chrome；不会下载浏览器。它检查 Cookie 域/路径隔离、31 个开关（30 家 provider + 1 个「没有检测到 API 的默认隐藏」）、预览桩下 12 个可见标签与 18 家关闭、无下拉列表和横向溢出，并将 PNG 写到 `debug/ui-preview/`。
+浏览器检查需要工作区可解析 `playwright-core` 且已安装 Google Chrome；不会下载浏览器。它检查 Cookie 域/路径隔离、25 个开关（27 条路由合并为 24 张提供商卡片 + 1 个默认隐藏开关）、预览桩下 13 个可见标签与 14 张关闭卡片、无下拉列表和横向溢出，并将 PNG 写到 `debug/ui-preview/`。
 
 单独生成浅色药丸弹层 HTML：
 
@@ -238,7 +257,7 @@ node --input-type=module -e "import {chromium} from 'playwright-core'; import {r
 - **`output.schema` 不发给模型**（`dsh-tools` 的投影只保留 `name` / `description` / `parameters`；`output` / `execute` / `finalizeContent` / `timeoutMs` / 呈现回调「绝不会泄漏到协议上」）。因此：**「怎么用」只能写在 `description` 与参数说明里**，而 `output.schema` 的职责是**校验返回值**（`createSuccessResult` → `ToolOutputError`）与 UI 展示。两者不可互相替代。改动 `output.schema` 后必须用真实校验器验证一遍，方法见 `debug/verify-tool-schema.mjs`（debug/ 不入库）：从 `@deepseek-ai/dsh-tools/lib/index.js` 导入 `defineTool` / `validateJsonSchemaValue`，用真实 `quota()` 输出跑校验——0.10.5 就是这样抓到 `errorCode` 越界与 `undefined` 字段这两个会直接炸的问题的。
 - 用量面板内联行动条（UX）：`tests/test-usage-action.mjs` 钉住判定（缺凭据/凭据被拒/已过期 → 重新登录/2 小时与 30 分钟档/正常倒计时不打扰/计时不可解析不编造），`tests/test-client-render.mjs` 钉住渲染（MiMo 失效时面板出现行动条与按钮，正常状态没有）。行动条只负责「把入口送到眼前」，凭据编辑复用同一份编辑器，避免两套字段与校验漂移（沿用本仓库既有的「两入口共用同一渲染」约定）。
 - 余额型聚合商六家：`tests/test-aggregators.mjs` 逐个钉住单位换算（Novita 1/10000、Hyperbolic 美分、DeepInfra 取负、Chutes 绝对量、Ollama 0–1 小数、Vercel 十进制字符串）与边界（`{quota:0}` 不猜比例、Ollama 缺层跳过、DeepInfra 欠款分支），并在 Host 端逐一断言端点与鉴权头（**Ollama Cloud 是裸 `Authorization`**）。**未做**任何真实 Key 的在线验证。
-- MiniMax 国际版改为默认关闭（用户要求：实际使用少）。`tests/test-minimax.mjs` 补上默认值断言并在用例前显式开启两家，`tests/test-client-behavior.mjs` 的可见 tab 列表改用 MiniMax CN。（当时的 15/9 计数已被后续批次改写，**当前值以 `lib/index.js` 的 `PROVIDERS` 为准**——现为默认关闭 20 条、默认开启 10 条；设置页合并 Ark 后是 25 张卡片。）
+- MiniMax 国际版改为默认关闭（用户要求：实际使用少）。`tests/test-minimax.mjs` 补上默认值断言并在用例前显式开启两家，`tests/test-client-behavior.mjs` 的可见 tab 列表改用 MiniMax CN。（当时的 15/9 计数已被后续批次改写，**当前值以 `lib/index.js` 的 `PROVIDERS` 为准**——现为默认关闭 17 条、默认开启 10 条；设置页合并 Ark 后是 24 张卡片。）
 - OpenRouter：`tests/test-openrouter.mjs` 覆盖限额窗口与 `limit_reset` 映射、免费档日窗口、**余额端点 403 的静默降级**（只少余额，条目仍 `ok`）、`limit_remaining` 越界不产生负用量、无可用信息才报错、Host 端到端两请求与 Client 注册。**未做**真实 Key 的在线验证（无凭据）。
 - DeepSeek 官方余额：`tests/test-deepseek.mjs` 覆盖归一化（不产窗口、字符串金额、多币种取第一条可解析项、货币码不合规时只显示金额、`is_available=false` 提示充值、非法值报错）、Host 端到端（默认开启、Bearer 与推理同 Key、密钥不回显）与 Client 注册。**未做**真实 Key 的在线验证。
 - 顺序约定：新 provider 一律**追加在 `PROVIDER_ORDER` 末尾**。本轮把 Codex 插在中间时，测试里三处按位置写的 `ids[N]` 断言全部错位（改用 id 字面量断言后恢复）；追加在末尾则不影响既有索引。

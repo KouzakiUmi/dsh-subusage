@@ -113,6 +113,12 @@ const okFetch = calls => async (url, options) => {
 	assert.equal(tool.output.schema.type, "object");
 	assert.equal(tool.output.schema.properties.providers.type, "array");
 	assert.equal(tool.output.schema.properties.providers.items.properties.state.required, true);
+	assert.equal(tool.output.schema.properties.providers.items.properties.availability.type, "string");
+	assert.equal(tool.output.schema.properties.providers.items.properties.availabilityReason.type, "string");
+	for (const [availability, fragment] of [["paygo", "按量续用"], ["included", "订阅续用"], ["unknown", "待确认"], ["blocked", "受限"]]) {
+		const advice = tool.output.render({}, { providers: [{ providerId: "fixture", state: "ok", windows: [{ kind: "week", percent: 100, status: "rate-limited" }], extras: [], availability }] })[0].text;
+		assert.ok(advice.includes(fragment), `工具文本不能丢失${availability}续用结论`);
+	}
 	// 输出结构不会发给模型（DSH 只投影 name/description/parameters），所以它同时也是**返回值校验器**
 	// ——写错会让工具在真实运行时报 ToolOutputError。至少要保证两个数组有元素级 schema。
 	assert.equal(tool.output.schema.properties.providers.items.properties.windows.items.properties.percent.required, true, "windows 元素有字段级 schema");
@@ -123,6 +129,20 @@ const okFetch = calls => async (url, options) => {
 	assert.ok(tool.description.includes("vendor names"), "描述要说明可以传厂商名");
 	assert.ok(tool.parameters.providers.description.includes("unmatched name"), "参数说明要交代认不出时的行为");
 	assert.ok(tool.parameters.providers.description.includes("separators"), "参数说明要交代大小写与分隔符无关");
+	// 明确受限但无窗口的企业条目不应在无参工具查询中消失。
+	const scopeText = tool.output.render({}, { providers: [{ providerId: "fixture", state: "ok", windows: [
+		{ kind: "period", budgetScope: "key", percent: 100, status: "rate-limited" },
+		{ kind: "period", budgetScope: "team", percent: 1, status: "ok" },
+		{ kind: "period", budgetScope: "user", percent: 20, status: "ok" },
+		{ kind: "week", percent: 100, status: "rate-limited", detail: { scope: "text" } },
+		{ kind: "day", percent: 1, status: "ok", detail: { scope: "daily-capabilities" } },
+		{ kind: "month", percent: 1, status: "ok", detail: { scope: "all" } }
+	], extras: [] }] })[0].text;
+	for (const scope of ["key 预算", "team 预算", "user 预算", "文本/向量", "日额度适用能力", "全部能力共享"]) assert.ok(scopeText.includes(scope), `工具文本必须保留${scope}`);
+	const originalQuota = service.quota;
+	service.quota = async () => ({ updatedAt: "x", providers: [{ providerId: "openai-codex", state: "ok", windows: [], extras: [{ kind: "plan", value: "enterprise" }], availability: "blocked", availabilityReason: "spend-control" }] });
+	assert.equal((await tool.execute({}, {})).providers.length, 1, "独立可用性证据属于真实用量状态，不能被省略");
+	service.quota = originalQuota;
 	// execute 经服务拿数据，并把 providers/refresh 映射到 quota 的参数。
 	const seen = [];
 	service.quota = async request => { seen.push(request); return { updatedAt: "x", providers: [] }; };

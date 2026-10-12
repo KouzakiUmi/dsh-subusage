@@ -81,7 +81,7 @@ const AK = "AKLTTestAccessKeyId0000", SK = "TestSecretAccessKey0000000000000000"
 	// 因此两组各自标注影响范围——否则把两条线的配额并排放在一起会被当成一组来比（"日比周还高"）。
 	assert.deepEqual(parsed.windows.map(w => w.groupLabel), ["文本 / 向量模型", "文本 / 向量模型", "文本 / 向量模型", "视觉 / 语音模型与 Harness"], "两条额度线各自成组标注");
 	assert.equal(parsed.windows[0].percent, 25, "字符串额度算成比例");
-	assert.deepEqual(parsed.windows[0].detail, { used: 12.5, limit: 50, unit: "AFP" }, "绝对值明细");
+	assert.deepEqual(parsed.windows[0].detail, { used: 12.5, limit: 50, unit: "AFP", scope: "text" }, "绝对值明细");
 	assert.equal(parsed.windows[0].resetsAt, new Date(1778806800000).toISOString(), "ResetTime 是毫秒");
 	assert.equal(parsed.plan, "Large");
 	// 日额度对不适用的模型返回 0：不产出行，也就不显示 0%。

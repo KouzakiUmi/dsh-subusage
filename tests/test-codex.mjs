@@ -53,11 +53,11 @@ const RESET_5H = "2026-10-09T12:00:00.000Z", RESET_7D = "2026-10-15T00:00:00.000
 	assert.equal(normalizeCodexUsage({ rate_limit: { primary_window: { used_percent: 54, reset_at: epoch } } }).windows[0].resetsAt, new Date(epoch * 1000).toISOString(), "reset_at 同样处理");
 	assert.equal(normalizeCodexUsage({ rate_limit: { primary_window: { used_percent: 54, resets_at: 0 } } }).windows[0].resetsAt, undefined, "哨兵 0 不输出");
 	assert.equal(normalizeCodexUsage({ rate_limit: { primary_window: { used_percent: 100, resets_at: RESET_5H } } }).windows[0].status, "rate-limited", "100% 即限流");
-	assert.equal(normalizeCodexUsage({ rate_limit: { primary_window: { used_percent: 10, window_seconds: 604800 } } }).coverage, "partial", "单窗口算部分");
+	assert.equal(normalizeCodexUsage({ rate_limit: { primary_window: { used_percent: 10, window_seconds: 604800 } } }).coverage, "complete", "合法单周窗口完整");
 	// 200 但没有窗口 = 该账号没有可读的订阅额度，不是 0%。
 	const none = normalizeCodexUsage({});
 	assert.deepEqual(none.windows, []);
-	assert.equal(JSON.stringify(none.extras), JSON.stringify([{ kind: "plan", value: "未检测到订阅额度窗口" }]));
+	assert.equal(JSON.stringify(none.extras), JSON.stringify([{ kind: "note", value: "未检测到订阅额度窗口" }]));
 	// credits：只有真正报告了可用余额才显示，不把「无额度」画成 0。
 	assert.equal(normalizeCodexUsage({ rate_limit: { primary_window: { used_percent: 1 } }, credits: { has_credits: true, unlimited: false, balance: "62500" } }).extras[0].value, "62500");
 	// plan_type 给套餐档位（真机实测值 "plus"）。
@@ -69,7 +69,7 @@ const RESET_5H = "2026-10-09T12:00:00.000Z", RESET_7D = "2026-10-15T00:00:00.000
 	assert.equal(live.extras.length, 1, "has_credits=false 不显示余额");
 	assert.equal(live.extras[0].value, "plus");
 	for (const credits of [{ has_credits: false, balance: "62500" }, { has_credits: true, unlimited: true, balance: "62500" }, { has_credits: true, balance: "0" }, { has_credits: true }]) {
-		assert.equal(normalizeCodexUsage({ rate_limit: { primary_window: { used_percent: 1 } }, credits }).extras.length, 0, `不该显示余额：${JSON.stringify(credits)}`);
+		assert.equal(normalizeCodexUsage({ rate_limit: { primary_window: { used_percent: 1 } }, credits }).extras.filter(e => e.kind === "balance").length, 0, `不该显示余额：${JSON.stringify(credits)}`);
 	}
 	assert.throws(() => normalizeCodexUsage({ rate_limit: { primary_window: { used_percent: "x" } } }), "非法百分比报错");
 	console.log("PASS Codex 归一化：窗口命名、限流、单窗口 partial、credits 门禁与非法值报错");
@@ -110,6 +110,7 @@ const RESET_5H = "2026-10-09T12:00:00.000Z", RESET_7D = "2026-10-15T00:00:00.000
 	assert.deepEqual(entry.windows.map(w => w.kind), ["5h", "7d"]);
 	assert.equal(calls[0].url, "https://chatgpt.com/backend-api/wham/usage");
 	assert.equal(calls[0].options.headers.authorization, `Bearer ${token}`, "Bearer 是 OAuth access token");
+	assert.equal(calls[0].options.headers["ChatGPT-Account-Id"], "acct-fixture", "所选工作区身份随请求发送");
 	assert.ok(!JSON.stringify(result).includes(token), "响应不回显 token");
 	// 不接受本地凭据编辑（凭据归 Codex CLI）。
 	const saveSchema = subUsageRemote.descriptors.find(d => d.method === "save").parameters[0].codec.schema;

@@ -66,12 +66,19 @@ const afpQuota = { ...entry('arkcli-agent-plan', 2.6, '5h'), extras: [{ kind: 'p
   { kind: 'month', percent: 0.3, status: 'ok', resetsAt: new PreviewDate(clock + 31 * 86400000).toISOString(), groupLabel: '文本 / 向量模型', detail: { used: 0.2587, limit: 100000, unit: 'AFP' } },
   { kind: 'day', percent: 0, status: 'ok', resetsAt: new PreviewDate(clock + 8 * 60000).toISOString(), groupLabel: '视觉 / 语音模型与 Harness', detail: { used: 0, limit: 50000, unit: 'AFP' } }
 ] };
-const quota = providerId === 'arkcli-agent-plan' ? afpQuota : previewQuota;
+let quota = providerId === 'arkcli-agent-plan' ? afpQuota : previewQuota;
+// 业务语义离线验收：执行真实组件，不使用替代UI实现或真实计费接口。
+const scenario = process.argv[6] || '';
+if (scenario === 'paygo') quota = { ...entry(providerId, 100, 'week'), availability: 'paygo', availabilityReason: 'paid-credits', extras: [{ kind: 'balance', value: '50 credits' }] };
+if (scenario === 'pro') quota = { ...entry(providerId, 10, 'week'), extras: [{ kind: 'plan', value: 'prolite' }] };
+if (scenario === 'budgets') quota = { ...entry(providerId, 100, 'period'), windows: [['key', 100, 10, 10], ['team', 1, 1, 100], ['user', 20, 20, 100]].map(([budgetScope, percent, used, limit]) => ({ kind: 'period', budgetScope, percent, status: percent >= 100 ? 'rate-limited' : 'ok', detail: { used, limit, unit: 'USD' } })) };
+if (scenario === 'scope') quota = { ...afpQuota, windows: afpQuota.windows.map(w => ({ ...w, detail: { ...w.detail, used: Math.round((w.kind === 'day' ? 100 : w.percent) / 100 * w.detail.limit * 1e6) / 1e6, scope: w.kind === 'month' ? 'all' : w.kind === 'day' ? 'daily-capabilities' : 'text' }, ...(w.kind === 'day' ? { percent: 100, status: 'rate-limited' } : {}) })) };
+if (scenario === 'pool') quota = { ...entry(providerId, 100, '5h'), accountPool: { mode: 'auto', total: 2, available: 1, blockedCount: 1, unusableCount: 0, exhausted: false, accounts: [{ id: 'default', state: 'ok', usable: false, blocked: true, windows: [{ kind: '5h', percent: 100, status: 'rate-limited' }] }, { id: 'COMMANDCODE_ACCOUNT_WORK', label: '工作号', state: 'ok', usable: true, blocked: false, windows: [{ kind: '5h', percent: 10, status: 'ok' }] }] } };
 if (pillPreview) previewStates = [{ entry: quota, updatedAt: clock }, null, undefined, false, true];
 // Command Code 药丸弹层的账户切换区：虚构两个额外账户，固定项高亮；不发起任何网络请求。
 let cc;
 if (pillPreview && providerId === 'commandcode') {
-  const row = { ns: 'llm-commandcode', revision: 3, value: { accounts: [{ label: '工作号', apiKeyEnv: 'COMMANDCODE_ACCOUNT_WORK' }, { label: '备用号', apiKeyEnv: 'COMMANDCODE_ACCOUNT_SPARE' }], activeAccount: 'COMMANDCODE_ACCOUNT_WORK' } };
+  const row = { ns: 'llm-commandcode', revision: 3, value: { accounts: [{ label: '工作号', apiKeyEnv: 'COMMANDCODE_ACCOUNT_WORK' }, { label: '备用号', apiKeyEnv: 'COMMANDCODE_ACCOUNT_SPARE' }], activeAccount: scenario === 'pool' ? '' : 'COMMANDCODE_ACCOUNT_WORK' } };
   cc = createCommandCodeAccounts({
     describe: async () => ({ ok: true, value: { writable: true, namespaces: [row] } }),
     mutate: async () => ({ ok: false, error: { message: 'offline preview' } })
@@ -102,9 +109,9 @@ function render(node) {
 }
 const sidebar = !pillPreview && width >= 400 ? `<aside><b>设置</b>${['账号与余额', '通用设置', '模型', '内置插件', 'xAI Grok', 'Agent 预设', '订阅用量', '插件市场'].map(x => `<div${x === '订阅用量' ? ' class="active"' : ''}>${x}</div>`).join('')}</aside>` : '';
 const html = `<!doctype html><html lang="zh-CN"><meta charset="UTF-8"><title>订阅用量离线布局预览</title><style>*{box-sizing:border-box}body{margin:0;background:${theme === 'light' ? '#fafafa' : '#292929'};color:${theme === 'light' ? '#202124' : '#eee'};color-scheme:${theme};font-family:Arial,"Microsoft YaHei",sans-serif;font-size:13px}main{display:flex;padding:14px 12px;gap:12px}aside{width:180px;flex-shrink:0;padding:0 8px}aside b{display:block;margin:4px 0 24px;font-size:16px}aside div{padding:12px 10px;border-radius:8px;margin:4px 0}.active{background:#414141}article{width:${width + 32}px;min-width:0}button,select,input,textarea{font-family:inherit}details{padding-top:8px;border-top:1px solid #454545}progress{display:block}a{color:${theme === 'light' ? '#1a73e8' : '#82b1ff'}}footer{font-size:11px;opacity:.55;padding:8px 28px}</style><main>${sidebar}<article>${render(tree)}</article></main><footer>离线组件布局预览 · 虚构用量数据 · 非运行中的 DSH 截图</footer></html>`;
-const outputHtml = pillPreview ? html.replace('<article>', '<article style="display:flex;justify-content:flex-end;align-items:flex-end;height:460px;max-width:100%">') : html;
+const outputHtml = pillPreview ? html.replace('<article>', '<article style="display:flex;justify-content:flex-end;align-items:flex-end;height:920px;max-width:100%">') : html;
 mkdirSync(resolve('debug/ui-preview'), { recursive: true });
 const suffix = process.argv[3] ? `-${providerId}-${theme}${openCredentials ? '-credentials' : pillPreview ? '-pill' : ''}` : '';
-const output = resolve(`debug/ui-preview/settings-${width}${suffix}.html`);
+const output = resolve(`debug/ui-preview/settings-${width}${suffix}${scenario ? '-' + scenario.replace(/[^a-z0-9-]/gi, '') : ''}.html`);
 writeFileSync(output, outputHtml, 'utf8');
 console.log(output);
