@@ -80,6 +80,67 @@ assert.equal(settingsCalls.length, 1);
 assert.equal(settingsCalls[0].method, "read");
 assert.equal(settingsCalls[0].query.providerIds.length, 0, "空 providerIds 不发起额度网络查询");
 settingsOnly.dispose();
+// 客户端冷启动/重建时，默认关闭但已由用户开启的 Codex 必须先读本机设置，不能自行过滤后永久消失。
+const coldCodexCalls = [];
+const coldCodexStore = api.createUsageStore((method, query) => {
+  coldCodexCalls.push({ method, query });
+  return { ...result(method === "read" ? [] : [entry("openai-codex", 25, { apiDetected: true, keySource: "subscription-credentials" })]), configured: { "openai-codex": true }, settings: { ...publicSettings(), visibility: { providers: { "openai-codex": true } } } };
+});
+const [coldCodexEntry] = await Promise.all([coldCodexStore.reader("openai-codex")(), coldCodexStore.reader("openai-codex")()]);
+assert.equal(coldCodexEntry.state, "ok", "persisted enabled Codex must load without first switching to another provider");
+assert.equal(coldCodexEntry.visible, true);
+assert.equal(coldCodexCalls.filter(call => call.method === "read").length, 1, "local metadata initialization is shared");
+assert.equal(coldCodexCalls[0].query.providerIds.length, 0, "bootstrap does not fetch all provider quotas");
+assert.equal(coldCodexCalls.filter(call => call.method === "refresh").length, 1);
+coldCodexStore.dispose();
+const disabledCodexCalls = [];
+const disabledCodexStore = api.createUsageStore((method, query) => {
+  disabledCodexCalls.push({ method, query });
+  return { ...result([]), settings: { ...publicSettings(), visibility: { providers: { "openai-codex": false } } } };
+});
+assert.equal((await disabledCodexStore.reader("openai-codex")()).visible, false, "persisted disabled Codex must stay disabled");
+assert.equal(disabledCodexCalls.filter(call => call.method === "refresh").length, 0, "bootstrap does not bypass the user's switch");
+disabledCodexStore.dispose();
+// Codex 独立 OAuth 可查询但路由暂缺：周期传输失败必须显示错误，不能隐藏后再禁止重试。
+let codexTransport = "ok", codexCalls = 0;
+const codexResult = value => ({ ...result([value]), configured: { "openai-codex": false }, settings: { ...publicSettings(), visibility: { providers: { "openai-codex": true }, hideWithoutApi: true } } });
+const codexStore = api.createUsageStore(method => {
+  if (method === "read") return codexResult(entry("openai-codex", 25, { apiDetected: true, keySource: "subscription-credentials" }));
+  codexCalls++;
+  if (codexTransport === "error") return Promise.reject(new Error("connection closed"));
+  if (codexTransport === "signed-out") return codexResult({ providerId: "openai-codex", apiDetected: false, keySource: "none", state: "no-key", windows: [], extras: [] });
+  return codexResult(entry("openai-codex", 30, { apiDetected: true, keySource: "subscription-credentials" }));
+});
+await codexStore.readAll();
+const codexReader = codexStore.reader("openai-codex"), codexHooks = new Hooks();
+const codexProps = { providerId: "openai-codex", label: "Codex", readEntry: codexReader, t, getLocale: () => "zh" };
+codexHooks.render(api.UsagePill, codexProps); await flush();
+assert.ok(codexHooks.render(api.UsagePill, codexProps), "initial Codex pill visible");
+codexTransport = "error";
+await assert.rejects(codexReader(), /connection closed/); await flush();
+assert.ok(codexHooks.render(api.UsagePill, codexProps), "transport failure must not disappear under hideWithoutApi");
+assert.equal(codexStore.getSnapshot().entries[0].state, "error");
+assert.ok(textOf(codexHooks.render(api.UsagePill, codexProps)).includes(t("statusError")), "failed quota renders an explicit error glyph/label, not successful stale quota");
+assert.equal(codexStore.getSnapshot().entries[0].keySource, "subscription-credentials");
+assert.equal(codexStore.getSnapshot().entries[0].windows.length, 0, "do not falsely retain successful quota");
+assert.equal(codexStore.getSnapshot().entries[0].apiDetected, true, "transport error is not evidence credentials are absent");
+codexTransport = "ok"; const callsBeforeRecovery = codexCalls;
+await codexReader(); await flush();
+assert.equal(codexCalls, callsBeforeRecovery + 1, "retry still sends RPC without provider remount");
+assert.ok(codexHooks.render(api.UsagePill, codexProps));
+assert.equal(codexStore.getSnapshot().entries[0].state, "ok");
+const codexPoll = [...intervals.values()].find(timer => timer.ms === 60000);
+assert.ok(codexPoll, "visible Codex owns an active polling subscription");
+codexTransport = "error"; codexPoll.fn(); await flush();
+assert.ok(codexHooks.render(api.UsagePill, codexProps), "idle polling error keeps pill mounted");
+assert.equal(codexStore.getSnapshot().entries[0].state, "error");
+codexTransport = "ok"; const callsBeforePollRecovery = codexCalls;
+codexPoll.fn(); await flush();
+assert.equal(codexCalls, callsBeforePollRecovery + 1, "next idle poll recovers without session/provider switching");
+assert.equal(codexStore.getSnapshot().entries[0].state, "ok");
+codexTransport = "signed-out"; await codexReader(); await flush();
+assert.equal(codexHooks.render(api.UsagePill, codexProps), null, "explicit no-key response still honors hiding policy");
+codexHooks.unmount(); codexStore.dispose();
 // 后到 readAll 不能覆盖新 force refresh（相同 revision 也必须挡）。
 const readGate = deferred(), forceGate = deferred();
 const raceStore = api.createUsageStore((method) => method === "read" ? readGate.promise : forceGate.promise);

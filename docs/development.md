@@ -76,6 +76,20 @@ UI 继续复用已有 `computeStatus()`；排序亦使用该结论，窗口行�
 
 本轮本地验收：全量离线回归、清单与四个 JS 入口语法检查、diff 空白检查均通过；独立 Chrome 执行真实 Client 组件的 PAYG / 自动池 / Pro 单周 / 三层预算 / AFP 部分能力五种预览，文案及横向、弹层上下边界均通过。全程虚构数据、禁止 HTTP，不替代真实 DSH RPC/企业接口验收；发布版本为 0.11.2，GitHub 与 npm 按现有 CI 发布；未安装或重启实际 DSH 环境。
 
+## 0.13.1：Codex 默认关闭入口的冷启动设置引导
+
+Client store 冷启动时 `snapshot.settings === null`，但 `refresh` 已用 `providerEnabled` 的默认值过滤请求；Codex 默认关闭，故即使持久化配置已经开启，也不会发出首个 RPC，设置一直无法载入。切换同 provider 会话仍用同一药丸，切到默认开启的其他提供商触发 RPC 后才恢复。新增测试先在旧代码复现 `loading !== ok`，修复后直接读 Codex 即可自动得到用量。
+
+`readSettings` 从返回对象中提为共享内部函数；默认关闭的入口首次 `refresh` 先调用它取得本机元数据，空 providerIds 不查询任何额度端点，再按真实开关走原刷新管道。并发首次读取共享 metadata 与 provider inflight；明确关闭不查询；默认开启入口原有快路与 readAll / force 的并发时序保持不变。设置页其他尚未访问的提供商仍按需加载，不能把“没主动查过”的问号当成真实接口失败；本轮不恢复全量联网初始化。
+
+## 0.13.1：传输异常不等于凭据消失
+
+0.13.0 对 Codex 的无路由查询豁免依赖 `entry.apiDetected === true`。Client RPC 传输异常原先会用缺少该字段的新 error 条目覆盖成功条目；当 `configured["openai-codex"] === false`，`providerVisible` 随即隐藏药丸，而 `refresh` 的下一轮又被 `providerCanQuery` 过滤。这是一条可重复的显示 / 重试停摆链路，不是额度耗尽或 Host 明确退出登录。
+
+现在 catch 只保留同一 epoch 下已有的 `apiDetected` / `keySource` 元数据；不保留 windows、extras 或成功时间，仍标 error / unknown / partial。凭据清除的 epoch 隔离保持不变；正常 Host 响应直接覆盖，显式 no-key 仍会隐藏。新增回归执行真实 store 与 UsagePill：失败必须可见且无旧额度，下一轮 60 秒 tick 不切换会话或 provider 就恢复，退出登录仍遵守 hideWithoutApi。
+
+desktop 安装包只读取证为 0.13.0，旧失败分支仍存在。桌面窗口已定位，但浏览器检查通道不识别该 Electron 进程，未启用调试或修改运行环境；没有取得用户消失瞬间的现场 RPC 快照。隔离复现与部署后的在线验收分别报告，本节纳入 0.13.1，发布不自动更新实际运行环境。
+
 ## 0.13.0：金额精度、设置生命周期与 Codex Subscription
 
 - `formatBalanceValue` 统一药丸、横幅与余额明细，最多两位小数；已满足精度的原文（例如 42.50）保留。`balanceVisual` 先解析原值再判阈值，不能由展示舍入改变颜色。正常 CNY / USD 用绿色 ✓，未知单位中性 ℹ，低余额 !；可访问名称继续含预警依据。
