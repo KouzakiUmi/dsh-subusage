@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { loadHostModule } from "./helpers.mjs";
 
-const { SubUsageService, subUsageRemote, normalizeCodexUsage, codexAuthFileCredentials } = await loadHostModule();
+const { SubUsageService, subUsageRemote, normalizeCodexUsage, codexAuthFileCredentials, codexSubscriptionCredentials } = await loadHostModule();
 const ID = "openai-codex";
 const RESET_5H = "2026-10-09T12:00:00.000Z", RESET_7D = "2026-10-15T00:00:00.000Z";
 
@@ -31,6 +31,39 @@ const RESET_5H = "2026-10-09T12:00:00.000Z", RESET_7D = "2026-10-15T00:00:00.000
 	codexAuthFileCredentials(spy, {});
 	assert.ok(seen.includes(".codex"), `默认目录回落到 ~/.codex：${seen}`);
 	console.log("PASS Codex 登录文件：auth_mode 门禁、account_id 可选、缺失/损坏不抛错、CODEX_HOME 覆盖");
+}
+
+// 独立 OAuth 只读兼容：活动账号优先，旧引用兜底；不得修改他人的凭据。
+{
+ const credential = (access, accountId) => ({type:"oauth",access,accountId,refresh:"fixture-refresh",expires:2000000000000});
+ const writes = () => { throw new Error("must not write credentials"); };
+ const refs = [];
+ const credentials = {readRecord: async key => {assert.equal(key,"codex-subscription/accounts");return {kind:"grant",payload:{version:1,activeId:"two",accounts:[{id:"one",credential:credential("fixture-one","acct-one")},{id:"two",credential:credential("fixture-two","acct-two")}]}};},resolve:async ref=>{refs.push(ref.name);return undefined;},set:writes,unset:writes,modifyRecord:writes};
+ const selected = await codexSubscriptionCredentials(credentials);
+ assert.equal(selected.key,"fixture-two");assert.equal(selected.accountId,"acct-two");assert.equal(selected.source,"subscription-credentials");assert.equal(refs.length,0);
+ for (const name of ["OPENAI_CODEX_SUBSCRIPTION_OAUTH","WSL043_OPENAI_CODEX_OAUTH"]) {
+  const result = await codexSubscriptionCredentials({resolve:async ref=>ref.name===name?{value:JSON.stringify(credential("fixture-legacy","acct-legacy"))}:undefined});
+  assert.equal(result.accountId,"acct-legacy");
+ }
+ assert.equal(await codexSubscriptionCredentials({resolve:async()=>undefined}),undefined);
+ await assert.rejects(codexSubscriptionCredentials({readRecord:async()=>({kind:"grant",payload:{version:1,activeId:"missing",accounts:[]}}),resolve:async()=>{throw new Error("must not fall back");}}), e=>e.code==="subusage/credential");
+ await assert.rejects(codexSubscriptionCredentials({resolve:async()=>({value:"invalid"})}), e=>e.code==="subusage/credential" && !e.message.includes("invalid"));
+ console.log("PASS Codex Subscription 活动账号/双引用、只读与坏记录不跨账号兜底");
+}
+
+// 生产默认解析链端到端：不依赖 CLI 文件，切换活动账号不会复用旧缓存。
+{
+ let active = "first"; const requests = [];
+ const credentials = {readRecord:async()=>({kind:"grant",payload:{version:1,activeId:active,accounts:["first","second"].map(id=>({id,credential:{type:"oauth",access:`fixture-${id}`,accountId:`acct-${id}`,expires:2000000000000}}))}})};
+ const files = new Map([["memory/subscription",JSON.stringify({visibility:{providers:{[ID]:true}}})]]);
+ const io = {readFileSync:path=>{if(!files.has(path))throw Object.assign(new Error("missing"),{code:"ENOENT"});return files.get(path);}};
+ const service = new SubUsageService({effect(){},get:name=>name==="credentials"?credentials:undefined,llm:{listProviders:()=>[{id:ID}]}},{io,configPath:"memory/subscription",resolveEnvironment:()=>undefined,fetch:async(url,options)=>{requests.push(options.headers);return {ok:true,status:200,headers:{get:()=>null},text:async()=>JSON.stringify({rate_limit:{primary_window:{used_percent:10}}})};}});
+ const first = await service.refresh({providerIds:[ID],force:false});
+ assert.equal(first.entries[0].keySource,"subscription-credentials");assert.equal(first.entries[0].apiDetected,true);
+ active="second"; const second=await service.refresh({providerIds:[ID],force:false});
+ assert.equal(requests.length,2);assert.equal(requests[1]["ChatGPT-Account-Id"],"acct-second");assert.equal(requests[1].authorization,"Bearer fixture-second");
+ assert.ok(!JSON.stringify(second).includes("fixture-second"));service.dispose();
+ console.log("PASS Codex Subscription 默认解析链与活动账号缓存隔离");
 }
 
 // ── [2] 归一化 ───────────────────────────────────────────────────────────

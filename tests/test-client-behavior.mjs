@@ -28,7 +28,7 @@ const react = {
   useMemo: (fn, deps) => harness.memo(fn, deps),
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot()
 };
-vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, canShowUsage, validateCookieText, settingsPatch, draftFor, SubusageSection, UsagePill, UsageWindowRow, computeStatus, providerVisible, parseSettings, localError, zh, en, PROVIDER_ORDER }; exports.apply = apply;"), {
+vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, canShowUsage, validateCookieText, settingsPatch, draftFor, SubusageSection, SubusagePillEntry, UsagePill, UsageWindowRow, computeStatus, providerVisible, parseSettings, localError, zh, en, PROVIDER_ORDER }; exports.apply = apply;"), {
   window: { localStorage: { getItem: (key) => memory.get(key), setItem: (key, value) => memory.set(key, value) }, __ModuleLoader__: { load: (value) => { spec = value; } } },
   document, console, Date: FakeDate,
   setInterval: (fn, ms) => { const id = ++nextTimer; intervals.set(id, { fn, ms }); return id; }, clearInterval: (id) => intervals.delete(id),
@@ -71,6 +71,15 @@ gate.resolve(result([entry(ids[0], 88)])); await Promise.all([r1, r2]);
 assert.equal(store.getSnapshot().entries.length, ids.length, "partial merge 保留其它家");
 assert.equal(store.getSnapshot().entries.find((e) => e.providerId === ids[1]).windows[0].percent, 25);
 store.dispose();
+// 设置页初始化只读本机元数据；反复打开不发起全量额度请求。
+const settingsCalls = [];
+const settingsOnly = api.createUsageStore((method, query) => { settingsCalls.push({ method, query }); return result([]); });
+await Promise.all([settingsOnly.readSettings(), settingsOnly.readSettings()]);
+await settingsOnly.readSettings();
+assert.equal(settingsCalls.length, 1);
+assert.equal(settingsCalls[0].method, "read");
+assert.equal(settingsCalls[0].query.providerIds.length, 0, "空 providerIds 不发起额度网络查询");
+settingsOnly.dispose();
 // 后到 readAll 不能覆盖新 force refresh（相同 revision 也必须挡）。
 const readGate = deferred(), forceGate = deferred();
 const raceStore = api.createUsageStore((method) => method === "read" ? readGate.promise : forceGate.promise);
@@ -539,4 +548,15 @@ assert.equal(api.localError("subusage/auth", "登录或凭据已失效", zhT), a
 assert.equal(api.localError(undefined, "HTTP 502", t), "HTTP 502", "传输层无 code 保留原文");
 assert.equal(api.localError("subusage/brand-new-code", "新错误", t), "新错误", "未知 code 保留原文");
 assert.equal(api.localError("subusage/network", "", t), t("errNetwork"), "原文为空仍按 code 出文案");
+// 模型目录重建暂态不卸载 Codex；显式换模型/ready 空选择不显示旧厂商。
+let directoryState = {status:"ready",current:{provider:"openai-codex"}};
+const directory = {subscribe:()=>()=>{},getSnapshot:()=>directoryState};
+const wrapper = new Hooks();
+const wrapperProps = {store:directory,readEntry:id=>id,t,getLocale:()=>"zh"};
+assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps).props.providerId,"openai-codex");
+for(const status of ["loading","error"]){directoryState={status,current:null};assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps).props.providerId,"openai-codex");}
+directoryState={status:"ready",current:{provider:"kimi-coding"}};
+assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps).props.providerId,"kimi-coding");
+directoryState={status:"ready",current:{provider:"unsupported-model"}};assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps),null);
+directoryState={status:"ready",current:null};assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps),null);wrapper.unmount();
 console.log("PASS provider management switches/no-dropdown/filtering/persistence payloads/dirty guard/pill subscription/race + refresh lock isolation");

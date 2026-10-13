@@ -65,7 +65,7 @@ Kimi 的窗口集合随套餐体系变化：老套餐（节奏命名，如 Alleg
 
 - **有有效套餐窗口时窗口优先**，余额只在弹层 extras 里出现。负余额不抹掉仍然有效的套餐窗口；套餐耗尽也不因为钱包里还有余额就被盖过——官方接口明确给出 PAYG / included 续用建议时，那条建议仍单独保留。
 - **纯余额药丸只在「没有窗口且数据完整」时出现**，即读取成功、`coverage` 为完整。缓存、部分数据或读取失败仍是降级态，余额只在依据行里补充。
-- **分级阈值是产品预警，不是汇率换算**，也不代表「还能跑多少次」：人民币 < 1 元红、1–5 元黄、≥ 5 元灰；美元 < 0.2 红、0.2–1 黄、≥ 1 灰。`credits` 及其它没有跨厂商统一价值的单位，只在**已解析的非正余额**时标红，正余额保持灰色——不同厂商的 credits 面值不可比，按绝对量分级只会凭空制造价值感。
+- **分级阈值是产品预警，不是汇率换算**，也不代表「还能跑多少次」：人民币 < 1 元红、1–5 元黄、≥ 5 元绿；美元 < 0.2 红、0.2–1 黄、≥ 1 绿（0.13.0 起；0.12.0 正常余额为灰）。展示最多两位小数，阈值仍用原始金额。`credits` 及其它没有跨厂商统一价值的单位，只在**已解析的非正余额**时标红，正余额保持灰色——不同厂商的 credits 面值不可比，按绝对量分级只会凭空制造价值感。
 - **累计花费不套用余额阈值**。`spend` / `*-spend` 是已花金额，不是可用余额。
 
 ## 4. 逐家补充说明
@@ -88,7 +88,11 @@ provider id 必须与注册这些路由的插件**逐字一致**（arkcli 官方
 
 ### Codex ChatGPT 订阅凭据
 
-订阅额度走 ChatGPT 后端的私有接口（`GET https://chatgpt.com/backend-api/wham/usage`），凭据是 **Codex CLI 自己的 ChatGPT 登录**，不是 `OPENAI_API_KEY`：
+订阅额度走 ChatGPT 后端的私有接口（`GET https://chatgpt.com/backend-api/wham/usage`），凭据是 **ChatGPT OAuth 登录**，不是 `OPENAI_API_KEY`。0.13.0 增加 [dsh-codex-subscription](https://github.com/WSL043/dsh-codex-subscription) 的独立 OAuth 只读兼容：
+
+- 优先只读 DSH 凭据服务中的 `codex-subscription/accounts` grant（version 1），取 `activeId` 对应账号；该记录存在但损坏时明确报错，不回退到别的账号。
+- 没有活动账号记录时依次读取 `OPENAI_CODEX_SUBSCRIPTION_OAUTH`、`WSL043_OPENAI_CODEX_OAUTH` 单账号引用；再回落到 CLI 登录文件。独立插件无需安装或登录 CLI。
+- 不写入、迁移或刷新另一插件的 OAuth，不在界面或用量结果中暴露 token。过期 / 401 仍需由凭据所属插件完成续约；仅凭只读兼容不能承诺其完整刷新生命周期。
 
 - 登录文件：`$CODEX_HOME/auth.json`，默认 `~/.codex/auth.json`。
 - 必须 `auth_mode` 为 `chatgpt`。若是 API Key 模式，插件按「未配置」处理并在界面上说明。

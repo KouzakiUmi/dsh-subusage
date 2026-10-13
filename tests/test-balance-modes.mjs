@@ -102,6 +102,9 @@ const settings = {revision:"r1",hasKeys:{deepseek:true},keyModes:{deepseek:"manu
 const configured = {deepseek:false,"deepseek-account":false};
 const old = {providerId:"deepseek",state:"no-key",apiDetected:false};
 assert.equal(api.providerVisible(settings,"deepseek",old,{settings,configured}),true, "保存 Key 后不能被旧 no-key 或无模型路由隐藏");
+const codexSettings = {visibility:{providers:{"openai-codex":true},hideWithoutApi:true}};
+const codexKnown = {providerId:"openai-codex",state:"ok",apiDetected:true};
+assert.equal(api.providerVisible(codexSettings,"openai-codex",codexKnown,{settings:codexSettings,configured:{"openai-codex":false},entries:[codexKnown]}), true, "路由短暂消失不能隐藏已检测到登录的 Codex");
 const calls=[];
 const store = api.createUsageStore((method,q)=>{calls.push({method,ids:q.providerIds});return Promise.resolve({settings,configured,updatedAt:"",entries:q.providerIds.map(providerId=>({providerId,state:"ok",coverage:"complete",freshness:"fresh",windows:[],extras:[{kind:"balance",value:"49.99 CNY"}]}))});});
 await store.readAll();calls.length=0;
@@ -110,9 +113,13 @@ assert.deepEqual(calls.map(c=>c.ids[0]),["deepseek","deepseek-account"],"两个�
 store.dispose();
 const args={providerId:"deepseek",t:k=>k,getLocale:()=>"zh"};
 const entry=value=>({state:"ok",coverage:"complete",freshness:"fresh",windows:[],extras:[{kind:"balance",value}]});
-for(const [value,color,short] of [["0.99 CNY","#ef4444","¥0.99"],["1 CNY","#eab308","¥1"],["5 CNY","#94a3b8","¥5"],["-1.19 CNY","#ef4444","¥-1.19"],["0.19 USD","#ef4444","$0.19"],["0.2 USD","#eab308","$0.2"],["1 USD","#94a3b8","$1"],["0 credits","#ef4444","0 credits"],["0.1 credits","#94a3b8","0.1 credits"],["0 EUR","#ef4444","0 EUR"],["0.5 EUR","#94a3b8","0.5 EUR"],["0","#ef4444","0"],["0.5","#94a3b8","0.5"]]) {
- const st=api.computeStatus(entry(value),args);assert.equal(st.key,"balance");assert.equal(st.color,color,value);assert.equal(st.short,short);assert.equal(st.icon,"");
+for(const [value,color,short] of [["0.99 CNY","#ef4444","¥0.99"],["1 CNY","#eab308","¥1"],["5 CNY","#22c55e","¥5"],["-1.19 CNY","#ef4444","¥-1.19"],["0.19 USD","#ef4444","$0.19"],["0.2 USD","#eab308","$0.2"],["1 USD","#22c55e","$1"],["0 credits","#ef4444","0 credits"],["0.1 credits","#94a3b8","0.1 credits"],["0 EUR","#ef4444","0 EUR"],["0.5 EUR","#94a3b8","0.5 EUR"],["0","#ef4444","0"],["0.5","#94a3b8","0.5"]]) {
+ const st=api.computeStatus(entry(value),args);assert.equal(st.key,"balance");assert.equal(st.color,color,value);assert.equal(st.short,short);assert.ok(st.icon, "余额状态必须有可辨识的图标");
 }
+const precise = api.computeStatus(entry("49.998903980000000 CNY"), args);
+assert.equal(precise.short, "¥50");
+assert.equal(precise.title, "balanceLabel 50 CNY");
+assert.equal(api.computeStatus(entry("0.9999 CNY"), args).color, "#ef4444", "显示舍入不能改变低余额阈值");
 const healthy=api.computeStatus({...entry("-1.19 CNY"),windows:[{kind:"sub",percent:10,status:"ok"}]},args);
 assert.equal(healthy.key,"ok");assert.equal(healthy.color,"#22c55e","有套餐时负余额不覆盖可用窗口");
 const exhausted=api.computeStatus({...entry("49.99 CNY"),windows:[{kind:"sub",percent:100,status:"rate-limited"}]},args);

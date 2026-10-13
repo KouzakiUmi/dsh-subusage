@@ -153,7 +153,7 @@ Cookie 必须**同时包含** `api-platform_serviceToken` 与 `userId`，否则�
 | Kimi | `KIMI_CODING_API_KEY` | Kimi 开放平台 → API Keys |
 | OpenCode Go | `OPENCODE_API_KEY` | OpenCode Go 控制台 |
 | MiniMax（中国 / 国际） | `MINIMAX_CN_API_KEY` / `MINIMAX_API_KEY` | MiniMax 开放平台 |
-| Codex（ChatGPT 订阅） | 无环境变量 | 运行 `codex login`；本插件只读 `~/.codex/auth.json`，不保存凭据 |
+| Codex（ChatGPT 订阅） | 无环境变量 | 优先只读 dsh-codex-subscription 活动账号 / 双旧 OAuth 引用（0.13.0 起），无该来源再读 CLI `auth.json`；不迁移或自行续约，详见 [来源优先级](providers.md#codex-chatgpt-订阅凭据) |
 | SuperGrok | 无环境变量 | 运行 `grok login` 或在 Grok Kit 登录；本插件读 `~/.grok/auth.json`，过期时经 grok-kit 官方链续约该文件 |
 | Command Code | `COMMANDCODE_API_KEY` | 由 Command Code 提供方插件管理，本插件只读 |
 | SiliconFlow | `SILICONFLOW_API_KEY` | SiliconFlow 控制台 → API 密钥 |

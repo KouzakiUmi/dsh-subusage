@@ -22,6 +22,13 @@
 
 当前没有源码转译步骤，直接维护 `lib/*.js`；修改 Host/Client 后按部署方式重新加载相应入口。
 
+### README 视觉与页面验收（0.13.0）
+
+- `node scripts/render-title.mjs` 保留原标题构图，直接加载当前 Client 的真实弹层与药丸，用虚构数据生成 `assets/title.png`；不连接 DSH 或读凭据。
+- `node scripts/render-readme-assets.mjs` 复用既有离线组件预览，生成深浅主题三功能特写到 `assets/readme/`，同时检查组件未越界 / 未被裁切。只引用已安装的 Noto Sans SC / Sarasa UI SC 等本机字体，不复制或分发字体文件。
+- `node scripts/check-readme.mjs [node_modules目录]` 使用本机已有的 `micromark` 与 `micromark-extension-gfm` 解析 README；可传现有依赖目录，不自动安装依赖。检查内部锚点、本地文件链接、图片存在性、深浅主题与 1080 / 390px 布局，输出 `debug/readme/homepage.html` 与 PNG。徽章用本机占位图，外链不联网核验；这是本机近似渲染，不替代 GitHub / npm 实际页面验收。
+- README 图片仍使用 GitHub 绝对 URL，市场截图清单纳入功能特写；图片和脚本修改不表示提交、推送或发布已经完成。
+
 ## 2. 依赖与生命周期
 
 - Host 使用的核心包声明在 `peerDependencies`。外置链接、profile 包解析与兼容性检查应依据目标部署实现，不用「静默失败」概括所有错误。
@@ -35,7 +42,7 @@
 
 **只依赖公开扩展 API 面**，不碰内部组件、不依赖桌面壳（Electron）版本——这是 0.2.x 各 Core 实际全兼容的原因：
 
-- Host（`lib/index.js`）只 import 四个核心包的公开导出：`defineTool`（dsh-tools）、`TypertRemoteService` / `RemoteError`（dsh-typert-protocol）、`credentialRef` / `isCredentialRefName`（dsh-credentials）、`launchEnvironmentOf`（dsh-launch-environment），外加 Cordis 服务 `llm`。
+- Host（`lib/index.js`）只 import 四个核心包的公开导出：`defineTool`（dsh-tools）、`TypertRemoteService` / `RemoteError`（dsh-typert-protocol）、`credentialKey` / `credentialRef` / `isCredentialRefName`（dsh-credentials）、`launchEnvironmentOf`（dsh-launch-environment），外加 Cordis 服务 `llm`。
 - Client（`lib/client.js`）只 require 宿主注入的 `react`，通过 `dsh.client.inject` 声明 client 基座公开模块（client-locale、client-ui-settings、client-ui-slots、api-gateway、api-remotes、api-session-controller、client-ui-model-selection），UI 全走 slots。
 - 适配新能力时先找公开服务与导出；公开面没有的能力不做，不用内部通道绕。
 
@@ -68,6 +75,14 @@ UI 继续复用已有 `computeStatus()`；排序亦使用该结论，窗口行�
 验证重点：官方金额字符串、单窗口、企业支出限制、同 token 工作区缓存、多级预算、PAYG 与未知路由、默认/备用账户反向组合、范围级联、未订阅信封。未知新套餐接口、席位与推理 Key 关联、厂商额外付费开关字段不凭营销页面编造。
 
 本轮本地验收：全量离线回归、清单与四个 JS 入口语法检查、diff 空白检查均通过；独立 Chrome 执行真实 Client 组件的 PAYG / 自动池 / Pro 单周 / 三层预算 / AFP 部分能力五种预览，文案及横向、弹层上下边界均通过。全程虚构数据、禁止 HTTP，不替代真实 DSH RPC/企业接口验收；发布版本为 0.11.2，GitHub 与 npm 按现有 CI 发布；未安装或重启实际 DSH 环境。
+
+## 0.13.0：金额精度、设置生命周期与 Codex Subscription
+
+- `formatBalanceValue` 统一药丸、横幅与余额明细，最多两位小数；已满足精度的原文（例如 42.50）保留。`balanceVisual` 先解析原值再判阈值，不能由展示舍入改变颜色。正常 CNY / USD 用绿色 ✓，未知单位中性 ℹ，低余额 !；可访问名称继续含预警依据。
+- `readSettings()` 用现有 `read({providerIds:[],force:false})` 获取元数据：Host 不查询任何额度端点。已有快照即时回显，同时初始化请求合并，失败后可重试；设置页当前用量 / 已打开的编辑器独立刷新，主动全量刷新仍保留。
+- Codex 已检测到 API 凭据时不受暂时空路由表过滤；其他按路由厂商不改变原规则。`SubusagePillEntry` 仅在宿主 `status=loading/error` 且 `current=null` 时保留上次选择，`ready` 的空选择 / 显式其他提供商不保留。
+- 独立 OAuth 参考 [上游固定源码](https://github.com/WSL043/dsh-codex-subscription/tree/60d0f70facc3cbc5f02b5c1802d9f53c5be93b94)：只读 DSH `credentials.readRecord(credentialKey("codex-subscription","accounts"))` 的 version 1 grant / activeId，其次双单账号引用，最后 CLI。记录存在但损坏时不回退到另一个账号，不迁移、不写回、不自行刷新。当前 accountId 与 token 同源进入请求 / 缓存指纹，结果不泄露 token。仅核验只读契约，不声称拥有上游完整续约能力。
+- 本节纳入 0.13.0；35 个测试文件全量、清单 / 语法与深浅各 11 个余额药丸场景通过，本轮隔离验证与真实 DSH 在线验收分开。余额画廊按下方既有命令生成；设置精度页另运行 `node scripts/render-ui-preview.mjs 530 deepseek-account dark settings balance-precision`（浅色用 `light`），再运行 `node scripts/check-balance-preview.mjs` 同时检查画廊与设置横幅 / 明细。
 
 ## 0.12.0：余额分级、DeepSeek 账号与 MiMo / ZenMux 语义
 

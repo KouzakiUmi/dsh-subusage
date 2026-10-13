@@ -25,7 +25,7 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 ## npm
 
-0.12.0 发布准备同步包版本、Host 标识、双 DeepSeek 入口与余额阈值文档、折叠轮换池及八张截图声明。以对应版本标签的 Actions 状态、Release 资产和 npm registry 实际结果为发布完成依据；本地测试通过不等于已发布。
+0.13.0 发布同步包版本与 Host 标识、金额精度 / 配色、设置按需刷新、Codex Subscription 只读兼容和 README 产品主页。截图清单保持八张：新功能特写替换旧药丸状态画廊，旧图仍保留在 README 技术参考。以对应版本标签的 Actions 状态、Release 资产和 npm registry 实际结果为发布完成依据；本地测试通过不等于已发布。
 
 包名：[dsh-subusage](https://www.npmjs.com/package/dsh-subusage)。`0.7.0` 已于 2026-10-05 发布；后续发布必须使用未发布过的新版本。npm 包与 GitHub 提交快照可能包含不同的文档更新，请分别检查版本与来源。
 
@@ -124,8 +124,8 @@ tarball: https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh
 [
   "assets/screenshots/settings-dark.png",
   "assets/screenshots/usage-popover-light.png",
-  "assets/screenshots/pill-states-light.png",
-  "assets/screenshots/pill-states-dark.png",
+  "assets/readme/features-light.png",
+  "assets/readme/features-dark.png",
   "assets/screenshots/paygo-dark.png",
   "assets/screenshots/account-pool-dark.png",
   "assets/screenshots/scoped-quota-dark.png",
@@ -133,7 +133,7 @@ tarball: https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh
 ]
 ```
 
-第一张展示深色设置页、MiMo 凭据入口及提供商管理；第二张展示浅色 NanoGPT 用量弹层（状态横幅 + 各窗口剩余百分比）；后两张是药丸 15 种状态画廊（浅色 / 深色）。前四张为 0.10.11 基础界面预览；按量续用与部分能力限制为 0.11.2 的预览，轮换池图在 0.12.0 更新为默认折叠的 40 账户示例。第八张是 0.12.0 的余额单位分级与套餐优先画廊。均执行真实 Client 组件、使用虚构数据并标明离线预览，不代表真实账号验收。
+第一张展示深色设置页、MiMo 凭据入口及提供商管理；第二张展示浅色 NanoGPT 用量弹层，保留 0.10.11 基础界面预览；第三、四张是 0.13.0 深浅主题三功能特写（额度 / 余额 / 账户池），替换旧药丸状态画廊以遵守 1–8 张限制，旧图继续在 README 技术参考中展示；按量续用与部分能力限制为 0.11.2 的预览，轮换池图在 0.12.0 更新为默认折叠的 40 账户示例。第八张是 0.12.0 的余额单位分级与套餐优先画廊。均执行真实 Client 组件、使用虚构数据并标明离线预览，不代表真实账号验收。
 
 更新截图时，用当前组件生成预览并检查布局，复制所选 PNG 到 `assets/screenshots/`，再同步声明和 README。具体生成方法见 [开发说明](development.md#离线浏览器与截图)。不要将 `debug/` 路径写入声明，该目录被 Git 忽略；不要放入真实 Key、Cookie 或账户数据。
 

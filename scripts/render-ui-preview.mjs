@@ -75,6 +75,12 @@ if (scenario === 'budgets') quota = { ...entry(providerId, 100, 'period'), windo
 if (scenario === 'scope') quota = { ...afpQuota, windows: afpQuota.windows.map(w => ({ ...w, detail: { ...w.detail, used: Math.round((w.kind === 'day' ? 100 : w.percent) / 100 * w.detail.limit * 1e6) / 1e6, scope: w.kind === 'month' ? 'all' : w.kind === 'day' ? 'daily-capabilities' : 'text' }, ...(w.kind === 'day' ? { percent: 100, status: 'rate-limited' } : {}) })) };
 if (scenario === 'pool') quota = { ...entry(providerId, 100, '5h'), accountPool: { mode: 'auto', total: 2, available: 1, blockedCount: 1, unusableCount: 0, exhausted: false, accounts: [{ id: 'default', state: 'ok', usable: false, blocked: true, windows: [{ kind: '5h', percent: 100, status: 'rate-limited' }] }, { id: 'COMMANDCODE_ACCOUNT_WORK', label: '工作号', state: 'ok', usable: true, blocked: false, windows: [{ kind: '5h', percent: 10, status: 'ok' }] }] } };
 if (scenario === 'pool-many') quota = { ...entry(providerId, 93.7, 'month'), accountPool: { mode: 'auto', total: 40, available: 1, blockedCount: 39, unusableCount: 0, exhausted: false, accounts: Array.from({ length: 40 }, (_, i) => ({ id: i ? `COMMANDCODE_ACCOUNT_${i}` : 'default', label: `示例账户 ${i}`, state: 'ok', usable: !i, blocked: !!i, windows: [{ kind: i % 2 ? 'week' : 'month', percent: i ? 100 : 93.7, status: i ? 'rate-limited' : 'ok' }] })) } };
+if (scenario === 'balance-precision') {
+  quota = { ...entry(providerId, 0), keySource: 'account-service', windows: [], extras: [{ kind: 'balance', value: '49.998903980000000 CNY' }] };
+  result.entries = [quota];
+  result.settings.visibility.providers = Object.fromEntries(Object.keys(PROVIDER_META).map(id => [id, id === providerId]));
+  result.configured[providerId] = true;
+}
 if (pillPreview) previewStates = [{ entry: quota, updatedAt: clock }, null, undefined, false, true];
 // Command Code 药丸弹层的账户切换区：虚构两个额外账户，固定项高亮；不发起任何网络请求。
 let cc;
@@ -90,7 +96,7 @@ const pillLabel = providerId === 'commandcode' ? 'Command Code' : PROVIDER_META[
 let tree = pillPreview ? UsagePill({ providerId, label: pillLabel, readEntry: () => {}, t: key => zh[key] || key, getLocale: () => 'zh-CN', cc }) : SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => result }, t: key => zh[key] || key, getLocale: () => 'zh-CN' });
 if (scenario === 'balance-gallery') {
   const samples = [
-    ['account', 'DeepSeek 账号 · 本机余额', 'deepseek-account', '49.99 CNY', []],
+    ['account', 'DeepSeek 账号 · 本机余额', 'deepseek-account', '49.998903980000000 CNY', []],
     ['api-low', 'DeepSeek API · 人民币偏低', 'deepseek', '0.50 CNY', []],
     ['cny-warn', '人民币 · 预警档', 'siliconflow', '3.00 CNY', []],
     ['usd-low', '美元 · 偏低档', 'novita', '0.10 USD', []],

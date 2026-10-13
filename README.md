@@ -1,89 +1,24 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/title.png" width="100%" alt="dsh-subusage —— 模型选择器旁的余量药丸，右侧是同一界面的浅色与深色用量弹层（真实组件离线渲染示例）">
 
-  # 订阅用量显示
+# 订阅用量显示
 
-  **选中的模型还剩多少额度，输入框旁边一眼可见。**
+**额度与余额，不必离开对话。**
 
-  dsh-subusage 把已支持的 28 个提供商数据入口的额度与余额装进 DeepSeek Harness 的输入框旁边——不切控制台、不猜百分比、不等报错。
+在 DeepSeek Harness 的模型选择器旁看余量；点开药丸，查看额度窗口、重置时间与余额。
 
-  [![npm version](https://img.shields.io/badge/npm-0.12.0-blue)](https://www.npmjs.com/package/dsh-subusage)
-  [![license](https://img.shields.io/badge/license-MIT-green)](#license--security--许可与安全)
-  [![DSH](https://img.shields.io/badge/DSH-0.2.x-informational)](#compatibility--兼容性)
+[![npm](https://img.shields.io/npm/v/dsh-subusage?color=3b82f6&label=npm)](https://www.npmjs.com/package/dsh-subusage)
+[![license](https://img.shields.io/badge/license-MIT-64748b)](#license--security--许可与安全)
+[![DSH Core](https://img.shields.io/badge/DSH_Core-0.2.x-64748b)](#compatibility--兼容性)
 
-  **安装只需一条命令** → [快速开始](#快速开始)
+[快速开始](#快速开始) · [功能预览](#功能预览) · [支持清单](#支持的数据--supported-data) · [凭据指引](docs/credentials.md)
+
+<img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/title.png" width="1200" alt="dsh-subusage：保留原标题图的深蓝构图，右侧展示真实 Codex 与 OpenCode Go 深浅主题用量弹层；虚构数据离线预览">
+
+<sub>真实组件 · 虚构数据 · 真实组件离线预览，不是运行中的 DSH 截图</sub>
+
 </div>
 
----
-
-## 为什么需要它
-
-| 没有它 | 有了它 |
-|---|---|
-| 额度散落在五六家控制台，查一次余额要开五个标签页 | 药丸常驻输入框旁：选中哪家模型就看哪家，多窗口自动取最差一窗 |
-| Agent 跑到一半撞上 429，才知道额度用尽 | 弹层先给结论再给依据：「即将用尽 · 最紧张：每周 · 剩 5% · 3 天后重置」 |
-| Cookie、OAuth 悄悄过期，报错才发现 | MiMo Cookie 提前 2 小时变黄、30 分钟变橙、过期变红；认证失效直说原因与修法 |
-| 每家插件各管各的凭据，格式五花八门 | 一个设置页集中管理 28 条路由的开关与凭据，缺什么补什么 |
-
-## 状态，一眼分清
-
-药丸不写字也能传达状态：每个额度窗口一根彩条（绿 / 黄 / 橙 / 红，满格 = 100% 剩余），需要留意时才追加一个词。下面是已发布基础状态的离线预览（虚构用量数据）；0.11.2 新增的续用/预算/能力范围状态见下节：
-
-<img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/pill-states-light.png" width="100%" alt="药丸 15 种状态（浅色，离线预览）">
-
-<details>
-<summary>深色主题</summary>
-
-<img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/pill-states-dark.png" width="100%" alt="药丸 15 种状态（深色，离线预览）">
-
-</details>
-
-## 三块能力，一个设置页
-
-| 能力 | 解决什么问题 | 入口 |
-|---|---|---|
-| 余量药丸 | 不用切到各家控制台，选中模型就知道这家还剩多少 | 模型选择器左侧，槽位 `conversation.input.right` |
-| 设置页 | 开关与凭据集中管理；缺凭据、Cookie 过期时把修复入口直接送到卡片上 | 设置 → 订阅用量 → 提供商管理 |
-| 只读额度 API | 其他插件与 Agent 复用同一份额度数据，不必各自对接各家接口 | Agent 工具 `subusage_quota`、Host 服务 `subUsage.quota()` |
-
-套餐药丸以图形为主：每个额度窗口一根彩色余量条（绿 / 黄 / 橙 / 红，满 = 100% 剩余），正常时不写字；需要留意时追加一个词，如 `周 偏少`、`5时 已用尽`、`需配置`、`拉取失败`。一般成功结果按提供商缓存 **60 秒**，手动刷新可跳过普通 TTL（仍遵守上游限流退避与 `Retry-After`）；DeepSeek 账号入口每次调用宿主余额链，不复用本插件的旧余额缓存，避免切换账号后显示另一份钱包。
-
-本插件**不注册模型路由**，药丸按 provider id 匹配；因此使用哪个插件提供该模型路由不影响匹配，id 对不上时才不显示。
-
-## 28 个提供商数据入口，默认开启 11 个
-
-DeepSeek API、DeepSeek 账号、火山方舟（Agent / Coding Plan 个人版与企业版席位）、Z.ai（中国与国际）、Kimi、小米 MiMo、OpenCode Go、Command Code、SuperGrok、Codex（ChatGPT 订阅）、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM——订阅窗口、余额、周期额度池都支持。**新安装默认开启 11 条**，其余在设置页一键开启；完整清单、额度类型与鉴权方式见[下方技术文档](#支持的数据--supported-data)。
-
-### 0.12.0：双 DeepSeek 入口、余额药丸与折叠详情
-
-本次发布包括以下改进；发布包不自动更新你的本机运行环境，也不代替真实账号验收：
-
-- **Command Code 轮换池**逐账户行标明具体受限周期，详情默认折叠为「点击查看详情」，展开后限高滚动。
-- **余额药丸分级**：药丸直接显示金额与单位，不再一律中性灰。人民币 < 1 元红、1–5 元黄、≥ 5 元灰；美元 < 0.2 红、0.2–1 黄、≥ 1 灰；`credits` 及其它无统一价值单位只在已解析的非正余额时标红，正余额保持灰色而不按绝对量虚构价值。这些是**产品预警阈值，不是汇率换算，也不是「还能跑多少次」的保证**。累计花费不套用余额阈值。
-- **新增 `deepseek-account`（DeepSeek 账号）**：默认开启，复用 DSH 本机 `deepseekAccount` 服务的登录态读取充值余额；不读取、导出或保存 OAuth token，也不使用独立 API Key。与 `deepseek`（DeepSeek API）的开关、缓存和余额完全独立；`deepseek-official` 这个名字指向账号入口。纯余额型条目（两个 DeepSeek 入口与 SiliconFlow、Novita、Hyperbolic、DeepInfra、Vercel AI Gateway）不要求本机装有对应模型路由。
-- **MiMo 无订阅不再画成 0%**：只有「用量组为空 / 零容量」配合可读的套餐详情才判未订阅；零容量不生成 0% 用量窗口。套餐读取失败仍标部分数据，余额读取失败仍保留已成功的用量。
-- **ZenMux 订阅端点失败**保留余额并标部分数据，明确写「套餐状态暂不可确认」，不宣称未订阅。
-
-35 个测试文件、清单与语法检查、深浅主题各 11 个余额场景及 40 账户折叠验收已通过。离线预览使用虚构数据，不代表新账号入口或无订阅响应已经真实在线验收——详见[开发说明](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md)。
-
-<details>
-<summary>余额药丸与套餐优先：0.12.0 深色离线预览</summary>
-
-<img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/balance-pills-dark.png" width="586" alt="余额药丸分单位预警、MiMo 无套餐与套餐优先，真实组件离线渲染，使用虚构金额">
-
-</details>
-
-## 额度与续用：0.11.2 的关键修正
-
-- **Codex Pro / ProLite / ProMax**：合法单周窗口正常展示，不再因没有 5 小时窗而黄警；多工作区查询携带账户身份，企业支出限制与 Credits 单独保留。
-- **ZenMux / Novita / LiteLLM**：补齐 ZenMux 周窗；Novita 接受官方金额字符串；LiteLLM 的 Key、用户、团队预算分别展示，任何一层都不会被更宽松的预算覆盖。
-- **包含额度耗尽不等于服务停摆**：Command Code 有已购余额时显示“按量续用”；NanoGPT 使用接口路由建议，未知余额/策略明确待确认。其他厂商未核验的续用条件不作保证。
-- **轮换与能力范围**：自动轮换池尚有健康账户，不因默认账户限额报全池耗尽；AFP 文本周限制不连坐日能力池，共享月额度仍影响各能力。部分能力耗尽只提示范围，不冒充整个套餐不可用。
-- **数据完整性**：合法单窗、无上限和纯余额成功不是“不完整”；真实端点读取失败仍可标部分覆盖。金额或窗口未知时不编造百分比。
-
-以上均已通过离线回归；不代表真实企业席位、新旧私有接口或付费资格已经在线验收。详细契约与仍待核验范围见[开发说明](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md#额度语义修正0112)。
-
-[快速开始](#快速开始) · [支持清单](#支持的数据--supported-data) · [实测范围](#support-status--实测覆盖) · [凭据指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md) · [更新记录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/changelog.md)
+> **0.13.0**：余额显示更清晰，设置按需刷新，兼容 Codex Subscription 独立 OAuth。发布与本机升级分开；本页图片是虚构数据离线预览，不是实机验收证明。[查看更新记录](docs/changelog.md)。
 
 ## 快速开始
 
@@ -91,34 +26,74 @@ DeepSeek API、DeepSeek 账号、火山方舟（Agent / Coding Plan 个人版与
 dsh plugin --profile web add dsh-subusage
 ```
 
-`web` 仅为示例 Profile，替换为实际目标；Desktop 应使用目标桌面壳提供的 DSH Desktop CLI，不从普通公共 CLI 管理 `desktop`。
+`web` 是示例 Profile，请替换为实际目标。**Desktop 使用目标桌面壳提供的 DSH Desktop CLI**，不要从独立公共 CLI 管理保留的 `desktop` Profile。
 
-1. 安装并启用 bundle，按部署方式重载或重启（只刷新页面不保证 Host 升级）。
-2. 打开 **设置 → 订阅用量 → 提供商管理**，开启需要的提供商并填凭据——每类凭据的官网入口与填入位置见[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)；MiMo 用「登录并自动导入」。
-3. 回到会话，选中该提供商的模型：输入区左侧出现药丸，点开看窗口明细。
-4. 排障：点「立即刷新」→ 看设置页顶部 `X/Y 家数据获取成功`（可点击，直接跳到第一家没读成功的）。
+1. **启用插件**：按部署方式重载，让 Host 与 Client 一起生效；只刷新页面不保证 Host 已升级。
+2. **配置需要的提供商**：打开 **设置 → 订阅用量 → 提供商管理**。填 API Key，或使用对应提供方插件的登录态；MiMo 可“登录并自动导入”。[不知道该填什么？](docs/credentials.md)
+3. **回到对话**：选择该提供商的模型，输入区出现用量药丸。点开看明细；读取失败会说明原因，不把未知当充足。
 
-**DSH 已登录账号**：默认开启的「DeepSeek 账号」直接读取宿主账号余额，不需要复制 OAuth token 或填写 API Key；用 `subusage_quota(providers: ["deepseek-account"])` 查询。
+**已经登录 DSH 的 DeepSeek 账号？** 默认开启的「DeepSeek 账号」直接读取宿主余额，不需要复制 token。独立 API Key 使用另一个「DeepSeek API」入口，两份余额不相加、不互相替代。[两种入口的区别](docs/providers.md#deepseek-api-与-deepseek-账号)
 
-**独立 API Key**：使用「DeepSeek API」（`deepseek`），与账号入口分别管理，不接 OAuth：
+## 功能预览
 
-```powershell
-# 任选一种凭据来源
-$env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需按部署方式重启
-# 或在 设置 → 订阅用量 → DeepSeek API →「连接与凭据」里手动填写
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/readme/features-dark.png">
+  <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/readme/features-light.png" width="1200" alt="三块真实组件：Codex 套餐用量、独立 DeepSeek 账号余额、Command Code 多账户轮换池；虚构数据离线预览">
+</picture>
 
-启动环境变更需要按部署方式重载；手动保存 Key 后可直接刷新。选中对应模型时药丸显示余额，也可让 Agent 调用 `subusage_quota(providers: ["deepseek"])` 查询独立 API 余额。两种余额读取均不要求安装模型路由；不会把两份余额相加或互相替代。
+### 看额度：最紧张的窗口，先提醒你
 
-## 先说清楚：哪些是实测过的
+一个窗口一根余量条。正常时保持简洁；周窗偏少、额度耗尽、读取失败时，药丸明确提示。点开后再看百分比、适用范围与重置倒计时，不需要先切到控制台。
 
-**7 家在真实账号上跑通**：火山方舟 Agent Plan、火山方舟 Coding Plan、Kimi Coding、小米 MiMo、Command Code、SuperGrok、Codex (ChatGPT)。**其余只经过桩测试**——响应形态取自公开文档、第三方实现或抓包，没有在真实账号上跑通，可能随接口变化而失效；失效时在设置页关掉那一家即可，其余不受影响。验证范围与主要风险见[实测覆盖](#support-status--实测覆盖)。额度数字仅供参考，不要当计费依据。
+### 看余额：金额直接显示，单位不混淆
+
+无套餐窗口且数据完整时，药丸直接显示金额。人民币、美元与 credits 各按自己的规则展示；**余额不等于订阅额度，也不能盖过已耗尽的套餐**。DeepSeek API 与本机账号有各自的开关、凭据来源与余额。
+
+### 管账户：需要时展开，不让长列表占满界面
+
+Command Code 可在弹层和设置页切换固定账户，或查看自动轮换池的健康度。逐账户详情默认折叠，受限周期明确标注。**自动轮换模式的用量仍是默认账户，不跟随实际服务中的账户。**
+
+## 支持什么
+
+**28 条数据入口，新安装默认开启 11 条。** 按使用场景，主要分为：
+
+| 你想看什么 | 代表提供商 |
+|---|---|
+| 订阅窗口与重置时间 | Kimi、MiMo、Codex、SuperGrok、MiniMax、Z.ai、OpenCode Go |
+| 账号钱包与 API 余额 | DeepSeek API / 账号、SiliconFlow、Novita、Hyperbolic、DeepInfra |
+| 套餐、余额与多层预算 | Command Code、NanoGPT、OpenRouter、ZenMux、LiteLLM |
+| 账号级套餐与企业席位 | 火山方舟 Agent Plan / Coding Plan |
+
+[查看完整支持清单](#支持的数据--supported-data) · [查看哪些经过真实账号验证](#support-status--实测覆盖)
+
+本插件**只显示用量，不注册模型路由**。Codex 默认关闭，避免与提供方自带药丸重复；需要统一展示时可手动开启。私有额度接口可能变化，数字仅供参考，不是计费依据。
+
+## 也可以直接问 Agent
+
+“看一下 Kimi 和 Codex 还剩多少额度。”
+
+模型可调用只读工具 `subusage_quota`，读取与界面同源的额度与余额；可按提供商筛选，Command Code 可分别返回各账户状态。不会通过该工具修改设置。[工具与 Host 服务契约](#额度查询-api)
+
+## 使用前，先知道这三点
+
+- **不猜数据**：查询失败、缓存与部分覆盖会明确标注；接口读取成功不保证仍可续用。
+- **不把凭据放进截图或结果**：API Key、Cookie 与 OAuth token 不回填界面；但本插件手动配置仍可能明文落盘，**它不是加密凭据库**。
+- **验证有范围**：历史真实账号记录覆盖 7 个入口，其余主要依靠桩测试；新图是虚构数据离线渲染，不能作为真实账号在线验收证明。[实测范围与风险](#support-status--实测覆盖)
+
+<details>
+<summary><strong>版本与验证范围：本页截图展示了什么？</strong></summary>
+
+标题图和三功能特写由当前 `lib/client.js` 的真实组件生成，未制作平行 UI。画面使用虚构金额与账户；绿色余额图标、最多两位小数与独立 Codex Subscription OAuth 兼容纳入 **0.13.0**。OAuth 续约仍由凭据所属插件负责；未替代真实账号在线验收。
+
+0.12.0 已发布双 DeepSeek 入口、分单位余额预警与 Command Code 详情折叠；该版本正常余额为灰色。历史截图与每轮验证范围见[更新记录](docs/changelog.md)和[开发说明](docs/development.md)。
+
+</details>
 
 ---
 
 # 技术文档
 
-> 安装、配置、排障的完整参考。快速上手看上面就够了。
+安装、配置与排障参考。日常使用先看上面的快速开始，需要定位具体接口或凭据来源时再展开下文。
 
 ## 支持的数据 / Supported data
 
@@ -134,7 +109,7 @@ $env:DEEPSEEK_API_KEY = "<你的 DeepSeek API Key>"   # 启动环境；改完需
 | OpenCode Go | `opencode-go` | 订阅窗口 | Bearer | 开 |
 | Command Code | `commandcode` | 5 小时 / 周 / 月额度池 | 提供方插件的凭据链 | 开 |
 | SuperGrok | `xai-oauth` | 周期池 | 共享 Grok CLI 登录文件，过期经 grok-kit 续约 | 开 |
-| Codex (ChatGPT) | `openai-codex` | ChatGPT 订阅窗口 | 只读 Codex CLI 的 OAuth 登录文件 | 关 |
+| Codex (ChatGPT) | `openai-codex` | ChatGPT 订阅窗口 | 只读 Subscription 独立 OAuth（0.13.0 起）或 Codex CLI 登录文件 | 关 |
 | MiniMax（中国） | `minimax-cn` | 短周期 / 周 | Bearer | 开 |
 | ARK Agent Plan (arkcli) | `arkcli-agent-plan` | 订阅窗口（AFP） | IAM AK/SK 签名 | 开 |
 | ARK Coding Plan (arkcli) | `arkcli-coding-plan` | 订阅窗口 | IAM AK/SK 签名 | 开 |
@@ -252,7 +227,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | --- | --- | --- |
 | Command Code | [`@mars-sea/dsh-commandcode-provider`](https://www.npmjs.com/package/@mars-sea/dsh-commandcode-provider) | 在该插件的设置页登录，或运行 `cmd login`（兜底读 `~/.commandcode/auth.json`） |
 | SuperGrok | [`dsh-grok-kit`](https://github.com/KouzakiUmi/dsh-grok-kit) | 运行 `grok login`，登录文件 `~/.grok/auth.json` |
-| Codex（ChatGPT 订阅） | [`dsh-codex-connect`](https://github.com/franksong2702/dsh-codex-connect)（npm 同名包） | 运行 `codex login`，登录文件 `$CODEX_HOME/auth.json` 或 `~/.codex/auth.json` |
+| Codex（ChatGPT 订阅） | [`dsh-codex-connect`](https://github.com/franksong2702/dsh-codex-connect) 或 [`dsh-codex-subscription`](https://github.com/WSL043/dsh-codex-subscription)（0.13.0 起兼容） | Connect / CLI：`codex login`；Subscription：在其设置页独立 OAuth 登录，无需 CLI |
 
 > **Codex 默认关闭**：它的提供方插件本身就带一个用量药丸，两个并排只是重复信息。想要本插件这一份（比如想把 Codex 和别家放在一起看）可以在**提供商管理**里手动开启。
 >
@@ -288,7 +263,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | MiniMax（中国） | `MINIMAX_CN_API_KEY` | `minimax-cn` 路由；中国站订阅 Key |
 | Command Code | `COMMANDCODE_API_KEY` | 凭据由提供方插件管理，本页只读继承；兜底读取 `~/.commandcode/auth.json`（`cmd login`） |
 | SuperGrok | 无 | `xai-oauth` 路由；读取 dsh-grok-kit / Grok CLI 共享的 OAuth 登录文件 `~/.grok/auth.json`（旧版 `~/.dsh/.xai-oauth-auth.json`），不保存凭据。access token 过期时**借 dsh-grok-kit（≥0.2.0）的官方登录链自动续约**——同一文件、同一把写锁、compare-and-write，不会顶掉共享登录态（本插件绝不自行裸 POST 刷新）；未安装 grok-kit 或续约失败时才提示手动重新登录。API Key（`XAI_API_KEY`）取不到订阅周池 |
-| Codex | 无 | `openai-codex` 路由；只读 Codex CLI 的 ChatGPT 订阅登录文件（`$CODEX_HOME/auth.json` 或 `~/.codex/auth.json`，要求 `auth_mode` 为 `chatgpt`），不保存、不刷新 token |
+| Codex | 无 | `openai-codex` 路由；0.13.0 起优先只读 Subscription 活动 OAuth 账号，再回退 CLI 文件（`$CODEX_HOME/auth.json` 或 `~/.codex/auth.json`，要求 `auth_mode` 为 `chatgpt`）；不保存或刷新 token，续约由所属插件负责 |
 | 火山方舟 Ark（4 条路由） | `VOLC_ACCESSKEY` + `VOLC_SECRETKEY` | 额度查询要 **IAM Access Key 的 AK/SK 配对**，与推理 API Key（`ARKCLI_*_API_KEY` / `ARK_*_API_KEY`）**不是同一套**；4 条路由共用一组 AK/SK。这一组 AK/SK 能**同时**查到 Agent Plan 与 Coding Plan（含团队版席位）——不存在「Coding Plan 专用查询 key」 |
 | SiliconFlow | `SILICONFLOW_API_KEY` | 余额型：`GET /v1/user/info` 返回账户余额，**与推理是同一把 Key** |
 | OpenRouter | `OPENROUTER_API_KEY` | key 限额与用量用推理 key 即可；**账户余额需要 management / provisioning key**，普通 key 会被 403 拒——此时静默降级为只显示限额，不判失败 |
@@ -467,7 +442,7 @@ node scripts/check-browser-runtime.mjs   # 需要工作区可解析 playwright-c
 
 文档入口：[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)（每类凭据的官网入口、环境变量与填入位置、报错对照）、[开发与验证](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md)（RPC 契约、缓存与凭据约定、离线预览与实机验收范围）、[提供商清单与额度语义](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md)、[提供商覆盖与取舍](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/provider-coverage.md)、[UX 设计](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/design-ux.md)、[发布与市场收录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/publish.md)、[更新记录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/changelog.md)、[审查记录](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/code-review.md)。
 
-> 打包说明：`package.json` 的 `files` 白名单是 `lib` / `cordis.patch.yml` / `README.md` / `LICENSE`，因此 `assets/title.svg`、`assets/screenshots/` 与 `docs/` **不进 npm 包**——图片通过 GitHub 绝对地址加载，npm 页面无需把图片打进包也能显示。改动白名单属于发布决策，需单独处理。
+> 打包说明：`package.json` 的 `files` 白名单是 `lib` / `cordis.patch.yml` / `README.md` / `LICENSE`，因此 `assets/title.png`、`assets/readme/`、`assets/screenshots/` 与 `docs/` **不进 npm 包**——图片通过 GitHub 绝对地址加载，npm 页面无需把图片打进包也能显示。改动白名单属于发布决策，需单独处理。
 
 ### 界面预览
 
@@ -481,7 +456,16 @@ node scripts/check-browser-runtime.mjs   # 需要工作区可解析 playwright-c
 
 ![浅色 NanoGPT 用量弹层（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/usage-popover-light.png)
 
-药丸 15 种状态一览（浅色 / 深色）见[开头的能力展示](#状态一眼分清)。
+<details>
+<summary>查看已发布基础药丸的 15 种状态（虚构数据）</summary>
+
+![浅色药丸状态](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/pill-states-light.png)
+
+![深色药丸状态](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/pill-states-dark.png)
+
+</details>
+
+0.13.0 的功能特写见[功能预览](#功能预览)。
 
 截图声明见根目录 [`screenshots.json`](screenshots.json)。上述四张保留 0.10.11 的基础界面预览；下方三张为 0.11.2 新增语义状态的真实组件离线预览（虚构用量、桩网络、无凭据），底部水印明确标注「非运行中的 DSH 截图」。真实 DSH Loader、实际账号在线接口与多账户映射仍未验收，截图不代表已通过这些检查。
 

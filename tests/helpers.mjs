@@ -13,7 +13,7 @@ const HOST_STUBS = [
 		/import \{ RemoteError, TypertRemoteService \} from "@deepseek-ai\/dsh-typert-protocol";/,
 		"class RemoteError extends Error { constructor(code, message, details) { super(message); this.code = code; this.details = details; } }\nclass TypertRemoteService { constructor(ctx, key) { if (typeof key !== 'string' || !key) throw new Error('bad serviceKey'); this.ctx = ctx; } }"
 	],
-	[/import \{ credentialRef, isCredentialRefName \} from "@deepseek-ai\/dsh-credentials";/, "const credentialRef = (name) => ({ kind: 'env', name });\nconst isCredentialRefName = (value) => typeof value === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);"],
+	[/import \{ credentialKey, credentialRef, isCredentialRefName \} from "@deepseek-ai\/dsh-credentials";/, "const credentialKey = (scope, id) => `${scope}/${id}`;\nconst credentialRef = (name) => ({ kind: 'env', name });\nconst isCredentialRefName = (value) => typeof value === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);"],
 	[/import \{ launchEnvironmentOf \} from "@deepseek-ai\/dsh-launch-environment";/, "const launchEnvironmentOf = (ctx) => ({ get: (k) => ctx.__env?.[k] });"],
 	// defineTool 在真实核心包里有校验；测试只需要它原样返回定义，才能核对工具契约。
 	[/import \{ defineTool \} from "@deepseek-ai\/dsh-tools";/, "const defineTool = (spec) => spec;"]
