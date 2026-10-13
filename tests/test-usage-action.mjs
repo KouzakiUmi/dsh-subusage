@@ -29,8 +29,8 @@ assert.equal(kind(mimo({ state: "no-cookie" }), "xiaomi-token-plan-cn", t), "mim
 assert.equal(kind(mimo({ state: "error", errorCode: "subusage/auth" }), "xiaomi-token-plan-cn", t), "mimo-login");
 assert.equal(kind(mimo({ cookieExpiresAt: new Date(now - 60000).toISOString() }), "xiaomi-token-plan-cn", t), "mimo-relogin", "已过期优先提示重新登录");
 // 临近到期（≤2 小时）才算事件；还有几小时的正常倒计时不打扰。
-assert.equal(kind(mimo({ cookieExpiresAt: new Date(now + 10 * 60 * 1000).toISOString() }), "xiaomi-token-plan-cn", t), "mimo-login", "30 分钟内有提醒");
-assert.equal(kind(mimo({ cookieExpiresAt: new Date(now + 60 * 60 * 1000).toISOString() }), "xiaomi-token-plan-cn", t), "mimo-login", "2 小时内有提醒");
+assert.equal(kind(mimo({ cookieExpiresAt: new Date(now + 10 * 60 * 1000).toISOString() }), "xiaomi-token-plan-cn", t), "mimo-renew", "30 分钟内提示续期，不说需要登录");
+assert.equal(kind(mimo({ cookieExpiresAt: new Date(now + 60 * 60 * 1000).toISOString() }), "xiaomi-token-plan-cn", t), "mimo-renew", "2 小时内提示续期，不说需要登录");
 assert.equal(kind(mimo({ cookieExpiresAt: new Date(now + 5 * 60 * 60 * 1000).toISOString() }), "xiaomi-token-plan-cn", t), null, "还有 5 小时不打扰");
 assert.equal(kind(mimo({ cookieExpiresAt: "not-a-date" }), "xiaomi-token-plan-cn", t), null, "计时不可解析时不编造提醒");
 assert.equal(kind(mimo({}), "xiaomi-token-plan-cn", t), null, "无计时记录且读取正常时不打扰");

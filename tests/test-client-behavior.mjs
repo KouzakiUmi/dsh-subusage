@@ -398,6 +398,14 @@ assert.equal(api.providerVisible({ visibility: preferences({}, false) }, ids[0],
 assert.equal(api.providerVisible({ visibility: preferences({ [ids[0]]: false }, false) }, ids[0], entry(ids[0])), false);
 assert.equal(api.providerVisible({ visibility: preferences() }, ids[0], entry(ids[0], 0, { state: "error", apiDetected: true, errorCode: "subusage/auth" })), true);
 assert.equal(api.providerVisible({ visibility: preferences() }, ids[0], entry(ids[0], 0, { state: "error", apiDetected: null, errorCode: "subusage/credentials" })), true);
+{
+	const arkUnknown = { configured: { "arkcli-agent-plan": true, "arkcli-coding-plan": false }, entries: [] };
+	assert.equal(api.providerVisible({ visibility: preferences() }, "arkcli-agent-plan", entry("arkcli-agent-plan"), arkUnknown), true, "订阅未知时保留方舟代表卡");
+	assert.equal(api.providerVisible({ visibility: preferences() }, "arkcli-coding-plan", entry("arkcli-coding-plan"), arkUnknown), false, "订阅未知时不排出其余方舟标签");
+	const arkKnown = { configured: arkUnknown.configured, entries: [{ providerId: "arkcli-agent-plan", subscribed: true }, { providerId: "arkcli-coding-plan", subscribed: true }] };
+	assert.equal(api.providerVisible({ visibility: preferences() }, "arkcli-coding-plan", { ...entry("arkcli-coding-plan"), subscribed: true }, arkKnown), true, "已订阅的 Coding Plan 即使没路由也显示");
+	assert.equal(api.providerVisible({ visibility: preferences({}, false) }, "arkcli-coding-plan", entry("arkcli-coding-plan"), arkUnknown), true, "关掉默认隐藏后订阅未知也显示");
+}
 let controlSnapshot = withPrefs(result([...ids.map(id => entry(id, 20, { apiDetected: id !== ids[1], ...(id === ids[1] ? { state: "no-key" } : {}) })), ...ARK_NO_CREDENTIAL]), preferences({ [ids[3]]: false }));
 const controlPatches = [], controlRefreshes = [];
 const controlStore = { ...uiStore, getSnapshot: () => controlSnapshot, readAll: async () => controlSnapshot, refresh: async (ids) => { controlRefreshes.push(ids); return controlSnapshot; }, save: async patch => {
@@ -419,13 +427,13 @@ assert(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick({ preventDefault() {} }); tree = ch.render(api.SubusageSection, cp);
 const kimiEditor = nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[1]}`);
 assert.equal(kimiEditor.props.open, true); assert(nodes(kimiEditor).some(n => n.props.role === "group"), "自动隐藏项可在本行编辑凭据");
-assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"] === "Z.ai Coding (CN)"), "展开隐藏厂商不会切换上方用量");
+assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"] === "Z.ai Coding（中国）"), "展开隐藏厂商不会切换上方用量");
 assert(!nodes(nodes(tree).find(n => n.props.role === "tabpanel")).some(n => n.type === "fieldset" || n.type === "input"), "上方详情只展示用量");
 assert(!nodes(tree).some(n => n.type === "button" && n.children.includes("配置")), "移除跨区域配置跳转按钮");
 await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax CN").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.providers["minimax-cn"], false); assert.equal(controlPatches.at(-1).expectedRevision, "1");
 assert(!nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-minimax-cn"));
-await nodes(tree).find(n => n.props["aria-label"] === "没有检测到API的默认隐藏").props.onClick(); tree = ch.render(api.SubusageSection, cp);
+await nodes(tree).find(n => n.props["aria-label"] === "没配 Key 或登录的，默认不显示").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.hideWithoutApi, false); assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === `subusage-tab-${ids[1]}`));
 await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax CN").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.providers["minimax-cn"], true); assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), ["minimax-cn"], "手工重新开启立即刷新");
@@ -436,7 +444,7 @@ assert.equal(nodes(kimiEditor).find(n => n.type === "fieldset").props.disabled, 
 const editedKey = nodes(tree).find(n => n.type === "input" && n.props.type === "password"); editedKey.props.onChange({ target: { value: "fixture-inline-draft" } }); tree = ch.render(api.SubusageSection, cp);
 // 切到 MiniMax CN（国际版现为默认关闭，不可见）。
 nodes(tree).find(n => n.props.id === "subusage-tab-minimax-cn").props.onClick(); tree = ch.render(api.SubusageSection, cp);
-assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"] === "MiniMax (CN)"), "用量切换与编辑厂商独立");
+assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"] === "MiniMax（中国）"), "用量切换与编辑厂商独立");
 assert.equal(nodes(tree).find(n => n.type === "input" && n.props.type === "password").props.value, "fixture-inline-draft", "切换用量不丢失行内草稿");
 assert.equal(nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[1]}`).props.open, true);
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 MiniMax").props.onClick({ preventDefault() {} }); tree = ch.render(api.SubusageSection, cp);
@@ -493,9 +501,9 @@ const fh = new Hooks(), fp = { ...props, usageStore: freezeStore };
 tree = fh.render(api.SubusageSection, fp); await flush(); tree = fh.render(api.SubusageSection, fp);
 const freezeRefresh = nodes(tree).find(n => n.type === "button" && n.children.includes("刷新全部")).props.onClick();
 await flush(); tree = fh.render(api.SubusageSection, fp);
-const refreshingButtons = nodes(tree).filter(n => n.type === "button" && n.children.includes("刷新中…"));
-assert.equal(refreshingButtons.length, 2, "刷新中文案落到两个刷新按钮");
-assert(refreshingButtons.every(n => n.props.disabled), "刷新按钮自身禁用");
+assert.equal(nodes(tree).filter(n => n.type === "button" && n.children.includes("正在刷新全部…")).length, 1, "刷新全部进行中只改自己的文案");
+assert(nodes(tree).some(n => n.type === "button" && n.children.includes("刷新当前") && n.props.disabled), "另一枚刷新按钮禁用但不假装自己在刷");
+assert(nodes(tree).filter(n => n.type === "button" && (n.children.includes("正在刷新全部…") || n.children.includes("刷新当前"))).every(n => n.props.disabled), "两枚刷新按钮自身禁用");
 assert(nodes(tree).filter(n => n.props.role === "switch").every(n => !n.props.disabled), "刷新期间其它提供商开关仍可点");
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick({ preventDefault() {} });
 tree = fh.render(api.SubusageSection, fp);

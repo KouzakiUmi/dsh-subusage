@@ -163,6 +163,9 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   assert.ok(flattenNodes(section).some(n => n.props?.["aria-label"] === "建议操作"), "行动条带无障碍名");
   // 正常状态不得出现行动条，否则就是噪音。
   assert.ok(!visibleText(sectionFor({ ...mimoEntry, state: "ok" })).includes("需要登录 MiMo"), "正常状态不打扰");
+  const soon = sectionFor({ ...mimoEntry, state: "ok", cookieExpiresAt: new Date(Date.now() + 90 * 60 * 1000).toISOString(), windows: [{ kind: "sub", percent: 25, status: "ok" }], coverage: "complete", freshness: "fresh" });
+  assert.ok(visibleText(soon).includes("Cookie 即将到期"), "临近到期提示续期，不说需要登录");
+  assert.ok(!visibleText(soon).includes("需要登录 MiMo"), "Cookie 还没失效时不说需要登录");
 }
 // 待处理项排到前面 + 顶部计数变跳转入口。
 {
@@ -222,22 +225,27 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 
   const allOn = { ...settings, visibility: { ...settings.visibility, providers: Object.fromEntries(order.map(id => [id, true])) } };
   const tabs = tabIds(render({ settings: allOn }));
-  // 火山方舟**不按路由收起**：额度走账号级管控面（一组 AK/SK 覆盖名下所有套餐），路由只是推理入口。
-  // 「订了 Coding Plan、却没在 DSH 里配 coding-plan 路由」完全正常，收起它等于凭空少一条有数据的额度。
-  assert.ok(tabs.includes("arkcli-coding-plan"), "没有该路由也要显示 Coding Plan（额度是账号级订阅）");
-  assert.ok(tabs.includes("arkcli-coding-plan-team"), "团队版同理");
-  assert.ok(tabs.includes("arkcli-agent-plan"), "实际持有的 Agent Plan 照常显示");
+  // 订阅结论还没回来时，方舟只留管理区那张代表卡，避免四个「待检测」灰标签。
+  assert.ok(tabs.includes("arkcli-agent-plan"), "订阅未知时保留代表路由");
+  assert.ok(!tabs.includes("arkcli-coding-plan"), "订阅未知时不排出其余方舟标签");
+  assert.ok(!tabs.includes("arkcli-coding-plan-team"), "订阅未知时不排出团队版标签");
   // 其余**按路由取数**的提供商仍按「本机没装这条路由」收起（这里拿 Z.ai 国际版作样本）。
   assert.ok(!tabs.includes("zai-coding"), "按路由取数的提供商仍按路由收起");
-  assert.equal(tabs.length, order.length - 1, `只收起装不上的那一条：${tabs.length} vs ${order.length - 1}`);
-  // 两个套餐**可以共存**（用户明确提醒过）：本机两条路由都在时两条都要显示，不能做成二选一。
-  const both = tabIds(render({ settings: allOn, configured: Object.fromEntries(order.map(id => [id, true])) }));
+  const subscribedEntries = entries.map(e => meta[e.providerId]?.volc ? { ...e, subscribed: e.providerId === "arkcli-agent-plan" || e.providerId === "arkcli-coding-plan" } : e);
+  const afterFetch = tabIds(render({ settings: allOn, entries: subscribedEntries }));
+  assert.ok(afterFetch.includes("arkcli-coding-plan"), "已订阅的 Coding Plan 即使没路由也显示");
+  assert.ok(afterFetch.includes("arkcli-agent-plan"), "已订阅的 Agent Plan 照常显示");
+  assert.ok(!afterFetch.includes("arkcli-coding-plan-team"), "未订阅的团队版收起");
+  // 两个套餐**可以共存**：都已订阅时两条都要显示，不能做成二选一。
+  const bothEntries = entries.map(e => meta[e.providerId]?.volc ? { ...e, subscribed: true } : e);
+  const both = tabIds(render({ settings: allOn, configured: Object.fromEntries(order.map(id => [id, true])), entries: bothEntries }));
   assert.ok(both.includes("arkcli-agent-plan") && both.includes("arkcli-coding-plan"), "Agent Plan 与 Coding Plan 共存时都显示");
-  assert.equal(both.length, order.length, "共存时一条都不收起");
-  // 关掉「没有检测到 API 的默认隐藏」= 用户要看全部，连缺路由的也不再收起。
+  // 关掉「没配 Key 或登录的，默认不显示」= 用户要看全部，连缺路由、订阅未知的也不再收起。
   assert.equal(tabIds(render({ settings: { ...allOn, visibility: { ...allOn.visibility, hideWithoutApi: false } } })).length, order.length, "关掉默认隐藏后连缺路由的也显示");
-  // 拿不到路由表时按「未知」放行：绝不能谎报「全都没装」而把标签清空。
-  assert.equal(tabIds(render({ settings: allOn, configured: undefined })).length, order.length, "路由表未知时不收起任何条目");
+  // 拿不到路由表且订阅未知：仍只留代表卡，不能把四个灰标签全铺出来。
+  const unknownRoutes = tabIds(render({ settings: allOn, configured: undefined }));
+  assert.ok(unknownRoutes.includes("arkcli-agent-plan"), "路由表未知时代表卡仍在");
+  assert.ok(!unknownRoutes.includes("arkcli-coding-plan"), "路由表未知且订阅未知时不排出其余方舟标签");
 
   // 管理列表：已启用的在前，关闭项沉到末尾，组内各自保持既有顺序。
   const listed = flattenNodes(render()).filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("启用 ")).map(n => String(n.props["aria-label"]).slice("启用 ".length));
@@ -253,19 +261,19 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 {
 	// 日配额（50.0K）比 5 小时（10.0K）高是官方口径：这条线只覆盖视觉 / 语音模型与 Harness。
 	const afpWindows = [
-		{ kind: "5h", percent: 2.6, status: "ok", resetsAt: "2026-10-10T01:34:25.000Z", groupLabel: "文本 / 向量模型", detail: { used: 0.2587, limit: 10000, unit: "AFP" } },
-		{ kind: "week", percent: 0.7, status: "ok", resetsAt: "2026-10-12T00:00:00.000Z", groupLabel: "文本 / 向量模型", detail: { used: 0.2587, limit: 35000, unit: "AFP" } },
-		{ kind: "month", percent: 0.3, status: "ok", resetsAt: "2026-11-09T23:59:59.000Z", groupLabel: "文本 / 向量模型", detail: { used: 0.2587, limit: 100000, unit: "AFP" } },
-		{ kind: "day", percent: 0, status: "ok", resetsAt: "2026-10-10T00:00:00.000Z", groupLabel: "视觉 / 语音模型与 Harness", detail: { used: 0, limit: 50000, unit: "AFP" } }
+		{ kind: "5h", percent: 2.6, status: "ok", resetsAt: "2026-10-10T01:34:25.000Z", groupLabel: "afpGroupText", detail: { used: 0.2587, limit: 10000, unit: "AFP" } },
+		{ kind: "week", percent: 0.7, status: "ok", resetsAt: "2026-10-12T00:00:00.000Z", groupLabel: "afpGroupText", detail: { used: 0.2587, limit: 35000, unit: "AFP" } },
+		{ kind: "month", percent: 0.3, status: "ok", resetsAt: "2026-11-09T23:59:59.000Z", groupLabel: "afpGroupText", detail: { used: 0.2587, limit: 100000, unit: "AFP" } },
+		{ kind: "day", percent: 0, status: "ok", resetsAt: "2026-10-10T00:00:00.000Z", groupLabel: "afpGroupVision", detail: { used: 0, limit: 50000, unit: "AFP" } }
 	];
 	const afpEntry = { providerId: "arkcli-agent-plan", label: "ARK Agent Plan", state: "ok", coverage: "complete", freshness: "fresh", windows: afpWindows, extras: [{ kind: "plan", value: "medium" }], lastAttemptAt: "2026-10-09T23:51:45.000Z" };
 	const count = (haystack, needle) => haystack.split(needle).length - 1;
 	const arkPill = renderWrapper("arkcli-agent-plan");
 	stateValues = [{ entry: afpEntry, updatedAt: 0 }, null, null, false, true]; stateIndex = 0;
 	const pillTree = arkPill.type(arkPill.props), pillText = visibleText(pillTree);
-	assert.equal(count(pillText, "文本 / 向量模型"), 1, "同一条额度线的组标题只插一次，不逐行重复");
-	assert.equal(count(pillText, "视觉 / 语音模型与 Harness"), 1, "日限额的适用范围必须标出来");
-	assert.ok(pillText.indexOf("视觉 / 语音模型与 Harness") > pillText.indexOf("文本 / 向量模型"), "分组顺序跟随窗口顺序（日限额在最后）");
+	assert.equal(count(pillText, "afpGroupText"), 1, "同一条额度线的组标题只插一次，不逐行重复");
+	assert.equal(count(pillText, "afpGroupVision"), 1, "日限额的适用范围必须标出来");
+	assert.ok(pillText.indexOf("afpGroupVision") > pillText.indexOf("afpGroupText"), "分组顺序跟随窗口顺序（日限额在最后）");
 	assert.equal(flattenNodes(pillTree).filter(n => n.type === plugin.__test.UsageWindowRow).length, afpWindows.length, "四个窗口各渲染一行");
 
 	// 设置页与弹层共用同一个列表组件：分组不能只在其中一处出现。
@@ -279,7 +287,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 	const afpEntries = [afpEntry, ...otherArk.map(id => ({ providerId: id, label: id, state: "no-key", apiDetected: false, windows: [], extras: [], coverage: "partial", freshness: "unknown" }))];
 	stateValues = ["arkcli-agent-plan"]; stateIndex = 0;
 	const section = plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => ({ settings: afpSettings, configured: afpConfigured, entries: afpEntries }) }, t: (key) => key, getLocale: () => "zh" });
-	assert.ok(visibleText(section).includes("视觉 / 语音模型与 Harness"), "设置页同样标出日限额的适用范围");
+	assert.ok(visibleText(section).includes("afpGroupVision"), "设置页同样标出日限额的适用范围");
 
 	// 明细拆行：首行只放用量与适用范围，次行只放重置时间。
 	const row = plugin.__test.UsageWindowRow({ w: { ...afpWindows[0], resetsAt: "2099-10-10T01:34:25.000Z" }, t: (key) => ({ detailUsed: "已用 {used} / 总计 {limit} {unit}", detailResetIn: "重置于 {time}（还有 {rest}）" })[key] ?? key, getLocale: () => "zh" });
@@ -295,6 +303,12 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 	const emptyBar = flattenNodes(plugin.__test.UsageWindowRow({ w: { kind: "week", percent: 100, status: "rate-limited" }, t: k => k, getLocale: () => "zh" })).find(n => n.props?.role === "progressbar");
 	assert.equal(emptyBar.props["aria-valuenow"], 0, "已达限额进度条为空槽");
 	assert.equal(emptyBar.children[0].props.style.width, "0%");
+	const cascadeRow = plugin.__test.UsageWindowRow({
+		w: { kind: "5h", percent: 1, status: "rate-limited", cascade: true, detail: { blockedBy: ["week"] }, resetsAt: "2099-10-04T18:21:32.000Z" },
+		t: (key) => plugin.__test.zh[key] || key, getLocale: () => "zh"
+	});
+	assert.ok(visibleText(cascadeRow).includes("每周"), "连坐来源用窗口名而不是 [week]");
+	assert.ok(!visibleText(cascadeRow).includes("[week]"), "连坐说明不得泄漏内部 kind");
 }
 // Command Code 自动轮换池健康摘要：三态文案 + 池耗尽时药丸染红。
 {

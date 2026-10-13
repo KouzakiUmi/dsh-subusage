@@ -79,7 +79,7 @@ const AK = "AKLTTestAccessKeyId0000", SK = "TestSecretAccessKey0000000000000000"
 	assert.deepEqual(parsed.windows.map(w => w.kind), ["5h", "week", "month", "day"], "文本 / 向量模型三条在前，日限额单独成组在后");
 	// 官方口径：日限额只在视觉模型、语音模型与 Harness 上生效，与文本模型的三条不是同一条额度线，
 	// 因此两组各自标注影响范围——否则把两条线的配额并排放在一起会被当成一组来比（"日比周还高"）。
-	assert.deepEqual(parsed.windows.map(w => w.groupLabel), ["文本 / 向量模型", "文本 / 向量模型", "文本 / 向量模型", "视觉 / 语音模型与 Harness"], "两条额度线各自成组标注");
+	assert.deepEqual(parsed.windows.map(w => w.groupLabel), ["afpGroupText", "afpGroupText", "afpGroupText", "afpGroupVision"], "两条额度线各自成组标注");
 	assert.equal(parsed.windows[0].percent, 25, "字符串额度算成比例");
 	assert.deepEqual(parsed.windows[0].detail, { used: 12.5, limit: 50, unit: "AFP", scope: "text" }, "绝对值明细");
 	assert.equal(parsed.windows[0].resetsAt, new Date(1778806800000).toISOString(), "ResetTime 是毫秒");
@@ -319,11 +319,11 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 		AFPWeekly: { Quota: "500.0", Used: "150.0", ResetTime: 1779062400000 } }] } });
 	assert.deepEqual(afp.windows.map(w => w.kind), ["5h", "week"], "Quota=0 的窗口不产出");
 	// 席位版与个人版共用同一组 AFP 窗口，两条额度线的分组标注也要一起带上。
-	assert.deepEqual(afp.windows.map(w => w.groupLabel), ["文本 / 向量模型", "文本 / 向量模型"], "席位版同样带额度线分组");
+	assert.deepEqual(afp.windows.map(w => w.groupLabel), ["afpGroupText", "afpGroupText"], "席位版同样带额度线分组");
 	const seatWithDaily = parseVolcSeatAfp({ Result: { SeatAFPUsages: [{ SeatID: "seat-b",
 		AFPFiveHour: { Quota: "10", Used: "1" }, AFPWeekly: { Quota: "20", Used: "2" }, AFPDaily: { Quota: "99", Used: "9" } }] } });
 	assert.deepEqual(seatWithDaily.windows.map(w => w.kind), ["5h", "week", "day"], "席位版的日限额同样排到最后");
-	assert.equal(seatWithDaily.windows.at(-1).groupLabel, "视觉 / 语音模型与 Harness");
+	assert.equal(seatWithDaily.windows.at(-1).groupLabel, "afpGroupVision");
 	assert.equal(afp.windows[0].percent, 25);
 	assert.equal(afp.windows[0].resetsAt, new Date(1778806800000).toISOString(), "ResetTime 是毫秒");
 	assert.equal(afp.plan, "Large");
@@ -434,7 +434,7 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 	// toWindows 会用 windowRow 重新构造窗口对象，最容易在这里丢掉解析器产出的字段；
 	// 丢了不报错，只是分组标题静默消失，所以必须在这一层钉住。
 	assert.deepEqual(entry.windows.map(w => w.groupLabel),
-		["文本 / 向量模型", "文本 / 向量模型", "文本 / 向量模型", "视觉 / 语音模型与 Harness"],
+		["afpGroupText", "afpGroupText", "afpGroupText", "afpGroupVision"],
 		"分组标注经过 Host 装配后仍在（按 provider id 逐条比对）");
 	h.service.dispose();
 	console.log("PASS Host：AFP 两条额度线的分组标注活到 wire");

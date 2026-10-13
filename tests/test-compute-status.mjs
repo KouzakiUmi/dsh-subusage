@@ -115,6 +115,12 @@ assert.ok(computeStatus(entry({ coverage: "partial" }), args()).title.includes("
 	assert.ok(st.short.includes("badgeTight"), "short 带窗口短名 + 档位词");
 	assert.ok(st.sub.includes("statusWorst"), "多窗口依据行标出最紧张窗口");
 }
+{
+	const st = computeStatus(entry({ windows: [w("5h", 40), w("week", 40)] }), args());
+	assert.equal(st.key, "ok");
+	assert.ok(st.sub.includes("statusOnly"), "充足时不说「最紧张」");
+	assert.ok(!st.sub.includes("statusWorst"), "充足的多窗口只用普通依据行");
+}
 assert.equal(computeStatus(entry({ windows: [w("sub", 80)] }), args()).key, "low");
 assert.equal(computeStatus(entry({ windows: [w("sub", 80)] }), args()).color, "#eab308");
 {

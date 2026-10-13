@@ -104,7 +104,7 @@ for (const broken of ["soon", -1, 1.5, null, Number.NaN]) {
 // ── Client：到期档位、药丸与设置页渲染 ──────────────────────────────────────
 const DICT = {
 	restMins: "{n} min", restHours: "{n} h", restDays: "{n} d",
-	pillCookieSoon: "Cookie expires in {rest}", mimoCookieExpired: "Cookie expired",
+	pillCookieSoon: "Cookie expires in {rest}", pillCookieSoonShort: "Cookie expiring", mimoCookieExpired: "Cookie expired", mimoCookieExpiredShort: "Cookie expired",
 	mimoLoginAt: "Signed in {time}", mimoCookieExpiresAt: "Expires {time}",
 	mimoCookieUntracked: "Login time not recorded", mimoCookieTtl: "24h session cookie",
 	pillRemaining: "{p}% left", pillLimited: "Used up", statusNoCookie: "Login required",
@@ -162,18 +162,20 @@ assert.ok(json(calm).includes("75% left"), "余量数字仍在 title / aria-labe
 assert.ok(text(renderPill(quota, true)).includes("Plenty left"), "弹层顶部横幅先给出「额度充足」的结论");
 assert.ok(!json(renderPill({ ...quota, ...inMs(5 * 60 * 60 * 1000) })).includes("Cookie expires in"), "未到提醒窗口不打扰用户");
 const soon = renderPill({ ...quota, ...inMs(90 * 60 * 1000) });
-assert.ok(text(soon).includes("Cookie expires in 2 h"), "即将到期时药丸改显到期提醒");
+assert.ok(text(soon).includes("Cookie expiring"), "即将到期时药丸用短词，避免撑爆输入区");
+assert.ok(!text(soon).includes("Cookie expires in"), "药丸短词不复述完整倒计时");
 assert.ok(json(soon).includes("rgba(234,179,8,.10)"), "临近到期使用黄色提示底色");
 assert.ok(json(soon).includes("rgba(234,179,8,.45)"), "临近到期药丸描边随档位着色");
 const urgent = renderPill({ ...quota, ...inMs(10 * 60 * 1000) });
-assert.ok(text(urgent).includes("Cookie expires in 10 min") && json(urgent).includes("rgba(249,115,22,.10)"), "30 分钟内升级为橙色紧急提示");
+assert.ok(text(urgent).includes("Cookie expiring") && json(urgent).includes("rgba(249,115,22,.10)"), "30 分钟内升级为橙色紧急提示");
+assert.ok(json(urgent).includes("Cookie expires in 10 min"), "完整倒计时仍在 title / aria-label");
 const expired = renderPill({ ...quota, ...inMs(-60 * 1000) });
 assert.ok(text(expired).includes("Cookie expired"), "已过期直接提示重新登录");
 assert.ok(json(expired).includes("rgba(239,68,68,.10)"), "已过期使用红色提示底色");
 const blocked = renderPill({ ...quota, ...inMs(10 * 60 * 1000), windows: [{ kind: "sub", percent: 100, status: "rate-limited" }] });
 assert.ok(text(blocked).includes("Used up") && !text(blocked).includes("Cookie expires in"), "额度已用尽优先于 Cookie 到期提醒");
 const popup = renderPill({ ...quota, ...inMs(90 * 60 * 1000) }, true);
-assert.ok(text(popup).includes("Cookie expires in 2 h") && text(popup).includes("Expires "), "弹层常驻显示剩余时间与到期时刻");
+assert.ok(text(popup).includes("Cookie expires in 1 h") && text(popup).includes("Expires "), "弹层常驻显示剩余时间与到期时刻；90 分钟向下取整为 1 小时，不夸大成 2 小时");
 assert.ok(!text(renderPill(quota, true)).includes("Expires "), "无计时记录时弹层不编造到期时间");
 
 // 倒计时只用于展示：官方接口已判定凭据失效时，主文案必须仍是失败原因，
@@ -195,7 +197,7 @@ const sectionText = (xiaomi) => {
 };
 const soonSection = sectionText({ hasCookie: true, loginAt: iso(T0), expiresAt: inMs(90 * 60 * 1000).cookieExpiresAt });
 assert.ok(soonSection.includes("Signed in "), "设置页显示登录时间");
-assert.ok(soonSection.includes("Cookie expires in 2 h"), "设置页显示剩余生效时间");
+assert.ok(soonSection.includes("Cookie expires in 1 h"), "设置页显示剩余生效时间");
 assert.ok(soonSection.includes("24h session cookie"), "设置页说明 24 小时有效期");
 assert.ok(!sectionText({ hasCookie: false }).includes("Signed in "), "没有 Cookie 时不显示计时");
 assert.ok(sectionText({ hasCookie: true }).includes("Login time not recorded"), "旧版本保存的 Cookie 明确说明未记录登录时间");

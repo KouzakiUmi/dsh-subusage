@@ -206,7 +206,7 @@ assert.equal(api.CommandCodeAccountSwitch({ cc: null, ccState: null, t }), null,
 	assert.equal(tree.type, "details", "账户区折进 details");
 	const summary = flat.find((n) => n.type === "summary");
 	assert.ok(JSON.stringify(summary.children).includes("工作号"), "summary 显示当前账户");
-	assert.ok(JSON.stringify(summary.children).includes("3"), "summary 显示选项数量");
+	assert.ok(JSON.stringify(summary.children).includes("2"), "summary 显示账户数量（不含自动轮换这一项）");
 	assert.equal(flat.find((n) => n.props?.style?.overflowY === "auto")?.props?.style?.maxHeight, 240, "展开后列表限高滚动");
 	// 切换进行中 / 只读时按钮禁用：switchTo 在这种状态下直接返回，可点的按钮只会变成「点了没反应」。
 	const busyButtons = nodes(api.CommandCodeAccountSwitch({ cc, ccState: { ...cc.getSnapshot(), switching: true }, t })).filter((n) => n.type === "button");
@@ -322,7 +322,7 @@ class PillHooks {
 	const annotation = flat.filter((n) => typeof n.type === "string" && n.type === "p" && JSON.stringify(n.children).includes("上方用量"));
 	assert.equal(annotation.length, 1, "自动轮换仍显示用量账户标注");
 	assert.ok(JSON.stringify(annotation[0].children).includes("默认账户"), "自动轮换标注默认账户");
-	assert.ok(JSON.stringify(annotation[0].children).includes("不跟随实际服务账户"), "自动轮换附不跟随说明");
+	assert.ok(JSON.stringify(annotation[0].children).includes("不是正在处理请求的账户"), "自动轮换附不跟随说明");
 	ph.unmount();
 	cc.dispose();
 	const hidden = api.CommandCodeAccountSwitch({ cc: null, ccState: null, t });
