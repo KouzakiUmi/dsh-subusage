@@ -118,24 +118,23 @@ tarball: https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh
 
 ## 截图维护
 
-根目录 [screenshots.json](../screenshots.json) 与 `package.json` 相邻，声明八张仓库内图片，顺序即展示顺序：
+根目录 [screenshots.json](../screenshots.json) 与 `package.json` 相邻，声明五张仓库内图片，顺序即展示顺序：
 
 ```json
 [
   "assets/screenshots/settings-dark.png",
   "assets/screenshots/usage-popover-light.png",
-  "assets/readme/features-light.png",
-  "assets/readme/features-dark.png",
-  "assets/screenshots/paygo-dark.png",
-  "assets/screenshots/account-pool-dark.png",
+  "assets/screenshots/account-pool-expanded-dark.png",
   "assets/screenshots/scoped-quota-dark.png",
   "assets/screenshots/balance-pills-dark.png"
 ]
 ```
 
-第一张展示深色设置页、MiMo 凭据入口及提供商管理；第二张展示浅色 NanoGPT 用量弹层，保留 0.10.11 基础界面预览；第三、四张是 0.13.0 深浅主题三功能特写（额度 / 余额 / 账户池），替换旧药丸状态画廊以遵守 1–8 张限制，旧图继续在 README 技术参考中展示；按量续用与部分能力限制为 0.11.2 的预览，轮换池图在 0.12.0 更新为默认折叠的 40 账户示例。第八张是 0.12.0 的余额单位分级与套餐优先画廊。均执行真实 Client 组件、使用虚构数据并标明离线预览，不代表真实账号验收。
+第一张是深色设置页（订阅用量面板 + Cookie 到期提醒 + 凭据编辑器展开），第二张是浅色 NanoGPT 用量弹层与收起态药丸，第三张是 Command Code 轮换池详情展开后（默认账户额度与池内 40 个账户分开说明），第四张是方舟 Agent Plan 的双额度线分组与能力作用域，第五张是余额单位分级与套餐优先画廊。五张都执行真实 Client 组件、使用虚构数据并标明离线预览，不代表真实账号验收。
 
-更新截图时，用当前组件生成预览并检查布局，复制所选 PNG 到 `assets/screenshots/`，再同步声明和 README。具体生成方法见 [开发说明](development.md#离线浏览器与截图)。不要将 `debug/` 路径写入声明，该目录被 Git 忽略；不要放入真实 Key、Cookie 或账户数据。
+声明上限是 8 张，这里只留能各自说明一项能力的图。[README 首屏](../README.md) 的深浅主题功能特写由 [render-readme-assets.mjs](../scripts/render-readme-assets.mjs) 另行合成，属 README 物料，不作为市场截图声明——它带营销标题与副文案，市场详情页要的是插件本身的界面。
+
+更新截图时跑 `node scripts/render-market-screenshots.mjs`，再同步声明和 README。具体生成方法见 [开发说明](development.md#离线浏览器与截图)。不要将 `debug/` 路径写入声明，该目录被 Git 忽略；不要放入真实 Key、Cookie 或账户数据。
 
 声明支持 1–8 张图片，相对路径不能以 `/` 开头或包含 `..`。推送图片与声明到本仓库后，已收录条目的后续市场构建可获取更新，无需另交截图 PR。
 

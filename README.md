@@ -455,6 +455,7 @@ foreach ($theme in @('dark', 'light')) {
   }
 }
 node scripts/render-ui-preview.mjs 530 nanogpt light pill
+node scripts/render-market-screenshots.mjs   # 市场截图：真实组件 → 紧凑裁剪 → 3x 密度 → assets/screenshots/
 node scripts/check-browser-runtime.mjs   # 需要工作区可解析 playwright-core 且本机装有 Google Chrome
 ```
 
@@ -464,41 +465,36 @@ node scripts/check-browser-runtime.mjs   # 需要工作区可解析 playwright-c
 
 ### 界面预览
 
-以下为 0.10.11 的离线组件测试截图，使用虚构用量数据，不包含真实账号信息，也不是运行中的 DSH 截图。
+以下为 0.13.3 的离线组件测试截图，使用虚构用量数据，不包含真实账号信息，也不是运行中的 DSH 截图。全部由 `node scripts/render-market-screenshots.mjs` 从真实组件生成：紧凑裁到内容边界、3x 像素密度，底部保留「非运行中的 DSH 截图」声明。这五张与根目录 [`screenshots.json`](screenshots.json) 的声明一一对应，市场详情页按该文件的顺序展示。
 
-深色设置页：查看订阅用量、管理凭据与提供商。
+深色设置页：订阅用量面板给出当前提供商的结论、进度与 Cookie 到期提醒；下面是提供商管理，凭据编辑器默认展开。
 
 ![深色订阅设置页（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/settings-dark.png)
 
-浅色用量弹层：顶部先给结论（额度充足 / 余量偏低 / 即将用尽…），下面是各窗口的剩余百分比与重置时间。右下角是收起态药丸——每个窗口一根彩条，正常时不写字。
+浅色用量弹层：顶部先给结论（额度充足 / 余量偏低 / 即将用尽…），下面是各窗口的剩余百分比、已用/总计与重置时间。药丸收起时每个窗口一根彩条，正常时不写字。
 
 ![浅色 NanoGPT 用量弹层（离线测试预览）](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/usage-popover-light.png)
 
 <details>
-<summary>查看已发布基础药丸的 15 种状态（虚构数据）</summary>
+<summary>查看轮换池展开后、能力作用域与余额药丸（虚构数据）</summary>
 
-![浅色药丸状态](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/pill-states-light.png)
+默认账户的额度已用尽，但轮换池里还有可用账户——两者分开表达，展开后逐个账户说明是每周还是每月额度触顶。
 
-![深色药丸状态](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/pill-states-dark.png)
+![默认账户限额但轮换池仍可用](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/account-pool-expanded-dark.png)
+
+方舟 Agent Plan 的文本/向量额度与视觉/语音日限额分属两条额度线：日能力池用尽只影响后者，不等于整份套餐不可用。
+
+![日能力池耗尽不等于全部套餐不可用](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/scoped-quota-dark.png)
+
+余额药丸按币种与档位分级，不同厂商的 credits 不互相折算；读取失败显示「数据不完整」，而不是谎报未订阅。
+
+![余额与套餐药丸的档位语义](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/balance-pills-dark.png)
 
 </details>
 
 0.13.0 的功能特写见[功能预览](#功能预览)。
 
-截图声明见根目录 [`screenshots.json`](screenshots.json)。上述四张保留 0.10.11 的基础界面预览；下方三张为 0.11.2 新增语义状态的真实组件离线预览（虚构用量、桩网络、无凭据），底部水印明确标注「非运行中的 DSH 截图」。真实 DSH Loader、实际账号在线接口与多账户映射仍未验收，截图不代表已通过这些检查。
-
-### 新增：额度耗尽与整体续用分开表达
-
-<details>
-<summary>查看 0.11.2 的按量续用、轮换池与部分能力限制（虚构数据）</summary>
-
-![包含额度耗尽但可按量续用](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/paygo-dark.png)
-
-![默认账户限额但轮换池仍可用](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/account-pool-dark.png)
-
-![日能力池耗尽不等于全部套餐不可用](https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/screenshots/scoped-quota-dark.png)
-
-</details>
+真实 DSH Loader、实际账号在线接口与多账户映射仍未验收，截图不代表已通过这些检查。
 
 ## License & security / 许可与安全
 

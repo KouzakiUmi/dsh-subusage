@@ -236,7 +236,13 @@ node scripts/render-ui-preview.mjs 530 arkcli-agent-plan dark pill
 node --input-type=module -e "import {chromium} from 'playwright-core'; import {resolve} from 'node:path'; import {pathToFileURL} from 'node:url'; const b=await chromium.launch({channel:'chrome',headless:true}); try { const p=await b.newPage({viewport:{width:554,height:560},colorScheme:'light'}); await p.route(/^https?:/,r=>r.abort()); await p.goto(pathToFileURL(resolve('debug/ui-preview/settings-530-nanogpt-light-pill.html')).href); await p.screenshot({path:'debug/ui-preview/settings-530-nanogpt-light-pill.png',fullPage:true}); } finally { await b.close(); }"
 ```
 
-预览页面包括布局示意，不完全复刻 DSH 外壳。市场所用设置截图来自 `settings-530-xiaomi-token-plan-cn-dark-credentials.png`，弹层来自 `settings-530-nanogpt-light-pill.png`。人工检查后将 PNG 复制到 `assets/screenshots/` 的相应文件，保留离线标记并同步 [截图声明](../screenshots.json) 与 README。市场只需 GitHub 仓库图片，当前 npm 白名单不包含这些 PNG。
+预览页面包括布局示意，不完全复刻 DSH 外壳。面向市场的截图由专用脚本一次出齐，不再手工复制 PNG：
+
+```console
+node scripts/render-market-screenshots.mjs
+```
+
+它复用真实 Client 组件与虚构数据，只决定「取哪一段、裁到哪、用几倍像素密度」，直接写入 `assets/screenshots/`。两点需要注意：弹层在真实外壳里是相对药丸按钮的绝对定位，脚本先按 [render-readme-assets.mjs](render-readme-assets.mjs) 的既有做法转为静态定位，页面高度才等于内容高度；`page.screenshot({ clip })` 超出视口会被 Chrome 静默截断，所以裁剪区的视口高度必须一次装得下（脚本里有断言）。改完清单后同步 [截图声明](../screenshots.json) 与 README。市场只需 GitHub 仓库图片，当前 npm 白名单不包含这些 PNG。
 
 ### 0.10.11 验证记录：药丸与弹层视觉重设计（离线）
 
