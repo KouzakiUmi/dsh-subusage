@@ -25,7 +25,7 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 ## npm
 
-0.13.2 同步包版本与 Host 标识、用量文案 / 方舟标签 / 弹层高度修复；不更换 0.13.0 的主页图片。以对应版本标签的 Actions 状态、Release 资产和 npm registry 实际结果为发布完成依据；本地测试通过不等于已发布。
+0.13.3 同步包版本与 Host 标识，包含 The X Subscription 的 Grok 用量兼容及 Cursor Pro 接入边界说明；不更换 0.13.0 的主页图片。以对应版本标签的 Actions 状态、Release 资产和 npm registry 实际结果为发布完成依据；本地测试通过不等于已发布。
 
 包名：[dsh-subusage](https://www.npmjs.com/package/dsh-subusage)。`0.7.0` 已于 2026-10-05 发布；后续发布必须使用未发布过的新版本。npm 包与 GitHub 提交快照可能包含不同的文档更新，请分别检查版本与来源。
 

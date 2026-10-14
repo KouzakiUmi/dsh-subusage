@@ -18,7 +18,7 @@
 
 </div>
 
-> **0.13.2**：修正用量文案与标签误导（连坐来源、Cookie 续期、方舟待检测标签、Command Code 默认账户），并限制药丸宽度与弹层高度。发布与本机升级分开；本页图片是虚构数据离线预览，不是实机验收证明。[查看更新记录](docs/changelog.md)。
+> **0.13.3**：明确 The X Subscription 共享周池及 Cursor Pro 接入边界；Grok 入口兼容新套餐名称，缺百分比时保留部分数据，修正 proto3 零余额解析。发布与本机升级分开；本页图片是虚构数据离线预览，不是实机验收证明。[查看更新记录](docs/changelog.md)。
 
 ## 快速开始
 
@@ -150,6 +150,24 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 | Command Code | 月额度 | 提供方插件的凭据链 |
 | SuperGrok | 统一周池 + 加量余额 | 真实 `~/.grok/auth.json` |
 | Codex (ChatGPT) | 主 / 次窗口 + 档位 | 真实 `~/.codex/auth.json`（本插件默认关闭） |
+
+### The X Subscription（新统一订阅）
+
+沿用 `xai-oauth`，设置页入口为 **Grok (X / SuperGrok)**，不新增重复的 Cursor 用量池；额度工具可传 `X Subscription` 或 `grok`。凭据仍由 Grok CLI / dsh-grok-kit 管理，本插件不保存 Cookie 或 API Key。
+
+- [官方套餐](https://docs.x.ai/x-subscription/pricing)：Plus / Premium / Super / Ultra；价格与倍数不用于反推绝对额度。
+- [官方用量规则](https://docs.x.ai/x-subscription/usage-limits)：每个付费席位有一个共享周池，覆盖符合条件的 Grok、Grok Bot 与 Cursor 第一方用量；第三方模型与超额消费使用充值余额。团队周池按席位独立，充值余额共享。
+- 复用 [官方 Grok CLI 计费链](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-shell/src/extensions/billing.rs)：`GET /v1/billing?format=credits` 与 `GET /v1/settings`。百分比、重置日期、套餐名和美元充值余额只取上游字段；不请求购买、合并账号或修改订阅。
+- 代理有时只返回周期和余额，没有 `creditUsagePercent`。此时保留套餐/余额并标记部分数据，**不伪造 0%**，不把按量消费上限当作订阅额度。官方 `Cent` 空对象 `{}` 表示零余额，缺失消息仍为未知。
+- 验证边界：2026-10-14 本机旧 SuperGrok OAuth 身份的两个端点均返回 HTTP 200，已复现缺百分比响应；新套餐四档通过隔离测试，**尚未以已迁移的 The X Subscription 账号或团队工作区实测**。此入口只读取当前登录身份，不提供工作区切换/全团队汇总。
+
+### Cursor Pro 能作为 DSH 模型订阅吗？
+
+**截至 2026-10-14，没有官方支持的直接接入方式。** [Cursor 官方 API 总览](https://cursor.com/docs/api)明确说明，Cloud Agents API 与 SDK 运行的是 Cursor Agent 工作流，不是独立的模型推理或 chat-completions API。因此，Cursor Pro 不能作为通用 API Key / OpenAI-compatible provider 直接供 DSH 自己的 Agent 调用；本插件也不注册模型路由，不新增一个看似可调用的 Cursor provider。
+
+- [Cursor CLI 的 headless 模式](https://cursor.com/docs/cli/headless)可以被外部程序调用，但运行的是 **Cursor 自己的 Agent**，不是把 Pro 模型额度转交给 DSH。CLI / SDK 工具集成是另一种功能，不属于本插件当前范围。
+- 官方 Admin / Analytics API 面向企业团队，不等同于个人 Cursor Pro 的订阅余量接口。本轮不新增个人 Cursor Pro 用量入口；这不表示所有非官方读取方法在技术上均不可行。
+- 保留旧 Cursor Pro 不会自动与 Grok 合并额度；只有迁移到 The X Subscription 后，符合条件的第一方模型用量才进入新订阅的共享周池。Cursor 中第三方模型另用充值余额；共享计费不代表通用模型 API 授权。
 
 ### 未验证
 

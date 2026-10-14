@@ -205,7 +205,7 @@ const uiStore = { getSnapshot: () => uiSnapshot, subscribe: () => () => {}, read
 const uh = new Hooks(), props = { usageStore: uiStore, t, getLocale: () => "zh" };
 tree = uh.render(api.SubusageSection, props);
 let tabs = nodes(tree).filter((n) => n.props.role === "tab");
-assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "SuperGrok", "MiniMax CN", "DeepSeek 账号", "DeepSeek API", "ARK Plan"]);
+assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Grok", "MiniMax CN", "DeepSeek 账号", "DeepSeek API", "ARK Plan"]);
 assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
 assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
 // 设置页卡片数：23 家非 Ark provider + 1 张 Ark 合并卡片（组内 7 条路由） + 1 个「默认隐藏」开关 = 25。

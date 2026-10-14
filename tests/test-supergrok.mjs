@@ -49,7 +49,10 @@ assert.equal(normalizeSuperGrok({ config: { monthlyLimit: { val: 100 }, used: {}
 assert.throws(() => normalizeSuperGrok({ config: { monthlyLimit: { val: 0 }, used: { val: 5 } } }), (e) => e.code === "subusage/response");
 assert.throws(() => normalizeSuperGrok({ config: { used: { val: 5 } } }), (e) => e.code === "subusage/response", "无 percent 且无上限 → 整包无效");
 assert.throws(() => normalizeSuperGrok(billing({ creditUsagePercent: "5" }), settings()), (e) => e.code === "subusage/response");
-assert.throws(() => normalizeSuperGrok(billing({ creditUsagePercent: undefined }), settings()), (e) => e.code === "subusage/response");
+const periodOnly = normalizeSuperGrok(billing({ creditUsagePercent: undefined }), settings());
+assert.deepEqual(periodOnly.windows, [], "未报告百分比不冒充 0%");
+assert.equal(periodOnly.coverage, "partial");
+assert.deepEqual(periodOnly.extras, [{ kind: "plan", value: "SuperGrok" }, { kind: "balance", value: "0.00 USD" }]);
 assert.throws(() => normalizeSuperGrok(null), (e) => e.code === "subusage/response");
 assert.throws(() => normalizeSuperGrok({}), (e) => e.code === "subusage/response");
 
@@ -59,8 +62,21 @@ assert.deepEqual(normalizeSuperGrok(billing({ creditUsagePercent: 1 }, { subscri
 assert.deepEqual(normalizeSuperGrok(billing({ creditUsagePercent: 1 }, { subscription_tier: "  " }), settings("   ")).extras, [{ kind: "balance", value: "0.00 USD" }], "空白套餐名不显示");
 assert.deepEqual(normalizeSuperGrok(billing({ creditUsagePercent: 1, prepaidBalance: { val: 1250 } }), settings()).extras, [{ kind: "plan", value: "SuperGrok" }, { kind: "balance", value: "12.50 USD" }]);
 assert.deepEqual(normalizeSuperGrok(billing({ creditUsagePercent: 1, prepaidBalance: { val: -50 } }), settings()).extras, [{ kind: "plan", value: "SuperGrok" }, { kind: "balance", value: "-0.50 USD" }], "负值余额如实显示，不当作缺失");
-assert.ok(!normalizeSuperGrok(billing({ creditUsagePercent: 1, prepaidBalance: {} }), settings()).extras.some(x => x.kind === "balance"), "{} 零值不显示余额行");
+assert.deepEqual(normalizeSuperGrok(billing({ prepaidBalance: {} }), settings()).extras.at(-1), { kind: "balance", value: "0.00 USD" }, "官方 proto3 Cent 空消息明确代表零余额");
 assert.ok(!normalizeSuperGrok(billing({ creditUsagePercent: 1, prepaidBalance: undefined }), settings()).extras.some(x => x.kind === "balance"), "未报告的余额不冒充 0");
+
+// ── The X Subscription：复用一个共享池，不按产品/套餐倍数虚构额外窗口 ─────
+for (const tier of ["Plus", "Premium", "Super", "Ultra"]) {
+ const data = normalizeSuperGrok(billing({ creditUsagePercent: 42.5, isUnifiedBillingUser: true, prepaidBalance: { val: 1250 }, productUsage: [{ product: "GrokChat", usagePercent: 20 }, { product: "Cursor", usagePercent: 22.5 }] }), settings(tier));
+ assert.equal(data.windows.length, 1);
+ assert.equal(data.windows[0].kind, "week");
+ assert.equal(data.windows[0].percent, 42.5);
+ assert.deepEqual(data.extras, [{ kind: "plan", value: tier }, { kind: "balance", value: "12.50 USD" }]);
+}
+assert.equal(normalizeSuperGrok(billing({ creditUsagePercent: undefined, onDemandCap: { val: 100 }, onDemandUsed: { val: 50 } })).coverage, "partial", "充值支出比例不是订阅比例");
+assert.throws(() => normalizeSuperGrok(billing({ creditUsagePercent: null })), e => e.code === "subusage/response");
+assert.throws(() => normalizeSuperGrok(billing({ creditUsagePercent: undefined, currentPeriod: { type: "USAGE_PERIOD_TYPE_WEEKLY", end: "invalid" } })), e => e.code === "subusage/response");
+assert.ok(!normalizeSuperGrok(billing({ prepaidBalance: { val: "10" } })).extras.some(x => x.kind === "balance"));
 
 // ── 服务路径：共享登录文件解析、请求头、并行拉取、错误映射 ─────────────────
 function harness({ grokText, dshText, respond, stored, grokKit, useDefaultLoader } = {}) {
@@ -99,10 +115,30 @@ function harness({ grokText, dshText, respond, stored, grokKit, useDefaultLoader
 const SLOT = "https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828";
 const grokDoc = (slot = {}) => JSON.stringify({ [SLOT]: { key: "oauth-bearer", user_id: "user-1", refresh_token: "r", auth_mode: "oidc", ...slot } });
 
+const unified = harness({ grokText: grokDoc(), respond: url => url.includes("billing") ? billing({ creditUsagePercent: 23, isUnifiedBillingUser: true, prepaidBalance: { val: 450 } }) : settings("Premium") });
+const unifiedEntry = (await unified.service.refresh({ providerIds: [X], force: true })).entries[0];
+assert.equal(unifiedEntry.state, "ok");
+assert.equal(unifiedEntry.windows.length, 1);
+assert.equal(unifiedEntry.windows[0].percent, 23);
+assert.deepEqual(unifiedEntry.extras, [{ kind: "plan", value: "Premium" }, { kind: "balance", value: "4.50 USD" }]);
+assert.equal(unified.calls.length, 2, "新套餐不重复请求 Cursor 池");
+const aliasEntry = (await unified.service.quota({ providerIds: ["X Subscription"] })).providers;
+assert.equal(aliasEntry.length, 1);
+assert.equal(aliasEntry[0].providerId, X);
+assert.equal(unified.calls.length, 2, "别名命中同一路由缓存");
+unified.service.dispose();
+const omitted = harness({ grokText: grokDoc(), respond: url => url.includes("billing") ? billing({ creditUsagePercent: undefined, isUnifiedBillingUser: true }) : settings("Ultra") });
+const omittedEntry = (await omitted.service.refresh({ providerIds: [X], force: true })).entries[0];
+assert.equal(omittedEntry.state, "ok");
+assert.equal(omittedEntry.coverage, "partial");
+assert.deepEqual(omittedEntry.windows, []);
+assert.deepEqual(omittedEntry.extras, [{ kind: "plan", value: "Ultra" }, { kind: "balance", value: "0.00 USD" }]);
+omitted.service.dispose();
+
 const served = harness({ grokText: grokDoc() });
 const entry = (await served.service.refresh({ providerIds: [X], force: false })).entries[0];
 assert.equal(entry.state, "ok"); assert.equal(entry.keySource, "auth-file");
-assert.equal(entry.label, "SuperGrok"); assert.equal(entry.coverage, "complete");
+assert.equal(entry.label, "Grok (X / SuperGrok)"); assert.equal(entry.coverage, "complete");
 assert.equal(served.calls.length, 2, "billing 与 settings 并行拉取");
 assert.equal(served.calls[0].url, "https://cli-chat-proxy.grok.com/v1/billing?format=credits");
 assert.equal(served.calls[1].url, "https://cli-chat-proxy.grok.com/v1/settings");
