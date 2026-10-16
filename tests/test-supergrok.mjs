@@ -8,11 +8,52 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadHostModule } from "./helpers.mjs";
 
-const { SubUsageService, normalizeSuperGrok, subUsageRemote } = await loadHostModule();
+const { SubUsageService, normalizeSuperGrok, subUsageRemote, parseGrokCreditsGrpcWeb } = await loadHostModule();
 const X = "xai-oauth";
 const GROK_AUTH = join(homedir(), ".grok", "auth.json");
 const DSH_AUTH = join(homedir(), ".dsh", ".xai-oauth-auth.json");
 const PERIOD = { type: "USAGE_PERIOD_TYPE_WEEKLY", start: "2026-10-07T11:18:57.966152+00:00", end: "2026-10-14T11:18:57.966152+00:00" };
+function encodeVarint(n) {
+	const bytes = [];
+	let v = n >>> 0;
+	while (v > 0x7f) { bytes.push((v & 0x7f) | 0x80); v >>>= 7; }
+	bytes.push(v);
+	return Buffer.from(bytes);
+}
+function encodeCreditsGrpcWeb({ percent, start, end }) {
+	const parts = [];
+	if (percent !== undefined) {
+		const f = Buffer.alloc(4);
+		f.writeFloatLE(percent, 0);
+		parts.push(Buffer.from([0x0d]), f);
+	}
+	const ts = (iso, tag) => {
+		if (!iso) return;
+		const seconds = Math.floor(Date.parse(iso) / 1000);
+		const inner = Buffer.concat([Buffer.from([8]), encodeVarint(seconds)]);
+		parts.push(Buffer.from([tag]), encodeVarint(inner.length), inner);
+	};
+	ts(start, 0x22);
+	ts(end, 0x2a);
+	const config = Buffer.concat(parts);
+	const message = Buffer.concat([Buffer.from([0x0a]), encodeVarint(config.length), config]);
+	const header = Buffer.alloc(5);
+	header.writeUInt32BE(message.length, 1);
+	return Buffer.concat([header, message]);
+}
+{
+	const parsed = parseGrokCreditsGrpcWeb(encodeCreditsGrpcWeb({ percent: 40, start: "2026-10-14T03:32:51Z", end: "2026-10-21T03:32:51Z" }));
+	assert.equal(parsed.config.creditUsagePercent, 40);
+	assert.equal(parsed.config.currentPeriod.type, "USAGE_PERIOD_TYPE_WEEKLY");
+	assert.equal(parsed.config.currentPeriod.end, "2026-10-21T03:32:51.000Z");
+	assert.equal(parseGrokCreditsGrpcWeb(new Uint8Array()), undefined);
+	assert.equal(parseGrokCreditsGrpcWeb(Buffer.from([0, 0, 0, 0, 0])), undefined);
+	const startOnly = parseGrokCreditsGrpcWeb(encodeCreditsGrpcWeb({ percent: 12, start: "2026-10-14T03:32:51Z" }));
+	assert.equal(startOnly.config.creditUsagePercent, 12);
+	assert.equal(startOnly.config.currentPeriod.start, "2026-10-14T03:32:51.000Z");
+	assert.equal(startOnly.config.currentPeriod.end, undefined, "缺结束时间不拿开始时间冒充重置");
+	assert.equal(startOnly.config.currentPeriod.type, undefined);
+}
 const billing = (config = {}, extra = {}) => ({ config: { currentPeriod: PERIOD, creditUsagePercent: 1, prepaidBalance: { val: 0 }, ...config }, ...extra });
 const settings = (tier = "SuperGrok") => ({ subscription_tier_display: tier });
 
@@ -107,7 +148,13 @@ function harness({ grokText, dshText, respond, stored, grokKit, useDefaultLoader
 			const value = await response(url, options);
 			if (value instanceof Error) throw value;
 			if (value?.http) return { ok: false, status: value.http, headers: { get: () => value.retryAfter ?? null } };
-			return { ok: true, status: 200, headers: { get: () => null }, text: async () => typeof value === "string" ? value : JSON.stringify(value) };
+			if (value?.grpcWeb) return {
+				ok: true, status: 200,
+				headers: { get: (name) => String(name).toLowerCase() === "content-type" ? "application/grpc-web+proto" : String(name).toLowerCase() === "grpc-status" ? "0" : null },
+				arrayBuffer: async () => value.grpcWeb,
+				text: async () => { throw new Error("not json"); }
+			};
+			return { ok: true, status: 200, headers: { get: () => null }, text: async () => typeof value === "string" ? value : JSON.stringify(value), arrayBuffer: async () => new Uint8Array() };
 		}
 	});
 	return { service, calls, kitCalls, tick: (ms) => now += ms, files };
@@ -335,6 +382,49 @@ const denied = harness({ grokText: grokDoc(), respond: () => ({ http: 401 }) });
 assert.equal((await denied.service.refresh({ providerIds: [X], force: true })).entries[0].errorCode, "subusage/auth");
 const temporary = harness({ grokText: grokDoc(), respond: () => ({ http: 500 }) });
 assert.equal((await temporary.service.refresh({ providerIds: [X], force: true })).entries[0].errorCode, "subusage/http");
+assert.ok(temporary.calls.some(c => String(c.url).includes("GetGrokCreditsConfig")), "HTTP 500 后尝试 gRPC-web 回退");
+assert.ok(!denied.calls.some(c => String(c.url).includes("GetGrokCreditsConfig")), "401 不走 gRPC 回退");
+const clientError = harness({ grokText: grokDoc(), respond: () => ({ http: 400 }) });
+assert.equal((await clientError.service.refresh({ providerIds: [X], force: true })).entries[0].errorCode, "subusage/http");
+assert.ok(!clientError.calls.some(c => String(c.url).includes("GetGrokCreditsConfig")), "HTTP 400 不回退");
+clientError.service.dispose();
+{
+	const grpcBody = encodeCreditsGrpcWeb({ percent: 40, start: "2026-10-14T03:32:51Z", end: "2026-10-21T03:32:51Z" });
+	const grpc = harness({
+		grokText: grokDoc(),
+		respond: (url) => {
+			if (String(url).includes("GetGrokCreditsConfig")) return { grpcWeb: grpcBody };
+			if (String(url).includes("billing")) return { http: 500 };
+			return settings("SuperGrok");
+		}
+	});
+	const grpcEntry = (await grpc.service.refresh({ providerIds: [X], force: true })).entries[0];
+	assert.equal(grpcEntry.state, "ok", "credits 500 时 gRPC-web 恢复周池");
+	assert.equal(grpcEntry.windows[0].percent, 40);
+	assert.equal(grpcEntry.windows[0].kind, "week");
+	assert.equal(grpcEntry.windows[0].resetsAt, "2026-10-21T03:32:51.000Z");
+	assert.deepEqual(grpcEntry.extras, [{ kind: "plan", value: "SuperGrok" }]);
+	const grpcCall = grpc.calls.find(c => String(c.url) === "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig");
+	assert.equal(grpcCall.options.method, "POST");
+	assert.equal(grpcCall.options.headers.authorization, "Bearer oauth-bearer");
+	assert.equal(grpcCall.options.headers["x-xai-token-auth"], "xai-grok-cli");
+	assert.equal(grpcCall.options.headers["x-grpc-web"], "1");
+	grpc.service.dispose();
+}
+{
+	const unusable = harness({
+		grokText: grokDoc(),
+		respond: (url) => {
+			if (String(url).includes("GetGrokCreditsConfig")) return { grpcWeb: encodeCreditsGrpcWeb({ start: "2026-10-14T03:32:51Z" }) };
+			if (String(url).includes("billing")) return { http: 500 };
+			return settings();
+		}
+	});
+	const unusableEntry = (await unusable.service.refresh({ providerIds: [X], force: true })).entries[0];
+	assert.equal(unusableEntry.errorCode, "subusage/http", "gRPC 可解析但归一化失败时仍报原 REST 错误");
+	assert.match(unusableEntry.error, /HTTP 500/);
+	unusable.service.dispose();
+}
 const badJson = harness({ grokText: grokDoc(), respond: () => "not JSON" });
 assert.equal((await badJson.service.refresh({ providerIds: [X], force: true })).entries[0].errorCode, "subusage/response");
 // TTL 内命中缓存；token 轮换（文件变化）后 fingerprint 变化必须重新拉取。

@@ -32,6 +32,7 @@ jobs:
           node --check lib/client.js
           node --check lib/mimo-login.js
           node --check lib/volcengine.js
+          node --check lib/grok-credits.js
 
       - name: Pack and validate release asset
         run: |

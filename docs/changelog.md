@@ -2,6 +2,12 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.13.4：Grok credits 500 时回退 grok.com gRPC-web
+
+- `GET /v1/billing?format=credits` 在部分 X 订阅迁移账号上会返回 HTTP 500（`Failed to serialize billing response`）。同一 OAuth Bearer 下改为回退 `POST grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`（gRPC-web），恢复周池已用百分比与重置时间。
+- REST 仍是首选；401/403 不回退。gRPC 路径拿不到 prepaidBalance 时不冒充 0 余额。无 format 的旧月度形态（`monthlyLimit: 0`）仍不当作额度。
+- 隔离测试覆盖 gRPC 帧解析、500 回退成功、401 不回退、回退失败仍报告原 HTTP 错误。本轮不安装或重启 DSH。
+
 ## 0.13.3：The X Subscription 与 Cursor Pro 接入边界
 
 - Grok 入口改为 `Grok (X / SuperGrok)`，额度查询增加 `X Subscription` 别名；沿用官方 CLI 计费代理与共享 OAuth 登录链，不新增重复的 Cursor 用量池。

@@ -104,7 +104,7 @@ provider id 必须与注册这些路由的插件**逐字一致**（arkcli 官方
 
 ### SuperGrok 凭据
 
-`xai-oauth` 路由由 dsh-grok-kit 注册。插件读取 Grok CLI / dsh-grok-kit 共享的 OAuth 登录文件（`~/.grok/auth.json`，回退 `~/.dsh/.xai-oauth-auth.json`），不保存凭据；access token 过期时借 dsh-grok-kit（≥0.2.0）的官方登录链（`new XaiOAuthSession().models.getAuth("xai")`）续约并由该链写回同一文件（同一把写锁、compare-and-write，非本插件裸刷），未安装 grok-kit 或续约失败才提示手动重新登录；API Key 路线取不到订阅周池。用量走官方 CLI 的计费代理（`cli-chat-proxy.grok.com`）。
+`xai-oauth` 路由由 dsh-grok-kit 注册。插件读取 Grok CLI / dsh-grok-kit 共享的 OAuth 登录文件（`~/.grok/auth.json`，回退 `~/.dsh/.xai-oauth-auth.json`），不保存凭据；access token 过期时借 dsh-grok-kit（≥0.2.0）的官方登录链（`new XaiOAuthSession().models.getAuth("xai")`）续约并由该链写回同一文件（同一把写锁、compare-and-write，非本插件裸刷），未安装 grok-kit 或续约失败才提示手动重新登录；API Key 路线取不到订阅周池。用量优先走官方 CLI 的计费代理（`cli-chat-proxy.grok.com` 的 `/v1/billing?format=credits`）；该格式在部分统一计费账号上 500 时，用同一 OAuth Bearer 回退 `grok.com` 的 `GetGrokCreditsConfig` gRPC-web。
 
 ### MiMo 登录与 Cookie
 
@@ -158,7 +158,7 @@ Command Code 的凭据由提供方插件 `@mars-sea/dsh-commandcode-provider` �
 | 用途 | 域名 |
 |---|---|
 | 各订阅 / 余额接口 | `api.deepseek.com`、`open.bigmodel.cn`、`api.z.ai`、`api.kimi.com`、`opencode.ai`、`api.siliconflow.cn`、`openrouter.ai`、`api.synthetic.new`、`nano-gpt.com`、`api.novita.ai`、`api.hyperbolic.ai`、`api.deepinfra.com`、`api.chutes.ai`、`ollama.com`、`ai-gateway.vercel.sh`、`zenmux.ai`、`api.minimax.io`、`api.minimaxi.com` |
-| 会话 / 登录文件型 | `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`（Command Code 计费）、`cli-chat-proxy.grok.com`（SuperGrok 计费代理）、`chatgpt.com/backend-api`（Codex 订阅用量） |
+| 会话 / 登录文件型 | `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`（Command Code 计费）、`cli-chat-proxy.grok.com`（SuperGrok 计费代理）、`grok.com`（credits 格式失败时的 GetGrokCreditsConfig gRPC-web）、`chatgpt.com/backend-api`（Codex 订阅用量） |
 | 火山方舟管控面 | `open.volcengineapi.com` |
 | 自建网关 | 用户自填的 LiteLLM proxy 地址（只去掉 `/v1` 这类版本段，其余路径原样保留） |
 | 复用宿主账号请求链 | `deepseek-account`：调用本机 `deepseekAccount` 服务，由 DSH 完成鉴权与余额请求；宿主服务可能按自身配置联网，本插件不另发 HTTP、不复制 token |

@@ -18,7 +18,7 @@
 
 </div>
 
-> **0.13.3**：明确 The X Subscription 共享周池及 Cursor Pro 接入边界；Grok 入口兼容新套餐名称，缺百分比时保留部分数据，修正 proto3 零余额解析。发布与本机升级分开；本页图片是虚构数据离线预览，不是实机验收证明。[查看更新记录](docs/changelog.md)。
+> **0.13.4**：Grok 的 `?format=credits` 在部分 X 订阅迁移账号上会 500；同一 OAuth 回退 grok.com `GetGrokCreditsConfig`，恢复周池百分比。发布与本机升级分开；本页图片是虚构数据离线预览，不是实机验收证明。[查看更新记录](docs/changelog.md)。
 
 ## 快速开始
 
@@ -157,9 +157,9 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 - [官方套餐](https://docs.x.ai/x-subscription/pricing)：Plus / Premium / Super / Ultra；价格与倍数不用于反推绝对额度。
 - [官方用量规则](https://docs.x.ai/x-subscription/usage-limits)：每个付费席位有一个共享周池，覆盖符合条件的 Grok、Grok Bot 与 Cursor 第一方用量；第三方模型与超额消费使用充值余额。团队周池按席位独立，充值余额共享。
-- 复用 [官方 Grok CLI 计费链](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-shell/src/extensions/billing.rs)：`GET /v1/billing?format=credits` 与 `GET /v1/settings`。百分比、重置日期、套餐名和美元充值余额只取上游字段；不请求购买、合并账号或修改订阅。
+- 复用 [官方 Grok CLI 计费链](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-shell/src/extensions/billing.rs)：`GET /v1/billing?format=credits` 与 `GET /v1/settings`。credits 格式 500 时，同一 OAuth Bearer 回退 `POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`（gRPC-web）读取周池百分比。百分比、重置日期、套餐名和美元充值余额只取上游字段；不请求购买、合并账号或修改订阅。
 - 代理有时只返回周期和余额，没有 `creditUsagePercent`。此时保留套餐/余额并标记部分数据，**不伪造 0%**，不把按量消费上限当作订阅额度。官方 `Cent` 空对象 `{}` 表示零余额，缺失消息仍为未知。
-- 验证边界：2026-10-14 本机旧 SuperGrok OAuth 身份的两个端点均返回 HTTP 200，已复现缺百分比响应；新套餐四档通过隔离测试，**尚未以已迁移的 The X Subscription 账号或团队工作区实测**。此入口只读取当前登录身份，不提供工作区切换/全团队汇总。
+- 验证边界：2026-10-16 已迁移账号上 REST `?format=credits` 持续 500，无 format 的旧月度形态 `monthlyLimit: 0` 不能当额度；同一凭据的 grok.com gRPC-web 返回周池百分比。新套餐四档与 gRPC 回退有隔离测试。此入口只读取当前登录身份，不提供工作区切换/全团队汇总。gRPC 回退拿不到 prepaidBalance 时不显示 0 余额。
 
 ### Cursor Pro 能作为 DSH 模型订阅吗？
 
@@ -343,7 +343,7 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 | `~/.grok/auth.json`（回退 `~/.dsh/.xai-oauth-auth.json`） | Grok CLI / dsh-grok-kit 的 OAuth 登录 | 平时只读；过期时经 grok-kit 官方链续约并写回同一文件，不自行裸刷 |
 | `~/.commandcode/auth.json` | Command Code CLI（`cmd login`）的 Key | **只读**兜底 |
 
-**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`chatgpt.com/backend-api`、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#网络端点)。**`deepseek-account` 不自行发起 HTTP 请求**——它复用 DSH 的 `deepseekAccount` 服务，由宿主完成鉴权与余额请求（宿主服务可能按自身配置联网）；本插件不读取、导出或保存 OAuth token。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
+**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`grok.com`（仅 Grok credits 回退）、`chatgpt.com/backend-api`、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#网络端点)。**`deepseek-account` 不自行发起 HTTP 请求**——它复用 DSH 的 `deepseekAccount` 服务，由宿主完成鉴权与余额请求（宿主服务可能按自身配置联网）；本插件不读取、导出或保存 OAuth token。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
 
 **命令、进程与安装期行为**
 
