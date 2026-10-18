@@ -36,7 +36,7 @@ function harness(options = {}) {
  const service = new SubUsageService({ effect() {}, get() {}, llm: { listProviders: () => [] } }, {
   io, configPath: "dummy/config", resolveCredentials: async () => undefined, resolveEnvironment: () => undefined,
   fetch: async (url, init) => { calls++; assert.equal(init.headers.cookie, cookie); assert(init.signal); if (options.fetch) return options.fetch(url, init); return { status: http, ok: http === 200, headers: { get: () => null }, text: async () => JSON.stringify(url.endsWith("/balance") ? { data: { balance: "0", currency: "CNY" } } : body) }; },
-  mimoLogin: { pollMs: 1, timeoutMs: 1000, ...options.login, launch: async args => { launches++; assert.deepEqual(args, { channel: "chrome", headless: false }); return options.launch ? options.launch(browser) : browser; } }
+  mimoLogin: { pollMs: 1, timeoutMs: 1000, ...options.login, launch: async args => { launches++; assert.equal(args.channel, "chrome"); assert.equal(args.headless, false); assert.deepEqual(args.ignoreDefaultArgs, ["--enable-automation"]); assert.deepEqual(args.args, ["--disable-blink-features=AutomationControlled"]); return options.launch ? options.launch(browser) : browser; } }
  });
  return { service, browser, events, external(fn) { const stored = JSON.parse(content); fn(stored); content = JSON.stringify(stored); }, revision: () => service.result(service.load(), []).settings.revision, get writes() { return writes; }, get launches() { return launches; }, get closes() { return closes; }, get calls() { return calls; }, setHttp: value => http = value, setCookies: value => suppliedCookies = value };
 }

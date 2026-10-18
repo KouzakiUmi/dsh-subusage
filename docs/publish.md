@@ -25,6 +25,8 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 ## npm
 
+0.14.1 修 OpenDesign 自动登录：Playwright 启动的 Chrome 默认把 `navigator.webdriver` 置为 true，带 Cloudflare 防护的站点在点「验证」时据此判为自动化。启动参数加上 `--disable-blink-features=AutomationControlled`，同步包版本与 Host 标识。以对应版本标签的 Actions 状态、Release 资产和 npm registry 实际结果为发布完成依据；本地测试通过不等于已发布。
+
 0.14.0 新增 OpenDesign 额度与通用 Cookie 登录（第 29 家 provider，默认关闭），`lib/cookie-login.js`、`lib/opendesign-login.js` 进入打包清单与语法检查，同步包版本与 Host 标识。已于 2026-10-18 经 `release.yml` 的 Trusted Publishing 发布：registry 的 latest 已核对为 0.14.0，`v0.14.0` Release 资产与 npm tarball 的 SHA256 一致（`sha256:6e17d871…b7fe4`，147825 字节），主分支自动构建的 `build-5cf3c1fc957f` 保持 latest。首次运行出现的是 `0.10.8` 那类形态而不是传播延迟：`npm publish` 已返回成功结果（带完整 shasum/integrity），但 registry 在六轮可见性窗口内全为 404、latest 仍停在 0.13.4；按「依据只能是 registry」先查 registry 确认未发布，再 `gh run rerun` 重跑同一 run，第二次 `Publish to npm` 转绿后 registry 随即读到 0.14.0。没有改动已发布版本，也没有重新打包。
 
 0.13.4 同步包版本与 Host 标识，Grok credits 500 时回退 grok.com GetGrokCreditsConfig；不更换 0.13.0 的主页图片。以对应版本标签的 Actions 状态、Release 资产和 npm registry 实际结果为发布完成依据；本地测试通过不等于已发布。

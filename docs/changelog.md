@@ -2,6 +2,13 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.14.1：OpenDesign 自动登录去掉自动化自报
+
+- 自动登录弹出的 Chrome 由 Playwright 启动时 `navigator.webdriver` 为 true，OpenDesign 的 Cloudflare 挑战在点「验证」那一刻据此判为自动化并失败。启动参数改为带 `--disable-blink-features=AutomationControlled`，本机实测把该标志从 true 压到 false；`ignoreDefaultArgs: ["--enable-automation"]` 在 playwright-core 1.63 上其实已是空操作（该版本默认参数里没有这条开关），保留只为将来版本加回时兜住。
+- 这是 Playwright 自己 browser 工具在同类场景的做法，不是绕过人机验证：用户仍要在弹出的窗口里亲自完成 Cloudflare 挑战。登录页本身在两种参数下都能正常加载，差别只在那一个标志位。
+- MiMo 与 OpenDesign 共用同一个登录骨架，因此同样带上这两项；其流程只依赖会话 Cookie 与额度接口，不受影响。
+- 未在真实 OpenDesign 账号上验证 Cloudflare 是否放行。自动登录仍失败时可改用「手动导入」粘贴会话 Cookie，那条路径不经过 Playwright。本轮不安装或重启 DSH。
+
 ## 0.14.0：OpenDesign 额度与通用 Cookie 登录
 
 - 新增 OpenDesign（open-design.ai）订阅额度，第 29 家 provider，默认关闭。额度取控制台 `GET /api/v1/workspaces/current/billing/coding-plan-usage`，套餐档位、钱包余额与 `coding_plan` / `wallet` 出资方式分开表达。
