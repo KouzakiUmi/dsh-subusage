@@ -208,8 +208,8 @@ let tabs = nodes(tree).filter((n) => n.props.role === "tab");
 assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Grok", "MiniMax CN", "DeepSeek 账号", "DeepSeek API", "ARK Plan"]);
 assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
 assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
-// 设置页卡片数：23 家非 Ark provider + 1 张 Ark 合并卡片（组内 7 条路由） + 1 个「默认隐藏」开关 = 25。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 26); assert.ok(!textOf(tree).includes("保存设置"));
+// 设置页卡片数：25 家非 Ark provider + 1 张 Ark 合并卡片（组内 4 条路由） + 1 个「默认隐藏」开关 = 27。
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 27); assert.ok(!textOf(tree).includes("保存设置"));
 let focused; tabs[0].props.onKeyDown({ key: "End", preventDefault() {}, currentTarget: { parentElement: { querySelectorAll: () => tabs.map((_, i) => ({ focus() { focused = i; } })) } } });
 assert.equal(focused, ids.length - 1); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids.at(-1));
 // End 键跳到最后一个 tab，其技术信息应显示该 provider 的继承变量名。
@@ -315,12 +315,12 @@ assert.equal(await jobStore.cancelMimoLogin({ jobId: "old" }), null); assert.equ
 assert.equal(jobStore.getSnapshot().settings, null); jobStore.dispose();
 // MiMo hooks：start立即返回pendingUI，2秒串行轮询、cancel jobId、卸载不取消Host job。
 memory.set("dsh-subusage:last-provider", ids[2]);
-let autoSnapshot = result([entry(ids[2])]), autoState = { jobId: null, state: "idle" }, autoStartCalls = 0, autoCancelCalls = 0, autoStatusCalls = 0;
+let autoSnapshot = result([entry(ids[2])]), autoState = { jobId: null, state: "idle", providerId: "xiaomi-token-plan-cn" }, autoStartCalls = 0, autoCancelCalls = 0, autoStatusCalls = 0;
 const autoStartGate = deferred();
 const autoStore = { ...uiStore, getSnapshot: () => autoSnapshot, readAll: async () => autoSnapshot, refresh: async () => autoSnapshot,
   startMimoLogin: (request) => { autoStartCalls++; assert.equal(request.expectedRevision, "1"); return autoStartGate.promise; },
   getMimoLoginStatus: async () => { autoStatusCalls++; return autoState; },
-  cancelMimoLogin: async (request) => { autoCancelCalls++; assert.equal(request.jobId, "UI-job"); return autoState = { jobId: "UI-job", state: "cancelled" }; }
+  cancelMimoLogin: async (request) => { autoCancelCalls++; assert.equal(request.jobId, "UI-job"); return autoState = { jobId: "UI-job", state: "cancelled", providerId: "xiaomi-token-plan-cn" }; }
 };
 const ah = new Hooks(), ap = { ...props, usageStore: autoStore };
 ah.render(api.SubusageSection, ap); await flush(); tree = ah.render(api.SubusageSection, ap);
@@ -330,7 +330,7 @@ await button("登录并自动导入").props.onClick(); assert.equal(autoStartCal
 button("取消编辑").props.onClick(); tree = ah.render(api.SubusageSection, ap);
 const starting = button("登录并自动导入").props.onClick(); tree = ah.render(api.SubusageSection, ap);
 assert.equal(autoStartCalls, 1); assert.ok(textOf(tree).includes("正在启动登录浏览器")); assert.ok(nodes(tree).some((n) => n.type === "progress"));
-autoState = { jobId: "UI-job", state: "waiting" }; autoStartGate.resolve(autoState); await starting; tree = ah.render(api.SubusageSection, ap);
+autoState = { jobId: "UI-job", state: "waiting", providerId: "xiaomi-token-plan-cn" }; autoStartGate.resolve(autoState); await starting; tree = ah.render(api.SubusageSection, ap);
 assert.equal([...timeouts.values()].filter((timer) => timer.ms === 2000).length, 1);
 const loginTimer = [...timeouts.entries()].find(([, timer]) => timer.ms === 2000); timeouts.delete(loginTimer[0]); loginTimer[1].fn(); await flush(); tree = ah.render(api.SubusageSection, ap);
 assert.equal(autoStatusCalls, 2); assert.ok(textOf(tree).includes("请在浏览器中完成登录"));
@@ -420,8 +420,8 @@ const management = tree.children.at(-1);
 assert.equal(management.type, "details", "管理区为设置页末尾的折叠菜单");
 assert.equal(management.props.id, "subusage-provider-management"); assert.notEqual(management.props.open, true, "默认折叠");
 assert.equal(management.children[0].type, "summary"); assert.equal(management.children[0].children[0], "提供商管理");
-// 关闭/隐藏的提供商仍保留管理开关；Ark 的 7 条路由合并成一张卡片，所以是 25 而不是 30。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 26, "所有关闭/隐藏提供商保留管理开关（Ark 组已合并，双 DeepSeek 入口独立）");
+// 关闭/隐藏的提供商仍保留管理开关；Ark 的 4 条路由合并成一张卡片，所以是 27 个开关（29 条 provider − 4 + 1 张合并卡片 + 1 个「默认隐藏」）。
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 27, "所有关闭/隐藏提供商保留管理开关（Ark 组已合并，双 DeepSeek 入口独立）");
 assert.deepEqual(nodes(tree).filter(n => n.props.role === "tab").map(n => n.props.id), ids.filter(id => ![ids[1], ids[3]].includes(id)).map(id => `subusage-tab-${id}`));
 assert(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick({ preventDefault() {} }); tree = ch.render(api.SubusageSection, cp);
@@ -453,9 +453,9 @@ const beforeToggle = controlPatches.length; await nodes(tree).find(n => n.props[
 ch.unmount();
 controlSnapshot = withPrefs(result(controlSnapshot.entries), preferences(Object.fromEntries(ids.map(id => [id, false]))));
 const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSection, cp);
-// 设置页的卡片数：23 家非 Ark provider + 1 张 Ark 合并卡片（组内 7 条路由） + 1 个「默认隐藏」开关 = 25。
+// 设置页的卡片数：25 家非 Ark provider + 1 张 Ark 合并卡片（组内 4 条路由） + 1 个「默认隐藏」开关 = 27。
 // 注意不能写成 ids + defaultOff 再减——那两个列表只覆盖到 Ark 组的一部分成员。
-assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 26);
+assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 27);
 assert.equal(nodes(tree).find(n => n.props.id === "subusage-provider-management").props.open, true, "空状态展开配置入口");
 assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.role === "tabpanel"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick({ preventDefault() {} }); tree = emptyControls.render(api.SubusageSection, cp);

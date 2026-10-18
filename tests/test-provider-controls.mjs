@@ -12,7 +12,7 @@ const ctx = { effect() {}, llm: { listProviders: () => [{ id: Z }] } };
 let service = new SubUsageService(ctx, options);
 let result = await service.read();
 assert.equal(result.settings.visibility.hideWithoutApi, true);
-const DEFAULT_OFF = ["zai-coding", "synthetic", "nanogpt", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "openai-codex"];
+const DEFAULT_OFF = ["zai-coding", "synthetic", "nanogpt", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "opendesign", "openai-codex"];
 // 火山方舟的逐条开关**不是**独立默认值：组开关是唯一真源，成员一律跟随（默认组开启）。
 // 组内每条各存一份的旧形态只在迁移时当输入用，读回后就被归一化掉。
 const ARK_ROUTES = ["arkcli-agent-plan", "arkcli-coding-plan", "arkcli-agent-plan-team", "arkcli-coding-plan-team"];

@@ -33,7 +33,7 @@ try {
 assert(calls.plugins.includes("SubUsageService"), "SubUsageService 已注册");
 assert(calls.typert.length === 1 && calls.typert[0].package === "dsh-subusage", "typert 描述符已注册");
 const ids = (calls.typert[0].invocations || []).map((d) => d.id).sort();
-assert(ids.join(",") === ["read", "refresh", "save", "startMimoLogin", "getMimoLoginStatus", "cancelMimoLogin"].map(method => `dsh-subusage#subUsage/${method}`).sort().join(","), "invocations = read/refresh/save + 三个登录 RPC");
+assert(ids.join(",") === ["read", "refresh", "save", "startMimoLogin", "getMimoLoginStatus", "cancelMimoLogin", "startOpenDesignLogin", "getOpenDesignLoginStatus", "cancelOpenDesignLogin"].map(method => `dsh-subusage#subUsage/${method}`).sort().join(","), "invocations = read/refresh/save + 两家各三个登录 RPC");
 assert(calls.tools.length === 1 && calls.tools[0].name === "subusage_quota", "注册 subusage_quota 工具");
 assert(typeof calls.tools[0].execute === "function" && calls.tools[0].output?.schema?.type === "object", "工具带 execute 与 object 根 schema");
 assert(Object.keys(calls.tools[0].parameters).join(",") === "providers,refresh", "工具参数 = providers / refresh");

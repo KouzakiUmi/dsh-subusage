@@ -41,7 +41,7 @@ function shape(contract) {
   }));
 }
 assert.deepEqual(shape(mounted), shape(host.subUsageRemote), '两端 method、wire、codec 必须一致');
-assert.deepEqual(JSON.parse(JSON.stringify(mounted.descriptors.map(d => d.method).sort())), ['cancelMimoLogin', 'getMimoLoginStatus', 'read', 'refresh', 'save', 'startMimoLogin']);
+assert.deepEqual(JSON.parse(JSON.stringify(mounted.descriptors.map(d => d.method).sort())), ['cancelMimoLogin', 'cancelOpenDesignLogin', 'getMimoLoginStatus', 'getOpenDesignLoginStatus', 'read', 'refresh', 'save', 'startMimoLogin', 'startOpenDesignLogin']);
 const start = host.subUsageRemote.descriptors.find(d => d.method === 'startMimoLogin');
 const cancel = host.subUsageRemote.descriptors.find(d => d.method === 'cancelMimoLogin');
 assert.equal(start.parameters[0].codec.schema.parse({ expectedRevision: 'current-revision' }).expectedRevision, 'current-revision');

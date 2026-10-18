@@ -55,11 +55,11 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 ## 支持什么
 
-**28 条数据入口，新安装默认开启 11 条。** 按使用场景，主要分为：
+**29 条数据入口，新安装默认开启 11 条。** 按使用场景，主要分为：
 
 | 你想看什么 | 代表提供商 |
 |---|---|
-| 订阅窗口与重置时间 | Kimi、MiMo、Codex、SuperGrok、MiniMax、Z.ai、OpenCode Go |
+| 订阅窗口与重置时间 | Kimi、MiMo、Codex、SuperGrok、MiniMax、Z.ai、OpenCode Go、OpenDesign |
 | 账号钱包与 API 余额 | DeepSeek API / 账号、SiliconFlow、Novita、Hyperbolic、DeepInfra |
 | 套餐、余额与多层预算 | Command Code、NanoGPT、OpenRouter、ZenMux、LiteLLM |
 | 账号级套餐与企业席位 | 火山方舟 Agent Plan / Coding Plan |
@@ -97,7 +97,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 ## 支持的数据 / Supported data
 
-共 **28 条 provider id**：新安装**默认开启 11 条、默认关闭 17 条**（数字与清单取自 [`lib/index.js`](lib/index.js) 顶部的 `PROVIDERS`，展示顺序与短名取自 [`lib/client.js`](lib/client.js) 顶部的 `PROVIDER_META` / `PROVIDER_ORDER`）。
+共 **29 条 provider id**：新安装**默认开启 11 条、默认关闭 18 条**（数字与清单取自 [`lib/index.js`](lib/index.js) 顶部的 `PROVIDERS`，展示顺序与短名取自 [`lib/client.js`](lib/client.js) 顶部的 `PROVIDER_META` / `PROVIDER_ORDER`）。
 
 | 提供商 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|---|
@@ -129,6 +129,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 | Vercel AI Gateway | `vercel-ai-gateway` | 余额 | Bearer | 关 |
 | ZenMux | `zenmux` | 5 小时 / 周窗口 + PAYG 余额 | **Management API Key** | 关 |
 | LiteLLM | `litellm` | Key / 用户 / 团队预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
+| OpenDesign | `opendesign` | Design Plan 5 小时 / 7 天窗口 + 钱包余额 | **控制台会话 Cookie**（不是模型调用的 sk- Key） | 关 |
 
 - 各家的**窗口语义、明细字段与单位换算**（例如 ZenMux / Ollama 的 0–1 小数、Novita 的 1/10000 USD、Kimi 随套餐变化的窗口集合）见 [提供商清单与额度语义](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md)。
 - 评估过但**不接入**的厂商与理由见 [提供商覆盖与取舍](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/provider-coverage.md)（含已由用户决策跳过的 Anthropic）。
@@ -173,7 +174,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 其余提供商**只经过桩测试**——响应形态取自公开文档、第三方实现或抓包，**没有在真实账号上跑通过**：
 
-> Z.ai（中国与国际）、OpenCode Go、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、DeepSeek API、DeepSeek 账号、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM，以及火山方舟的**团队版席位**。
+> Z.ai（中国与国际）、OpenCode Go、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、DeepSeek API、DeepSeek 账号、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM、OpenDesign，以及火山方舟的**团队版席位**。
 
 它们可能可用，也可能因为接口变更、字段差异或权限要求而失败。上表也只是既有账号、当时版本的验证记录，不是持续可用性保证。
 
@@ -185,7 +186,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 - **未验证的提供商会随接口变化而失效**（见上一节）。失效时在设置页关掉那一家的检测即可，其余不受影响；欢迎开 issue 帮我们补上。
 - **凭据以明文落盘**：本插件的配置不是加密凭据库；Windows 上真正的访问边界取决于目录 ACL，`chmod` 不能替代它。
 - **火山方舟是账号级读取**：一组 IAM AK/SK 能查到该账号名下**所有**套餐（Agent Plan、Coding Plan、团队席位）。把装了本插件的机器或配置文件交给别人时请注意这一点。
-- **浏览器自动化**：MiMo 的自动登录会启动一个隔离的 Chromium 会话——不点「登录并自动导入」就不会触发。
+- **浏览器自动化**：支持自动登录的提供商（MiMo、OpenDesign）会启动一个隔离的 Chromium 会话——不点「登录并自动导入」就不会触发。
 - **收录不等于安全审计**：无论 DSH STORE 还是 awesome-dsh-plugin，收录只表示满足它们各自的清单规则，都不是对代码的安全审查。
 
 ## Compatibility / 兼容性
@@ -255,7 +256,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 
 - **设置页路径**：设置 → **订阅用量** → 提供商管理。「没有检测到API的默认隐藏」默认开启；首次没有可见条目时管理区自动展开。关闭的提供商仍可配置凭据，只是不会发起用量请求。
 - **凭据从哪来**：每一类凭据的**官网入口、环境变量名与界面填入位置**都写在[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)——包括火山的 IAM AK/SK（子用户还要挂 `ArkReadOnlyAccess` 且不限制到项目）、MiMo 的平台会话 Cookie、以及各家 API Key 的对照表。**注意推理 Key 与额度凭据不通用。**
-- **默认开关策略**：新安装默认开启 11 条、默认关闭 17 条（**Codex 默认关闭**——它的提供方插件自带用量药丸）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
+- **默认开关策略**：新安装默认开启 11 条、默认关闭 18 条（**Codex 默认关闭**——它的提供方插件自带用量药丸）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
 - **火山方舟是一组**：4 条路由共用同一组 IAM AK/SK，所以设置页只呈现**一张卡片、一个开关**（本机已装的第一条路由作为代表，都没装则用第一条），卡片里写明本机实际装了哪几条。这些 provider id 并没有合并——药丸仍按 id 匹配路由。旧插件 `@volcengine/ark-plan-api` 的两个国内路由（`ark-coding-plan-cn` / `ark-agent-plan-cn`）**已移除**：它们与 arkcli 的路由查同一份订阅，并列显示只会让人以为买了两个套餐；装了旧插件的用户，药丸仍按那两个 id 显示同一份数据（入口归并到 arkcli 路由）。
 - **火山方舟不按路由收起**：它的额度走**账号级管控面**，一组 AK/SK 就能查到名下所有套餐（`GetCodingPlanUsage` 与 `GetAFPUsage` 是同一套协议、同一组凭据）。推理路由装没装只影响模型能不能用，**不影响额度能不能查**——所以只持有 Coding Plan、却没在 DSH 里配 coding-plan 路由时，那条额度照样会显示（前提是配了 AK/SK）。
 - **凭据来源优先级**（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；切到自定义（`manual`）模式时只使用保存的手动 Key。界面会区分这三种来源。
@@ -295,6 +296,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | Vercel AI Gateway | `AI_GATEWAY_API_KEY` | 余额型；金额是**十进制字符串** |
 | ZenMux | `ZENMUX_MANAGEMENT_API_KEY` | 额度端点**只认 Management API Key**（推理 key 不适用），所以变量名单独区分。在 <https://zenmux.ai/platform/management> 创建该 key |
 | LiteLLM | `LITELLM_API_KEY` + 代理地址 | 自建网关：除虚拟 Key（**与推理同一把**）还要在凭据区填写自己的 proxy 地址。管理端点在 **proxy 根**——填了 `/v1` 也会被去掉，不会拼成 `/v1/key/info` |
+| OpenDesign | `OPEN_DESIGN_COOKIE`（或在凭据区手填会话 Cookie） | 额度只在**控制台接口**上，鉴权是浏览器登录会话 Cookie——`sk-` 模型 Key 换的是 `amr-link.open-design.ai` 的模型响应，**没有余额端点**。在 open-design.ai 登录后，从 DevTools 的 Network 面板任选一条发往 `amr-api` 的请求，复制整条 Cookie 请求头填入即可；会话失效后重新复制一次 |
 
 按 provider id 的字面映射（补齐上表按语义分组、未逐条列出的 4 条火山路由，逐条对应 `PROVIDERS[id].envName`）：
 
@@ -343,7 +345,7 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 | `~/.grok/auth.json`（回退 `~/.dsh/.xai-oauth-auth.json`） | Grok CLI / dsh-grok-kit 的 OAuth 登录 | 平时只读；过期时经 grok-kit 官方链续约并写回同一文件，不自行裸刷 |
 | `~/.commandcode/auth.json` | Command Code CLI（`cmd login`）的 Key | **只读**兜底 |
 
-**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`grok.com`（仅 Grok credits 回退）、`chatgpt.com/backend-api`、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#网络端点)。**`deepseek-account` 不自行发起 HTTP 请求**——它复用 DSH 的 `deepseekAccount` 服务，由宿主完成鉴权与余额请求（宿主服务可能按自身配置联网）；本插件不读取、导出或保存 OAuth token。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
+**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`grok.com`（仅 Grok credits 回退）、`chatgpt.com/backend-api`、`amr-api.open-design.ai`（OpenDesign 控制台额度）、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#网络端点)。**`deepseek-account` 不自行发起 HTTP 请求**——它复用 DSH 的 `deepseekAccount` 服务，由宿主完成鉴权与余额请求（宿主服务可能按自身配置联网）；本插件不读取、导出或保存 OAuth token。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
 
 **命令、进程与安装期行为**
 
@@ -351,7 +353,7 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 |---|---|
 | 执行外部命令 | **不执行**。没有任何 shell 调用 |
 | 生命周期脚本 | `preinstall` / `install` / `postinstall` / `prepare` **全部没有**；安装期不运行任何代码 |
-| 运行依赖 | `playwright-core`（唯一一个）。只用于可选的 MiMo 自动登录；**不下载浏览器**，用你本机已有的 Chrome/Chromium |
+| 运行依赖 | `playwright-core`（唯一一个）。只用于可选的自动登录（MiMo、OpenDesign）；**不下载浏览器**，用你本机已有的 Chrome/Chromium |
 | 浏览器 | 只有你点「登录并自动导入」时才启动一个**隔离的**临时会话，五分钟未完成自动超时；不读你日常浏览器的配置、Cookie 或 profile |
 | DSH 核心 | 不修改源码树、不碰任何 `@deepseek-ai/*` 包、不遮蔽官方插件清单；只用公开 Host 服务与 `cordis.patch.yml` 插入自己的行 |
 

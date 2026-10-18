@@ -2,6 +2,16 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.14.0：OpenDesign 额度与通用 Cookie 登录
+
+- 新增 OpenDesign（open-design.ai）订阅额度，第 29 家 provider，默认关闭。额度取控制台 `GET /api/v1/workspaces/current/billing/coding-plan-usage`，套餐档位、钱包余额与 `coding_plan` / `wallet` 出资方式分开表达。
+- 该接口只返回 `usedCredits` / `limitCredits` 字符串、不返回百分比，因此先按窗口的 `durationSeconds` 归入 5 小时 / 7 天 / 月度再算已用比例。Go 同时有 5 小时与 7 天两窗，Plus / Pro / Max 只有 7 天窗；窗口缺失按部分数据展示，不当作零额度。
+- 凭据是控制台会话 Cookie，不是模型调用的 `sk-` API Key——后者只对 `amr-link.open-design.ai` 的 `/v1/models` 与 `/v1/chat/completions` 生效，控制面的 `/v1/credits`、`/v1/usage`、`/v1/balance` 等路径一律 404，填 Key 会直接给出提示。
+- 登录方式对齐 MiMo，新增「登录并自动导入」：Playwright 拉起本机 Chrome、隔离上下文轮询 Cookie，先真正调一次额度接口确认生效再落盘。两家共用的流程骨架抽为 `lib/cookie-login.js`，MiMo 的导出与行为不变。
+- OpenDesign 的会话写在 HttpOnly Cookie 上、名字无法枚举，因此按额度接口 URL 取全部未过期 Cookie；登录完成前只拿到 `__cf_bm`、`od_attr` 这类非认证 Cookie 时接口回 401，判为「登录尚未生效」继续等待，绝不落盘。
+- 登录状态按 provider 标记，修掉两家共用同一份状态导致的标签页串台；失效重拉也按各自 provider 走。
+- 未在真实 OpenDesign 账号上验证：本机没有该站登录态，接口契约取自生产前端 bundle 的 Zod schema，属未公开私有接口，字段变化风险已记入 README 未验证清单。本轮不安装或重启 DSH。
+
 ## 0.13.4：Grok credits 500 时回退 grok.com gRPC-web
 
 - `GET /v1/billing?format=credits` 在部分 X 订阅迁移账号上会返回 HTTP 500（`Failed to serialize billing response`）。同一 OAuth Bearer 下改为回退 `POST grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`（gRPC-web），恢复周池已用百分比与重置时间。
