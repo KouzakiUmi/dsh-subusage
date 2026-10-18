@@ -22,10 +22,11 @@ assert.equal(extractOpenDesignCookie([{ ...cookies[0], expires: 1 }]), null, "�
 assert.equal(extractOpenDesignSession([{ ...cookies[0], value: "" }]), null, "空值 Cookie 不算数");
 
 const BODY = {
-	schemaVersion: 1, workspaceId: "ws", workspaceMemberId: "wm", modelId: null,
-	generatedAt: "2026-10-18T08:00:00.000Z", balanceUsd: "5", modelCovered: true, funding: "coding_plan",
-	codingPlan: { workspaceId: "ws", generatedAt: "2026-10-18T08:00:00.000Z", eligible: true, tier: "go", windows: [{ policyId: "p", durationSeconds: 18000, resetMode: "activity_triggered", usedCredits: "10", limitCredits: "100", remainingCredits: "90" }] }
+	workspaceId: "ws-test-1", generatedAt: "2026-10-18T08:00:00.000Z", eligible: true, tier: "go",
+	windows: [{ policyId: "p", durationSeconds: 18000, resetMode: "activity_triggered", usedCredits: "10", limitCredits: "100", remainingCredits: "90", windowStart: "2026-10-18T07:00:00.000Z", resetsAt: "2026-10-18T12:00:00.000Z" }]
 };
+// 额度接口必须带真实 workspaceId，所以先读当前工作区拿 id（见 openDesignWorkspaceId）。
+const CURRENT = { workspaceId: "ws-test-1" };
 function harness(options = {}) {
 	let content = null, writes = 0, launches = 0, closes = 0, calls = 0;
 	let supplied = options.cookies ?? cookies;
@@ -43,7 +44,14 @@ function harness(options = {}) {
 	let http = 200;
 	const service = new SubUsageService({ effect() {}, get() {}, llm: { listProviders: () => [] } }, {
 		io, configPath: "dummy/config", resolveCredentials: async () => undefined, resolveEnvironment: () => undefined,
-		fetch: async (url, init) => { calls++; assert.equal(init.headers.cookie, SESSION, "以 Cookie 头而不是 Bearer 调额度接口"); assert(init.signal); return { status: http, ok: http === 200, headers: { get: () => null }, text: async () => JSON.stringify(BODY) }; },
+		fetch: async (url, init) => {
+			calls++;
+			assert.equal(init.headers.cookie, SESSION, "以 Cookie 头而不是 Bearer 调额度接口");
+			assert(init.signal);
+			if (url.endsWith("/v1/workspaces/current")) return { status: 200, ok: true, headers: { get: () => null }, text: async () => JSON.stringify(CURRENT) };
+			assert.ok(url.endsWith("/v1/workspaces/ws-test-1/billing/coding-plan-usage"), "额度接口必须带真实 workspaceId，不能是 current");
+			return { status: http, ok: http === 200, headers: { get: () => null }, text: async () => JSON.stringify(BODY) };
+		},
 		openDesignLogin: { pollMs: 1, timeoutMs: 1000, ...options.login, launch: async args => { launches++; assert.equal(args.channel, "chrome"); assert.equal(args.headless, false); assert.deepEqual(args.ignoreDefaultArgs, ["--enable-automation"], "向前兼容：1.63 默认参数里没有它，保留以防将来版本加回"); assert.deepEqual(args.args, ["--disable-blink-features=AutomationControlled"], "真正生效的是这条：navigator.webdriver 必须关掉，否则 Cloudflare 在点验证时判负"); return options.launch ? options.launch(browser) : browser; } }
 	});
 	return { service, browser, events, revision: () => service.result(service.load(), []).settings.revision, get writes() { return writes; }, get launches() { return launches; }, get closes() { return closes; }, get calls() { return calls; }, setHttp: v => http = v, setCookies: v => supplied = v };
@@ -93,7 +101,7 @@ const beforeRefresh = cached.calls;
 await cached.service.refresh({ providerIds: [OD], force: false });
 assert.equal(cached.calls, beforeRefresh, "登录后立刻刷新应命中缓存，不再请求");
 await cached.service.refresh({ providerIds: [OD], force: true });
-assert.equal(cached.calls, beforeRefresh + 1, "force 才真的重新请求一次（同时证明开关已生效，上一条不是被 disabled 空过）");
+assert.equal(cached.calls, beforeRefresh + 2, "force 才真的重新请求一次（一次查询＝先取 workspaceId 再读额度，共两次 fetch；同时证明开关已生效，上一条不是被 disabled 空过）");
 cached.service.dispose();
 
 // 6. dispose 必须同时收掉 OpenDesign 登录器。抽取 CookieLogin 时只接了 MiMo，漏掉它就会留一个

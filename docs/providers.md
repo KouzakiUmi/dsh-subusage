@@ -48,7 +48,7 @@
 | Ollama Cloud | session / 周 / 月 | `limits.*.usage` 是 **0–1 小数**；缺层跳过该窗口而不判失败 |
 | ZenMux | 5 小时 / 周滚动窗口 | `usage_percentage` 是 **0–1 小数**，另附 flows 明细与 `resets_at`；有 Management Key 时显示 PAYG 余额。两个端点各拿各的——余额被拒不影响配额；**订阅端点失败时保留余额但标部分数据并写明「套餐状态暂不可确认」，不据此宣称未订阅** |
 | LiteLLM | 独立 Key / User / Team 预算周期 | 各层已用 / 预算、百分比和可用重置；**没有预算上限时不编造百分比**，只如实显示已用金额 |
-| OpenDesign（`opendesign`） | Design Plan 5 小时 / 7 天窗（按套餐下发；plan model credits 无窗、按账期） | 已用 / 上限（credits 整数）与重置时间、档位（Go / Plus / Pro / Max）、钱包余额（美元）。**5 小时窗不是每个套餐都有**，只有 7 天窗不构成缺数据 |
+| OpenDesign（`opendesign`） | Design Plan 5 小时 / 7 天窗（按套餐下发；plan model credits 无窗、按账期） | 已用 / 上限（credits 整数）与重置时间、档位（Go / Plus / Pro / Max）。接口不下发百分比，由 `usedCredits / limitCredits` 算；**没有钱包余额字段**。**5 小时窗不是每个套餐都有**，只有 7 天窗不构成缺数据 |
 
 非公开控制台接口可能变更；缺失或非法百分比不会当作零用量。部分数据、未知额度和暂时失败有明确状态，不能据此保证推理接口一定可用。
 
@@ -137,15 +137,23 @@ provider id 必须与注册这些路由的插件**逐字一致**（arkcli 官方
 
 OpenDesign（open-design.ai，Powerformer）的订阅额度走**控制台接口**（`amr-api.open-design.ai`），鉴权是**浏览器登录会话 Cookie**。它与 `sk-` 开头的模型 API Key 是两套：那把 Key 只换模型响应（`amr-link.open-design.ai` 的 `/v1/models`、`/v1/chat/completions`）；对 `amr-link` 的 `/v1/credits`、`/v1/usage`、`/v1/balance` 等路径做过**无凭据探测**、一律 404，带 Key 时是否另有端点**未验证**，因此本插件不用 `sk-` Key 查额度。
 
-推荐用 **登录并自动导入**（与 MiMo 同一套流程、同一份实现）：设置 → 订阅用量 → 提供商管理 → **OpenDesign** 卡片 → 「登录并自动导入」。插件会开一个独立的临时 Chrome，直达控制台「方案与余额」页，你在那一页自行登录；Host 从该会话取出**对额度接口生效**的全部 Cookie，先真正调一次额度接口验证，通过后才保存。取消、关闭窗口、五分钟未完成或验证不通过都不会写入任何凭据。
+**推荐手动导入**。卡片里的「登录并自动导入」（与 MiMo 同一套流程）在 OpenDesign 上**走不通**：插件启动的临时 Chrome 过不了站点的 Cloudflare 人机验证（2026-10-18 实测，即使已把 `navigator.webdriver` 压成 false 也一样），登录窗口会停在挑战处。该入口保留着，等站点放宽时可用；日常请按下面的手动步骤。
 
-也可以手动导入：在 <https://open-design.ai> 登录后，从 DevTools → Network 任选一条发往 `amr-api` 的请求，复制整条 Cookie 请求头，粘进同一张卡片的凭据框（该输入框在这里的标签就是「会话 Cookie」）；或导出 `OPEN_DESIGN_COOKIE` 环境变量。手动填的值必须含 `=`（形如 `name=value; name2=value2`），否则按「凭据不完整」直接报错，而不是发一次注定 401 的请求。
+手动导入（设置 → 订阅用量 → 提供商管理 → **OpenDesign** 卡片）：
 
-Cookie 落在通用的手动 Key 槽，并把凭据模式切成 manual，不额外记录登录时间。会话失效（接口返回 401）后重新走一次自动登录、或重新复制一次即可。
+1. 在**你自己日常的浏览器**里登录 <https://open-design.ai>，进入「方案与余额」页（`/cloud/dashboard`）。
+2. `F12` 打开 DevTools → **Network** 面板 → 筛 **Fetch/XHR**。
+3. 按 `F5` 刷新，点开状态为 **200** 的 `coding-plan-usage` 请求。
+4. 在 **Headers → Request Headers** 里找到 `cookie:` 这一行，复制**整行值**——它应当包含 `__Secure-better-auth.session_token`，那就是登录态本身。
+5. 粘进卡片里标签为「会话 Cookie」的输入框并保存。保存前会先真调一次额度接口，只有 200 才落盘。
 
-额度语义按官方 [Model credits and usage](https://open-design.ai/model-credits/)：**7 天与 5 小时两个窗只约束 Design Plan 额度**——Go 两个都有，Plus / Pro / Max 只有 7 天窗；plan model credits 不受这两个窗约束、按账期发放与重置，两者共用同一份消费记录。所以窗口集合按接口实际下发的 `durationSeconds` 解析，不从套餐名反推。额度用尽后会按量从钱包扣费，此时额外给一行说明。
+也可以导出 `OPEN_DESIGN_COOKIE` 环境变量。手动填的值必须含 `=`（形如 `name=value; name2=value2`），否则按「凭据不完整」直接报错，而不是发一次注定 401 的请求。
 
-> 这是未公开的控制台私有接口（契约取自线上前端的 Zod schema，`schemaVersion: 1`），官方没有文档承诺，存在变更风险。
+Cookie 落在通用的手动 Key 槽，并把凭据模式切成 manual，不额外记录登录时间。会话失效（接口返回 401）后重新复制一次即可。
+
+额度语义按官方 [Model credits and usage](https://open-design.ai/model-credits/)：**7 天与 5 小时两个窗只约束 Design Plan 额度**——Go 两个都有，Plus / Pro / Max 只有 7 天窗；plan model credits 不受这两个窗约束、按账期发放与重置，两者共用同一份消费记录。所以窗口集合按接口实际下发的 `durationSeconds` 解析，不从套餐名反推。
+
+> 这是未公开的控制台私有接口，契约由 **2026-10-18 真实账号实测**得出（不是从文档或前端 bundle 推的——0.14.0 那次就是推错了才在 0.14.2 改过来）。官方没有文档承诺，存在变更风险。
 
 ### DeepSeek API 与 DeepSeek 账号
 
@@ -173,7 +181,7 @@ Command Code 的凭据由提供方插件 `@mars-sea/dsh-commandcode-provider` �
 | 用途 | 域名 |
 |---|---|
 | 各订阅 / 余额接口 | `api.deepseek.com`、`open.bigmodel.cn`、`api.z.ai`、`api.kimi.com`、`opencode.ai`、`api.siliconflow.cn`、`openrouter.ai`、`api.synthetic.new`、`nano-gpt.com`、`api.novita.ai`、`api.hyperbolic.ai`、`api.deepinfra.com`、`api.chutes.ai`、`ollama.com`、`ai-gateway.vercel.sh`、`zenmux.ai`、`api.minimax.io`、`api.minimaxi.com` |
-| 会话 / 登录文件型 | `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`（Command Code 计费）、`cli-chat-proxy.grok.com`（SuperGrok 计费代理）、`grok.com`（credits 格式失败时的 GetGrokCreditsConfig gRPC-web）、`chatgpt.com/backend-api`（Codex 订阅用量）、`amr-api.open-design.ai`（OpenDesign 控制台额度与钱包余额） |
+| 会话 / 登录文件型 | `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`（Command Code 计费）、`cli-chat-proxy.grok.com`（SuperGrok 计费代理）、`grok.com`（credits 格式失败时的 GetGrokCreditsConfig gRPC-web）、`chatgpt.com/backend-api`（Codex 订阅用量）、`amr-api.open-design.ai`（OpenDesign 控制台额度：先读 `/v1/workspaces/current` 取 workspaceId，再读该工作区的 coding-plan-usage） |
 | 火山方舟管控面 | `open.volcengineapi.com` |
 | 自建网关 | 用户自填的 LiteLLM proxy 地址（只去掉 `/v1` 这类版本段，其余路径原样保留） |
 | 复用宿主账号请求链 | `deepseek-account`：调用本机 `deepseekAccount` 服务，由 DSH 完成鉴权与余额请求；宿主服务可能按自身配置联网，本插件不另发 HTTP、不复制 token |

@@ -168,7 +168,7 @@ Cookie 必须**同时包含** `api-platform_serviceToken` 与 `userId`，否则�
 | NanoGPT | `NANOGPT_API_KEY` | NanoGPT 控制台 |
 | Synthetic | `SYNTHETIC_API_KEY` | Synthetic 控制台 |
 | LiteLLM | `LITELLM_API_KEY` | **你自建的网关**：虚拟 Key + 在设置页填 proxy 地址 |
-| OpenDesign | `OPEN_DESIGN_COOKIE` | 优先点卡片里的「**登录并自动导入**」（与 MiMo 同一套流程）；也可自己在 open-design.ai 登录后，从 DevTools → Network 复制**整条会话 Cookie**（不是 `sk-` 模型 Key——那把 Key 只在模型端点生效，没有额度端点） |
+| OpenDesign | `OPEN_DESIGN_COOKIE` | **手动获取**（「登录并自动导入」会被站点 Cloudflare 挡住）：在自己浏览器登录 open-design.ai → `F12` → Network（筛 Fetch/XHR）→ `F5` 刷新 → 点状态 200 的 `coding-plan-usage` → Headers → Request Headers → 复制 `cookie:` **整行**，粘进卡片里标签为「会话 Cookie」的输入框。要的是会话 Cookie（含 `__Secure-better-auth.session_token`），不是 `sk-` 模型 Key——那把 Key 只在模型端点生效，没有额度端点 |
 
 ---
 

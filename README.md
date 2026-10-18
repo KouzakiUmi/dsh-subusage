@@ -129,7 +129,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 | Vercel AI Gateway | `vercel-ai-gateway` | 余额 | Bearer | 关 |
 | ZenMux | `zenmux` | 5 小时 / 周窗口 + PAYG 余额 | **Management API Key** | 关 |
 | LiteLLM | `litellm` | Key / 用户 / 团队预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
-| OpenDesign | `opendesign` | Design Plan 5 小时 / 7 天窗口 + 钱包余额 | **控制台会话 Cookie**（不是模型调用的 sk- Key） | 关 |
+| OpenDesign | `opendesign` | Design Plan 5 小时 / 7 天窗口（**接口没有余额字段**） | **控制台会话 Cookie**（不是模型调用的 sk- Key） | 关 |
 
 - 各家的**窗口语义、明细字段与单位换算**（例如 ZenMux / Ollama 的 0–1 小数、Novita 的 1/10000 USD、Kimi 随套餐变化的窗口集合）见 [提供商清单与额度语义](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md)。
 - 评估过但**不接入**的厂商与理由见 [提供商覆盖与取舍](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/provider-coverage.md)（含已由用户决策跳过的 Anthropic）。
@@ -186,7 +186,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 - **未验证的提供商会随接口变化而失效**（见上一节）。失效时在设置页关掉那一家的检测即可，其余不受影响；欢迎开 issue 帮我们补上。
 - **凭据以明文落盘**：本插件的配置不是加密凭据库；Windows 上真正的访问边界取决于目录 ACL，`chmod` 不能替代它。
 - **火山方舟是账号级读取**：一组 IAM AK/SK 能查到该账号名下**所有**套餐（Agent Plan、Coding Plan、团队席位）。把装了本插件的机器或配置文件交给别人时请注意这一点。
-- **浏览器自动化**：支持自动登录的提供商（MiMo、OpenDesign）会启动一个隔离的 Chromium 会话——不点「登录并自动导入」就不会触发。
+- **浏览器自动化**：支持自动登录的提供商（MiMo、OpenDesign）会启动一个隔离的 Chromium 会话——不点「登录并自动导入」就不会触发。**OpenDesign 这家会被其 Cloudflare 人机验证挡住，实际请按手动流程复制会话 Cookie**（见凭据表）。
 - **收录不等于安全审计**：无论 DSH STORE 还是 awesome-dsh-plugin，收录只表示满足它们各自的清单规则，都不是对代码的安全审查。
 
 ## Compatibility / 兼容性
@@ -296,7 +296,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | Vercel AI Gateway | `AI_GATEWAY_API_KEY` | 余额型；金额是**十进制字符串** |
 | ZenMux | `ZENMUX_MANAGEMENT_API_KEY` | 额度端点**只认 Management API Key**（推理 key 不适用），所以变量名单独区分。在 <https://zenmux.ai/platform/management> 创建该 key |
 | LiteLLM | `LITELLM_API_KEY` + 代理地址 | 自建网关：除虚拟 Key（**与推理同一把**）还要在凭据区填写自己的 proxy 地址。管理端点在 **proxy 根**——填了 `/v1` 也会被去掉，不会拼成 `/v1/key/info` |
-| OpenDesign | `OPEN_DESIGN_COOKIE`（或在凭据区手填会话 Cookie） | 额度只在**控制台接口**上，鉴权是浏览器登录会话 Cookie——`sk-` 模型 Key 换的是 `amr-link.open-design.ai` 的模型响应，**没有余额端点**。在 open-design.ai 登录后，从 DevTools 的 Network 面板任选一条发往 `amr-api` 的请求，复制整条 Cookie 请求头填入即可；会话失效后重新复制一次 |
+| OpenDesign | `OPEN_DESIGN_COOKIE`（或在凭据区手填会话 Cookie） | 额度只在**控制台接口**上，鉴权是浏览器登录会话 Cookie——`sk-` 模型 Key 换的是 `amr-link.open-design.ai` 的模型响应，**没有额度端点**。**「登录并自动导入」会被站点 Cloudflare 挡住**，请手动取：在自己浏览器登录 open-design.ai → 进入「方案与余额」页 → `F12` → Network（筛 Fetch/XHR）→ `F5` 刷新 → 点状态 200 的 `coding-plan-usage` → Headers → Request Headers → 复制 `cookie:` **整行**（应含 `__Secure-better-auth.session_token`）→ 粘进凭据区保存；会话失效后重新复制一次 |
 
 按 provider id 的字面映射（补齐上表按语义分组、未逐条列出的 4 条火山路由，逐条对应 `PROVIDERS[id].envName`）：
 

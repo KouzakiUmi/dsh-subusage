@@ -2,6 +2,13 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.14.2：OpenDesign 改用实测契约（真实 workspaceId 与扁平响应）
+
+- 0.14.0 的契约是从前端 bundle 的 Zod schema 反推的，实测**两处都错了**：额度接口路径必须带真实 workspaceId（`/v1/workspaces/<id>/billing/coding-plan-usage`；把 `current` 当路径参数会回 403 `workspace_member_required`），响应也是**扁平**的（`tier`、`eligible`、`windows` 在顶层，没有嵌套 `codingPlan`，也没有 `balanceUsd` / `funding`）。
+- 现在先 `GET /v1/workspaces/current` 取 `workspaceId`，再拼额度 URL；id 只放行裸标识符，避免拼出别的路径。解析器改读扁平字段，并相应去掉「钱包余额」与「出资方式」的表达——接口不提供这两项，之前那两个字段是推断出来的，实际不存在。
+- 未订阅仍按「没有窗口也没有档位」判断；认不出的响应一律报 `subusage/response`，不会再说成「确定没有订阅」。
+- 手动导入是本轮唯一验证通过的凭据路径：从自己浏览器的 Network 复制 `cookie:` 整行即可（会话是 better-auth 的 `__Secure-better-auth.session_token`）。Playwright 自动登录在 Cloudflare 挑战处仍会失败——0.14.1 只把 `navigator.webdriver` 压成 false，不足以通过。本轮不安装或重启 DSH。
+
 ## 0.14.1：OpenDesign 自动登录去掉自动化自报
 
 - 自动登录弹出的 Chrome 由 Playwright 启动时 `navigator.webdriver` 为 true，OpenDesign 的 Cloudflare 挑战在点「验证」那一刻据此判为自动化并失败。启动参数改为带 `--disable-blink-features=AutomationControlled`，本机实测把该标志从 true 压到 false；`ignoreDefaultArgs: ["--enable-automation"]` 在 playwright-core 1.63 上其实已是空操作（该版本默认参数里没有这条开关），保留只为将来版本加回时兜住。
