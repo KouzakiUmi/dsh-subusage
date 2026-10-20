@@ -29,6 +29,9 @@ const w = (kind, percent, extra = {}) => ({ kind, percent, status: percent >= 10
 const entry = (over = {}) => ({ state: "ok", coverage: "complete", freshness: "fresh", windows: [], extras: [], ...over });
 const inMs = (ms) => new Date(Date.now() + ms).toISOString();
 
+// OpenDesign 实测：钱包为零不影响独立 Design Plan 周池，不能整家标成不可用。
+assert.equal(computeStatus(entry({ windows: [w("week", 0.1)], extras: [{ kind: "balance", value: "0 USD" }, { kind: "monthly-balance", value: "0 USD" }] }), args({ providerId: "opendesign" })).key, "ok");
+
 // ── 加载 / 关闭 ──────────────────────────────────────────────────────────────
 assert.equal(computeStatus(null, args()).key, "loading");
 assert.equal(computeStatus(null, args()).icon, "…");

@@ -98,16 +98,55 @@ for (const [label, value] of [
 assert.equal(normalizeOpenDesign({ eligible: false }).subscribed, false, "eligible 是布尔就算读到了答案");
 assert.equal(normalizeOpenDesign({ tier: null }).subscribed, false, "tier 明确为 null 也算读到了答案");
 
-// 10. 登记契约：id、默认关闭、Cookie 型继承变量、两步端点，以及用 Cookie 头鉴权。
+// 10. 套餐模型额度与钱包余额：第二个参数是账号级 billing/summary（2026-10-20 实测形态，数值虚构）。
+//     这是**另一个池**，不能因它而改动 Design Plan 窗口，也不能被 Design Plan 窗口的耗尽连带。
+const SUMMARY = {
+	balanceUsd: "16.0000", creditsPerUsd: 10000,
+	balances: { subscriptionCredits: "150000", rechargeCredits: "10000", totalAvailableCredits: "160000" },
+	membershipTier: "plus", subscriptionCurrentPeriodEnd: "2026-11-18T17:09:27.000Z"
+};
+const withPool = normalizeOpenDesign(body({ tier: "plus" }), SUMMARY);
+assert.deepEqual(withPool.windows.map(w => w.kind), ["5h", "week"], "不凭套餐价格推算月池");
+assert.deepEqual(withPool.extras, [{ kind: "plan", value: "Plus" }, { kind: "monthly-balance", value: "15 USD" }, { kind: "balance", value: "16 USD" }]);
+// 没传 summary 时与之前完全一致：不多出窗口，也不补余额。
+const noSummary = normalizeOpenDesign(body({ tier: "plus" }));
+assert.deepEqual(noSummary.windows.map(w => w.kind), ["5h", "week"]);
+assert.deepEqual(noSummary.extras, [{ kind: "plan", value: "Plus" }]);
+
+// 实测耗尽样本：钱包为零，但 Design Plan 周池仍有 99.9% 剩余。
+const zero = normalizeOpenDesign({ eligible: true, tier: "plus", windows: [{ durationSeconds: 604800, usedCredits: "179", limitCredits: "200000", remainingCredits: "199821" }] }, { ...SUMMARY, balanceUsd: "0.0000", balances: { subscriptionCredits: "0", rechargeCredits: "0", totalAvailableCredits: "0" } });
+assert.equal(zero.windows.length, 1);
+assert.equal(zero.windows[0].status, "ok");
+assert.equal(zero.windows[0].percent, 0.1);
+assert.ok(zero.extras.some(e => e.kind === "balance" && e.value === "0 USD"));
+assert.ok(zero.extras.some(e => e.kind === "monthly-balance" && e.value === "0 USD"));
+
+// 10c. 读不懂的汇总一律不报：缺字段、非数字、换算率为 0 都不能编出一个 0 来。
+for (const [label, broken] of [
+	["不是对象", "oops"],
+	["数组", []],
+	["全是未知字段", { foo: 1 }],
+	["额度不是数字", { ...SUMMARY, balances: { subscriptionCredits: "abc" }, balanceUsd: "n/a" }]
+]) {
+	const out = normalizeOpenDesign(body({ tier: "plus" }), broken);
+	assert.ok(!out.windows.some(w => w.kind === "month"), `${label}：不画月池条`);
+	assert.ok(!out.extras.some(e => e.kind === "balance" || e.kind === "monthly-balance"), `${label}：不补余额`);
+}
+// 换算率为 0 只让「credits → 美元」的折算不可用：月池条与剩余量都不能凭空算出来；
+// 但 balanceUsd 是接口直报的美元数，与换算率无关，照常显示。
+const zeroRate = normalizeOpenDesign(body({ tier: "plus" }), { ...SUMMARY, creditsPerUsd: 0 });
+assert.ok(!zeroRate.windows.some(w => w.kind === "month"), "换算率为 0：不画月池条");
+assert.ok(!zeroRate.extras.some(e => e.kind === "monthly-balance"), "换算率为 0：不折算剩余量");
+assert.ok(zeroRate.extras.some(e => e.kind === "balance" && e.value === "16 USD"), "balanceUsd 直报美元，不依赖换算率");
+// 未订阅账号也保留钱包余额：没有套餐不等于没有钱。
+const freeWithWallet = normalizeOpenDesign({ workspaceId: "ws", eligible: false, tier: null, windows: [] }, { balanceUsd: "3.5", creditsPerUsd: 10000, balances: { subscriptionCredits: "0", rechargeCredits: "35000" }, membershipTier: "free" });
+assert.equal(freeWithWallet.subscribed, false);
+assert.ok(freeWithWallet.extras.some(e => e.kind === "balance" && e.value === "3.5 USD"));
+
+// 11. 登记契约：id、默认关闭、Cookie 型继承变量，以及用 Cookie 头鉴权。
 const hostSrc = readFileSync(join(ROOT, "lib", "index.js"), "utf8");
 const clientSrc = readFileSync(join(ROOT, "lib", "client.js"), "utf8");
 assert.ok(/"opendesign": \{ label: "OpenDesign", envName: "OPEN_DESIGN_COOKIE", defaultEnabled: false \}/.test(hostSrc), "Host 清单登记 OpenDesign 且默认关闭");
-const loginSrc = readFileSync(join(ROOT, "lib", "opendesign-login.js"), "utf8");
-assert.ok(loginSrc.includes("https://amr-api.open-design.ai/api"), "控制面 API 基址固定");
-assert.ok(loginSrc.includes("/v1/workspaces/current"), "先读当前工作区拿 workspaceId");
-assert.ok(loginSrc.includes("openDesignUsageUrl"), "额度 URL 由 workspaceId 拼出");
-assert.ok(hostSrc.includes("openDesignUsageUrl(await openDesignWorkspaceId(get, cookie))"), "Host 走两步：先取 workspaceId 再读额度");
-assert.ok(hostSrc.includes("get(OPEN_DESIGN_CURRENT_URL, { cookie })"), "取工作区同样用 Cookie 头，不套通用 Bearer");
 assert.ok(/"opendesign": \{ label: "OpenDesign", short: "OpenDesign", envName: "OPEN_DESIGN_COOKIE", defaultEnabled: false \}/.test(clientSrc), "Client 元数据与 Host 同默认值");
 assert.ok(/"zenmux", "litellm", "opendesign"/.test(clientSrc), "Client 展示顺序包含 OpenDesign");
 

@@ -129,7 +129,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 | Vercel AI Gateway | `vercel-ai-gateway` | 余额 | Bearer | 关 |
 | ZenMux | `zenmux` | 5 小时 / 周窗口 + PAYG 余额 | **Management API Key** | 关 |
 | LiteLLM | `litellm` | Key / 用户 / 团队预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
-| OpenDesign | `opendesign` | Design Plan 5 小时 / 7 天窗口（**接口没有余额字段**） | **控制台会话 Cookie**（不是模型调用的 sk- Key） | 关 |
+| OpenDesign | `opendesign` | Design Plan 5 小时 / 7 天窗口 + 个人钱包余额、订阅额度剩余 | **控制台会话 Cookie**（不是模型调用的 sk- Key） | 关 |
 
 - 各家的**窗口语义、明细字段与单位换算**（例如 ZenMux / Ollama 的 0–1 小数、Novita 的 1/10000 USD、Kimi 随套餐变化的窗口集合）见 [提供商清单与额度语义](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md)。
 - 评估过但**不接入**的厂商与理由见 [提供商覆盖与取舍](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/provider-coverage.md)（含已由用户决策跳过的 Anthropic）。

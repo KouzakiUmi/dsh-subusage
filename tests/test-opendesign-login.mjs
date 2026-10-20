@@ -25,10 +25,17 @@ const BODY = {
 	workspaceId: "ws-test-1", generatedAt: "2026-10-18T08:00:00.000Z", eligible: true, tier: "go",
 	windows: [{ policyId: "p", durationSeconds: 18000, resetMode: "activity_triggered", usedCredits: "10", limitCredits: "100", remainingCredits: "90", windowStart: "2026-10-18T07:00:00.000Z", resetsAt: "2026-10-18T12:00:00.000Z" }]
 };
-// 额度接口必须带真实 workspaceId，所以先读当前工作区拿 id（见 openDesignWorkspaceId）。
+// 额度接口必须带真实 workspaceId，所以先读当前工作区拿 id（见 openDesignWorkspace）。
+// 账号级余额汇总只在个人工作区读，所以夹具默认不带 workspaceType（= 未知，不读汇总）。
 const CURRENT = { workspaceId: "ws-test-1" };
+const SUMMARY = {
+	balanceUsd: "16.0000", creditsPerUsd: 10000,
+	balances: { subscriptionCredits: "150000", rechargeCredits: "10000", totalAvailableCredits: "160000" },
+	membershipTier: "plus", subscriptionCurrentPeriodEnd: "2026-11-18T17:09:27.000Z"
+};
 function harness(options = {}) {
 	let content = null, writes = 0, launches = 0, closes = 0, calls = 0;
+	const urls = [];
 	let supplied = options.cookies ?? cookies;
 	const events = {};
 	const browser = {
@@ -45,16 +52,22 @@ function harness(options = {}) {
 	const service = new SubUsageService({ effect() {}, get() {}, llm: { listProviders: () => [] } }, {
 		io, configPath: "dummy/config", resolveCredentials: async () => undefined, resolveEnvironment: () => undefined,
 		fetch: async (url, init) => {
-			calls++;
+			calls++; urls.push(url);
 			assert.equal(init.headers.cookie, SESSION, "以 Cookie 头而不是 Bearer 调额度接口");
 			assert(init.signal);
-			if (url.endsWith("/v1/workspaces/current")) return { status: 200, ok: true, headers: { get: () => null }, text: async () => JSON.stringify(CURRENT) };
+			if (url.endsWith("/v1/workspaces/current")) return { status: 200, ok: true, headers: { get: () => null }, text: async () => JSON.stringify(options.workspaceType ? { ...CURRENT, workspaceType: options.workspaceType } : CURRENT) };
+			if (url.endsWith("/v1/billing/summary")) {
+				// 余额汇总是账号级接口：失败只能让余额读不到，不能拖垮 Design Plan 窗口。
+				if (options.summary === "fail") return { status: 500, ok: false, headers: { get: () => null }, text: async () => "{}" };
+				return { status: 200, ok: true, headers: { get: () => null }, text: async () => JSON.stringify(SUMMARY) };
+			}
 			assert.ok(url.endsWith("/v1/workspaces/ws-test-1/billing/coding-plan-usage"), "额度接口必须带真实 workspaceId，不能是 current");
-			return { status: http, ok: http === 200, headers: { get: () => null }, text: async () => JSON.stringify(BODY) };
+			const status = options.usageFail ? 500 : http;
+			return { status, ok: status === 200, headers: { get: () => null }, text: async () => JSON.stringify(BODY) };
 		},
 		openDesignLogin: { pollMs: 1, timeoutMs: 1000, ...options.login, launch: async args => { launches++; assert.equal(args.channel, "chrome"); assert.equal(args.headless, false); assert.deepEqual(args.ignoreDefaultArgs, ["--enable-automation"], "向前兼容：1.63 默认参数里没有它，保留以防将来版本加回"); assert.deepEqual(args.args, ["--disable-blink-features=AutomationControlled"], "真正生效的是这条：navigator.webdriver 必须关掉，否则 Cloudflare 在点验证时判负"); return options.launch ? options.launch(browser) : browser; } }
 	});
-	return { service, browser, events, revision: () => service.result(service.load(), []).settings.revision, get writes() { return writes; }, get launches() { return launches; }, get closes() { return closes; }, get calls() { return calls; }, setHttp: v => http = v, setCookies: v => supplied = v };
+	return { service, browser, events, revision: () => service.result(service.load(), []).settings.revision, get writes() { return writes; }, get launches() { return launches; }, get closes() { return closes; }, get calls() { return calls; }, get urls() { return urls; }, setHttp: v => http = v, setCookies: v => supplied = v };
 }
 async function until(h, states) { for (let i = 0; i < 200; i++) { const s = h.service.getOpenDesignLoginStatus(); if (states.includes(s.state)) return s; await delay(2); } throw new Error("stub state did not settle"); }
 
@@ -114,5 +127,50 @@ leaking.service.dispose();
 assert.equal(leaking.service.openDesignLogin.disposed, true, "dispose 必须收掉 OpenDesign 登录器");
 await delay(20);
 assert.equal(leaking.service.getOpenDesignLoginStatus().state, "cancelled", "dispose 后任务转入终态，不再等五分钟超时");
+
+// 7. 两个池的取数：个人工作区同时读额度与账号级汇总；团队工作区不读汇总；汇总失败不拖垮窗口。
+//    直接把 Cookie 填进手动 Key 槽走 refresh，不经登录流程，只验证取数层。
+async function refreshed(options) {
+	const h = harness(options);
+	const rev = h.revision();
+	await h.service.save({ providerId: OD, expectedRevision: rev, keyUpdate: { action: "replace", value: SESSION }, keyMode: "manual" });
+	await h.service.save({ visibility: { providers: { [OD]: true } }, expectedRevision: h.revision() });
+	const out = await h.service.refresh({ providerIds: [OD], force: true });
+	h.service.dispose();
+	return { entry: out.entries.find(e => e.providerId === OD), urls: h.urls };
+}
+const personal = await refreshed({ workspaceType: "personal" });
+assert.equal(personal.entry.state, "ok");
+assert.ok(personal.urls.some(u => u.endsWith("/v1/billing/summary")), "个人工作区读账号级汇总");
+assert.ok(personal.urls.some(u => u.endsWith("/billing/coding-plan-usage")), "额度窗口照常读");
+// BODY 的 tier 是 go：Go 没有套餐模型月总额快照，所以不画月池条，但剩余量与钱包余额照常显示。
+assert.ok(personal.entry.extras.some(e => e.kind === "balance" && e.value === "16 USD"), "钱包余额 = 接口直报的 balanceUsd");
+assert.ok(personal.entry.extras.some(e => e.kind === "monthly-balance" && e.value === "15 USD"), "套餐模型额度剩余 = 订阅额度 ÷ 换算率");
+assert.equal(personal.entry.coverage, "complete");
+
+const team = await refreshed({ workspaceType: "team" });
+assert.ok(!team.urls.some(u => u.endsWith("/v1/billing/summary")), "团队工作区不读汇总：口径没有实测过，不拿它冒充团队余额");
+assert.ok(team.entry.extras.some(e => e.kind === "note" && e.value.includes("团队工作区")), "明说不显示，而不是静默缺一块");
+assert.ok(!team.entry.extras.some(e => e.kind === "balance"));
+assert.equal(team.entry.windows.length, 1, "Design Plan 窗口不受影响");
+
+const unknownType = await refreshed({});
+assert.ok(!unknownType.urls.some(u => u.endsWith("/v1/billing/summary")), "工作区类型读不出来时按保守处理，不读汇总");
+
+// 汇总失败：窗口照常、标 partial、给出原因，且不伪造 0 余额。
+const failed = await refreshed({ workspaceType: "personal", summary: "fail" });
+assert.equal(failed.entry.state, "ok", "汇总失败不让整家失败");
+assert.equal(failed.entry.windows.length, 1, "Design Plan 窗口不受影响");
+assert.equal(failed.entry.coverage, "partial");
+assert.ok(!failed.entry.extras.some(e => e.kind === "balance" || e.kind === "monthly-balance"), "读不到就不报，绝不补 0");
+assert.ok(failed.entry.extras.some(e => e.kind === "note" && e.value.includes("暂不可确认")));
+
+const usageFailed = await refreshed({ workspaceType: "personal", usageFail: true });
+assert.equal(usageFailed.entry.state, "ok", "Design Plan 失败仍保留钱包");
+assert.equal(usageFailed.entry.coverage, "partial");
+assert.equal(usageFailed.entry.windows.length, 0);
+assert.ok(usageFailed.entry.extras.some(e => e.kind === "balance" && e.value === "16 USD"));
+const bothFailed = await refreshed({ workspaceType: "personal", usageFail: true, summary: "fail" });
+assert.equal(bothFailed.entry.state, "error", "两个端点都失败不能冒充成功");
 
 console.log("test-opendesign-login 全部通过 ✅");

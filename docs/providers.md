@@ -48,7 +48,7 @@
 | Ollama Cloud | session / 周 / 月 | `limits.*.usage` 是 **0–1 小数**；缺层跳过该窗口而不判失败 |
 | ZenMux | 5 小时 / 周滚动窗口 | `usage_percentage` 是 **0–1 小数**，另附 flows 明细与 `resets_at`；有 Management Key 时显示 PAYG 余额。两个端点各拿各的——余额被拒不影响配额；**订阅端点失败时保留余额但标部分数据并写明「套餐状态暂不可确认」，不据此宣称未订阅** |
 | LiteLLM | 独立 Key / User / Team 预算周期 | 各层已用 / 预算、百分比和可用重置；**没有预算上限时不编造百分比**，只如实显示已用金额 |
-| OpenDesign（`opendesign`） | Design Plan 5 小时 / 7 天窗（按套餐下发；plan model credits 无窗、按账期） | 已用 / 上限（credits 整数）与重置时间、档位（Go / Plus / Pro / Max）。接口不下发百分比，由 `usedCredits / limitCredits` 算；**没有钱包余额字段**。**5 小时窗不是每个套餐都有**，只有 7 天窗不构成缺数据 |
+| OpenDesign（`opendesign`） | Design Plan 5 小时 / 7 天窗（按套餐下发；plan model credits 无窗、按账期） | 已用 / 上限（credits 整数）与重置时间、档位（Go / Plus / Pro / Max）。窗口接口不下发百分比，由 `usedCredits / limitCredits` 算；个人工作区另读 `/api/v1/billing/summary` 显示钱包合计（订阅 + 充值）及订阅额度剩余。两个端点独立降级，零余额照常显示且不影响 Design Plan 窗口；不按模型倍率或套餐价格推算钱包上限。**5 小时窗不是每个套餐都有**，只有 7 天窗不构成缺数据 |
 
 非公开控制台接口可能变更；缺失或非法百分比不会当作零用量。部分数据、未知额度和暂时失败有明确状态，不能据此保证推理接口一定可用。
 

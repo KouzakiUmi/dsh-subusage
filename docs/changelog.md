@@ -2,6 +2,12 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.14.3：OpenDesign 个人钱包与双额度独立降级
+
+- 个人工作区新增读取 `/api/v1/billing/summary`，显示钱包余额与月订阅额度剩余；复用现有余额展示，不把模型等效金额或扣除倍率当作钱包上限。
+- 钱包与 Design Plan 窗口分别取数，任一失败保留另一端并标记部分数据；两个端点都不可读才报错。团队与未知工作区不使用未经核实的账号级钱包数据。
+- 实测零值场景纳入回归：钱包及订阅/充值余额均为零，Design Plan 周池仍剩约 99.9%；零不当缺失、两池互不级联。不新增推算月度百分比窗口。
+
 ## 0.14.2：OpenDesign 改用实测契约（真实 workspaceId 与扁平响应）
 
 - 0.14.0 的契约是从前端 bundle 的 Zod schema 反推的，实测**两处都错了**：额度接口路径必须带真实 workspaceId（`/v1/workspaces/<id>/billing/coding-plan-usage`；把 `current` 当路径参数会回 403 `workspace_member_required`），响应也是**扁平**的（`tier`、`eligible`、`windows` 在顶层，没有嵌套 `codingPlan`，也没有 `balanceUsd` / `funding`）。
