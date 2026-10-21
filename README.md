@@ -18,7 +18,7 @@
 
 </div>
 
-> **0.14.4**：修复 Grok 官方 App 显示已用 0%，插件却只显示部分数据的问题；缺百分比时补查 consumer gRPC，确认有效当前周期的 proto3 隐式零值。发布与本机升级分开；本页图片是虚构数据离线预览，不是实机验收证明。[查看更新记录](docs/changelog.md)。
+> **0.14.5**：修复 OpenDesign Cookie 失效却显示「数据不完整」的问题；已识别的认证错误明确报告登录/凭据失效，不再被另一额度池的成功结果掩盖。普通网络与服务故障仍独立降级。同步修正默认开关数量、凭据保存流程与实测覆盖说明。发布与本机升级分开；本页图片是虚构数据离线预览，不是实机验收证明。[查看更新记录](docs/changelog.md)。
 
 ## 快速开始
 
@@ -55,7 +55,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 ## 支持什么
 
-**29 条数据入口，新安装默认开启 11 条。** 按使用场景，主要分为：
+**29 条数据入口，新安装默认开启 13 条。** 按使用场景，主要分为：
 
 | 你想看什么 | 代表提供商 |
 |---|---|
@@ -97,7 +97,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 ## 支持的数据 / Supported data
 
-共 **29 条 provider id**：新安装**默认开启 11 条、默认关闭 18 条**（数字与清单取自 [`lib/index.js`](lib/index.js) 顶部的 `PROVIDERS`，展示顺序与短名取自 [`lib/client.js`](lib/client.js) 顶部的 `PROVIDER_META` / `PROVIDER_ORDER`）。
+共 **29 条 provider id**：新安装**有效默认开启 13 条、关闭 16 条**。清单取自 [`lib/index.js`](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 的组归一化为准：Ark 四路共用默认开启的组开关，团队两路也随组开启，不能只统计注册元数据。展示顺序与短名取自 [`lib/client.js`](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
 
 | 提供商 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|---|
@@ -117,8 +117,8 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 | Synthetic | `synthetic` | 滚动订阅池 | Bearer | 关 |
 | NanoGPT | `nanogpt` | 日 / 周配额 + 余额 | Bearer（余额端点用 `x-api-key`） | 关 |
 | MiniMax（国际） | `minimax` | 短周期 / 周 | Bearer | 关 |
-| ARK Agent Plan Team (arkcli) | `arkcli-agent-plan-team` | 席位额度（AFP） | IAM AK/SK 签名 | 关 |
-| ARK Coding Plan Team (arkcli) | `arkcli-coding-plan-team` | 席位额度 | IAM AK/SK 签名 | 关 |
+| ARK Agent Plan Team (arkcli) | `arkcli-agent-plan-team` | 席位额度（AFP） | IAM AK/SK 签名 | 随 Ark 组（默认开） |
+| ARK Coding Plan Team (arkcli) | `arkcli-coding-plan-team` | 席位额度 | IAM AK/SK 签名 | 随 Ark 组（默认开） |
 | SiliconFlow | `siliconflow` | 余额 | Bearer，与推理同一把 Key | 关 |
 | OpenRouter | `openrouter` | 限额窗口 + 余额 | 推理 Key（余额需 management / provisioning key） | 关 |
 | Novita AI | `novita` | 余额 | Bearer | 关 |
@@ -140,7 +140,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 ### 已实测验证
 
-下面这些在**真实账号**上跑通过（本仓库开发机 + 各家的官方 CLI / 插件）：
+下面保留**历史真实账号/接口实测记录**（本仓库开发机 + 各家的官方 CLI / 插件），只覆盖表中列出的范围；不等同于当前版本已安装并通过 GUI 端到端验收。
 
 | 提供商 | 验证范围 | 凭据来源 |
 |---|---|---|
@@ -151,6 +151,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 | Command Code | 月额度 | 提供方插件的凭据链 |
 | SuperGrok | 统一周池 + 加量余额 | 真实 `~/.grok/auth.json` |
 | Codex (ChatGPT) | 主 / 次窗口 + 档位 | 真实 `~/.codex/auth.json`（本插件默认关闭） |
+| OpenDesign | 历史接口实测（2026-10-18 / 20）：真实 workspaceId、Design Plan 扁平窗口、个人钱包/订阅额度剩余及零余额；本次认证失效修复只做隔离回归，未验收当前 GUI | 用户浏览器手动导入的控制台会话 Cookie；自动登录仍受 Cloudflare 阻碍 |
 
 ### The X Subscription（新统一订阅）
 
@@ -174,7 +175,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 其余提供商**只经过桩测试**——响应形态取自公开文档、第三方实现或抓包，**没有在真实账号上跑通过**：
 
-> Z.ai（中国与国际）、OpenCode Go、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、DeepSeek API、DeepSeek 账号、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM、OpenDesign，以及火山方舟的**团队版席位**。
+> Z.ai（中国与国际）、OpenCode Go、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、DeepSeek API、DeepSeek 账号、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM，以及火山方舟的**团队版席位**。
 
 它们可能可用，也可能因为接口变更、字段差异或权限要求而失败。上表也只是既有账号、当时版本的验证记录，不是持续可用性保证。
 
@@ -256,7 +257,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 
 - **设置页路径**：设置 → **订阅用量** → 提供商管理。「没有检测到API的默认隐藏」默认开启；首次没有可见条目时管理区自动展开。关闭的提供商仍可配置凭据，只是不会发起用量请求。
 - **凭据从哪来**：每一类凭据的**官网入口、环境变量名与界面填入位置**都写在[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)——包括火山的 IAM AK/SK（子用户还要挂 `ArkReadOnlyAccess` 且不限制到项目）、MiMo 的平台会话 Cookie、以及各家 API Key 的对照表。**注意推理 Key 与额度凭据不通用。**
-- **默认开关策略**：新安装默认开启 11 条、默认关闭 18 条（**Codex 默认关闭**——它的提供方插件自带用量药丸）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
+- **默认开关策略**：新安装默认开启 13 条、默认关闭 16 条（**Codex 默认关闭**——它的提供方插件自带用量药丸）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
 - **火山方舟是一组**：4 条路由共用同一组 IAM AK/SK，所以设置页只呈现**一张卡片、一个开关**（本机已装的第一条路由作为代表，都没装则用第一条），卡片里写明本机实际装了哪几条。这些 provider id 并没有合并——药丸仍按 id 匹配路由。旧插件 `@volcengine/ark-plan-api` 的两个国内路由（`ark-coding-plan-cn` / `ark-agent-plan-cn`）**已移除**：它们与 arkcli 的路由查同一份订阅，并列显示只会让人以为买了两个套餐；装了旧插件的用户，药丸仍按那两个 id 显示同一份数据（入口归并到 arkcli 路由）。
 - **火山方舟不按路由收起**：它的额度走**账号级管控面**，一组 AK/SK 就能查到名下所有套餐（`GetCodingPlanUsage` 与 `GetAFPUsage` 是同一套协议、同一组凭据）。推理路由装没装只影响模型能不能用，**不影响额度能不能查**——所以只持有 Coding Plan、却没在 DSH 里配 coding-plan 路由时，那条额度照样会显示（前提是配了 AK/SK）。
 - **凭据来源优先级**（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；切到自定义（`manual`）模式时只使用保存的手动 Key。界面会区分这三种来源。
@@ -296,7 +297,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | Vercel AI Gateway | `AI_GATEWAY_API_KEY` | 余额型；金额是**十进制字符串** |
 | ZenMux | `ZENMUX_MANAGEMENT_API_KEY` | 额度端点**只认 Management API Key**（推理 key 不适用），所以变量名单独区分。在 <https://zenmux.ai/platform/management> 创建该 key |
 | LiteLLM | `LITELLM_API_KEY` + 代理地址 | 自建网关：除虚拟 Key（**与推理同一把**）还要在凭据区填写自己的 proxy 地址。管理端点在 **proxy 根**——填了 `/v1` 也会被去掉，不会拼成 `/v1/key/info` |
-| OpenDesign | `OPEN_DESIGN_COOKIE`（或在凭据区手填会话 Cookie） | 额度只在**控制台接口**上，鉴权是浏览器登录会话 Cookie——`sk-` 模型 Key 换的是 `amr-link.open-design.ai` 的模型响应，**没有额度端点**。**「登录并自动导入」会被站点 Cloudflare 挡住**，请手动取：在自己浏览器登录 open-design.ai → 进入「方案与余额」页 → `F12` → Network（筛 Fetch/XHR）→ `F5` 刷新 → 点状态 200 的 `coding-plan-usage` → Headers → Request Headers → 复制 `cookie:` **整行**（应含 `__Secure-better-auth.session_token`）→ 粘进凭据区保存；会话失效后重新复制一次 |
+| OpenDesign | `OPEN_DESIGN_COOKIE`（或在凭据区手填会话 Cookie） | 额度只在**控制台接口**上，鉴权是浏览器登录会话 Cookie——`sk-` 模型 Key 换的是 `amr-link.open-design.ai` 的模型响应，**没有额度端点**。**「登录并自动导入」会被站点 Cloudflare 挡住**，请手动取：在自己浏览器登录 open-design.ai → 进入「方案与余额」页 → `F12` → Network（筛 Fetch/XHR）→ `F5` 刷新 → 点状态 200 的 `coding-plan-usage` → Headers → Request Headers → 复制 `cookie` 字段的**完整值**（不要包含 `cookie:` 字段名，应含 `__Secure-better-auth.session_token`）→ 粘进凭据区先保存、再独立验证；认证失效会明确报告，不当作部分数据，此时重新复制会话 Cookie |
 
 按 provider id 的字面映射（补齐上表按语义分组、未逐条列出的 4 条火山路由，逐条对应 `PROVIDERS[id].envName`）：
 
@@ -412,7 +413,7 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 | 提示「无凭据 / 未检测到 Key」 | 先确认填的是**额度凭据**而不是推理 Key（两者不通用，见[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)），再按该家小节核对来源、环境变量与权限 |
 | 提示「已保存」但仍是「无凭据」 | 凭据编辑要点「**保存设置**」才提交（提供商开关才是立即保存）；确认后若仍为空，把界面文案反馈上来 |
 | 某家读取失败，其他家正常 | 单家失败只影响自己的条目。按文案分类处理：认证类（401 / 凭据被拒）换对应产品与区域的凭据；权限 / 未订阅类（403）检查账号权限与套餐；限流类等待退避后重试 |
-| 显示认证失效 | 检查是否用了对应产品 / 区域的订阅 Key；MiMo 重新登录或导入 Cookie；旧额度不会当作有效数据保留 |
+| 显示认证失效 | 检查是否用了对应产品 / 区域的订阅 Key；MiMo 重新登录或导入 Cookie，OpenDesign 更新控制台会话 Cookie。认证错误不按「部分数据」展示，旧额度不会当作有效数据保留 |
 | MiMo Cookie 过期 | 会话 Cookie 自签发起 24 小时有效。药丸与设置页会在 2 小时内 / 30 分钟内分别变黄、变橙，到期显示「Cookie 已过期，请重新登录」；重新登录或重新导入即重新计时。倒计时只是提醒，真实失效以官方接口返回为准 |
 | 药丸显示「未记录登录时间」 | 凭据由旧版本保存，没有计时元数据；重新登录或重新导入一次后开始计时 |
 | Kimi 缺少 7 天窗口，或提示结构错误 | 窗口集合按套餐体系下发：老套餐（节奏命名，如 Allegro）为 5 小时 + 7 天，新套餐（Go / Plus 命名）为 5 小时 + 月度总额。0.8.3 起按实际下发的窗口解析，不再要求 7 天窗口；升级后仍报 `Invalid Kimi usage response` 即为未识别的字段结构，插件不会猜测额度，可回报该响应 |

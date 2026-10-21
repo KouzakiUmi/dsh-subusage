@@ -57,8 +57,8 @@ function harness(options = {}) {
 			assert(init.signal);
 			if (url.endsWith("/v1/workspaces/current")) return { status: 200, ok: true, headers: { get: () => null }, text: async () => JSON.stringify(options.workspaceType ? { ...CURRENT, workspaceType: options.workspaceType } : CURRENT) };
 			if (url.endsWith("/v1/billing/summary")) {
-				// 余额汇总是账号级接口：失败只能让余额读不到，不能拖垮 Design Plan 窗口。
-				if (options.summary === "fail") return { status: 500, ok: false, headers: { get: () => null }, text: async () => "{}" };
+				// 余额汇总的临时故障仅让余额读不到；认证失败则必须报告登录失效。
+				if (options.summary === "fail" || options.summary === "auth") return { status: options.summary === "auth" ? 401 : 500, ok: false, headers: { get: () => null }, text: async () => "{}" };
 				return { status: 200, ok: true, headers: { get: () => null }, text: async () => JSON.stringify(SUMMARY) };
 			}
 			assert.ok(url.endsWith("/v1/workspaces/ws-test-1/billing/coding-plan-usage"), "额度接口必须带真实 workspaceId，不能是 current");
@@ -94,6 +94,19 @@ await until(auth, ["waiting"]);
 await delay(10);
 assert.equal(auth.writes, 0, "未通过验证绝不落盘");
 auth.service.dispose();
+
+// 3b. 个人工作区双端点：即使另一端成功，任一认证失败都不能提交 Cookie。
+for (const endpoint of ["usage", "summary"]) {
+	const mixed = harness({ workspaceType: "personal", ...(endpoint === "summary" ? { summary: "auth" } : {}) });
+	if (endpoint === "usage") mixed.setHttp(401);
+	try {
+		mixed.service.startOpenDesignLogin({ expectedRevision: mixed.revision() });
+		await until(mixed, ["waiting"]);
+		await delay(10);
+		assert.equal(mixed.writes, 0, `${endpoint} 401：另一端成功也不能保存 Cookie`);
+		assert.equal(mixed.service.getOpenDesignLoginStatus().state, "waiting");
+	} finally { mixed.service.dispose(); }
+}
 
 // 4. 登录完成前只有非认证 Cookie：同样不保存。
 const anonymous = harness({ cookies: [{ name: "__cf_bm", value: "dummy-cf", domain: ".open-design.ai", path: "/", expires: future }] });

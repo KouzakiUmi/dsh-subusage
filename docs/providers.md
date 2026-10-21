@@ -11,7 +11,7 @@
 
 ## 1. 清单与默认开关
 
-29 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）只维护在 [README 的「支持的数据」](../README.md#支持的数据--supported-data) 一处，避免同一份事实在两处漂移：**默认开启 11 条、默认关闭 18 条**（`PROVIDERS[id].defaultEnabled !== false`；Codex 默认关闭是因为它的提供方插件自带用量药丸）。设置页里那 29 条会合并成 **26 张卡片**——火山方舟的 4 条路由共用一个组开关。
+29 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 13 条、关闭 16 条**，以 `defaultSettings()` 和 `parseStored()` 的组归一化结果为准：注册元数据原始为 11 开 / 18 关，但火山方舟的 4 条路由共用默认开启的组开关，团队两条也随组开启，不能只按 `defaultEnabled` 统计有效值。Codex 仍默认关闭，避免与提供方自带药丸重复。设置页里这 29 条合并成 **26 张卡片**；历史已保存开关继续合并，不按新安装数量覆盖。
 
 新增厂商须同时改 `PROVIDERS`、`PROVIDER_META` / `PROVIDER_ORDER`、帮助文案、README 与默认值测试；未获明确需求的新订阅商一律 `defaultEnabled: false`，原有偏好通过存储合并保留。
 
@@ -48,7 +48,7 @@
 | Ollama Cloud | session / 周 / 月 | `limits.*.usage` 是 **0–1 小数**；缺层跳过该窗口而不判失败 |
 | ZenMux | 5 小时 / 周滚动窗口 | `usage_percentage` 是 **0–1 小数**，另附 flows 明细与 `resets_at`；有 Management Key 时显示 PAYG 余额。两个端点各拿各的——余额被拒不影响配额；**订阅端点失败时保留余额但标部分数据并写明「套餐状态暂不可确认」，不据此宣称未订阅** |
 | LiteLLM | 独立 Key / User / Team 预算周期 | 各层已用 / 预算、百分比和可用重置；**没有预算上限时不编造百分比**，只如实显示已用金额 |
-| OpenDesign（`opendesign`） | Design Plan 5 小时 / 7 天窗（按套餐下发；plan model credits 无窗、按账期） | 已用 / 上限（credits 整数）与重置时间、档位（Go / Plus / Pro / Max）。窗口接口不下发百分比，由 `usedCredits / limitCredits` 算；个人工作区另读 `/api/v1/billing/summary` 显示钱包合计（订阅 + 充值）及订阅额度剩余。两个端点独立降级，零余额照常显示且不影响 Design Plan 窗口；不按模型倍率或套餐价格推算钱包上限。**5 小时窗不是每个套餐都有**，只有 7 天窗不构成缺数据 |
+| OpenDesign（`opendesign`） | Design Plan 5 小时 / 7 天窗（按套餐下发；plan model credits 无窗、按账期） | 已用 / 上限（credits 整数）与重置时间、档位（Go / Plus / Pro / Max）。窗口接口不下发百分比，由 `usedCredits / limitCredits` 算；个人工作区另读 `/api/v1/billing/summary` 显示钱包合计（订阅 + 充值）及订阅额度剩余。两个端点对普通取数故障独立降级；认证/凭据错误不参与降级，应明确提示登录失效或凭据被拒，且不沿用旧额度缓存。零余额照常显示且不影响 Design Plan 窗口；不按模型倍率或套餐价格推算钱包上限。**5 小时窗不是每个套餐都有**，只有 7 天窗不构成缺数据 |
 
 非公开控制台接口可能变更；缺失或非法百分比不会当作零用量。部分数据、未知额度和暂时失败有明确状态，不能据此保证推理接口一定可用。
 
@@ -145,11 +145,11 @@ OpenDesign（open-design.ai，Powerformer）的订阅额度走**控制台接口*
 2. `F12` 打开 DevTools → **Network** 面板 → 筛 **Fetch/XHR**。
 3. 按 `F5` 刷新，点开状态为 **200** 的 `coding-plan-usage` 请求。
 4. 在 **Headers → Request Headers** 里找到 `cookie:` 这一行，复制**整行值**——它应当包含 `__Secure-better-auth.session_token`，那就是登录态本身。
-5. 粘进卡片里标签为「会话 Cookie」的输入框并保存。保存前会先真调一次额度接口，只有 200 才落盘。
+5. 粘进卡片里标签为「会话 Cookie」的输入框并保存。**手动填写先保存，再独立验证**；启用的提供商保存后会刷新额度，验证失败不等于保存失败，关闭检测时只保存、不联网。自动登录是另一条路径：只有验证通过才提交 Cookie，不能与手动保存混淆。
 
 也可以导出 `OPEN_DESIGN_COOKIE` 环境变量。手动填的值必须含 `=`（形如 `name=value; name2=value2`），否则按「凭据不完整」直接报错，而不是发一次注定 401 的请求。
 
-Cookie 落在通用的手动 Key 槽，并把凭据模式切成 manual，不额外记录登录时间。会话失效（接口返回 401）后重新复制一次即可。
+Cookie 落在通用的手动 Key 槽，并把凭据模式切成 manual，不额外记录登录时间。已识别的认证错误（如接口返回 401）明确报告登录/凭据失效，不再归为「数据不完整」，也不沿用旧额度；此时重新复制会话 Cookie 并保存后验证即可。普通网络或服务故障仍允许钱包与 Design Plan 独立降级。
 
 额度语义按官方 [Model credits and usage](https://open-design.ai/model-credits/)：**7 天与 5 小时两个窗只约束 Design Plan 额度**——Go 两个都有，Plus / Pro / Max 只有 7 天窗；plan model credits 不受这两个窗约束、按账期发放与重置，两者共用同一份消费记录。所以窗口集合按接口实际下发的 `durationSeconds` 解析，不从套餐名反推。
 
