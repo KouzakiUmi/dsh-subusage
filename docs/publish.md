@@ -25,6 +25,8 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 ## npm
 
+0.14.4 修复 Grok 零值百分比省略：REST 缺百分比时补查 consumer gRPC，仅完整成功且活跃的匹配周期确认隐式零；失败保持部分数据。同步包版本与 Host 标识，以 registry 与对应 Actions/Release 结果核验发布，不自动安装或重启本机 DSH。
+
 0.14.3 补齐 OpenDesign 个人钱包余额及订阅额度剩余，两端点独立降级；以 registry 与对应 Actions/Release 结果核验发布状态，不自动安装或重启本机 DSH。
 
 0.14.2 修正 OpenDesign 的实测契约：额度路径改为先取 `GET /v1/workspaces/current` 的 `workspaceId`，再拼 `/v1/workspaces/<id>/billing/coding-plan-usage`（把 `current` 当路径参数会回 403 `workspace_member_required`），解析器同时改读扁平响应。同步包版本与 Host 标识。以对应版本标签的 Actions 状态、Release 资产和 npm registry 实际结果为发布完成依据；本地测试通过不等于已发布。

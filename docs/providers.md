@@ -105,7 +105,7 @@ provider id 必须与注册这些路由的插件**逐字一致**（arkcli 官方
 
 ### SuperGrok 凭据
 
-`xai-oauth` 路由由 dsh-grok-kit 注册。插件读取 Grok CLI / dsh-grok-kit 共享的 OAuth 登录文件（`~/.grok/auth.json`，回退 `~/.dsh/.xai-oauth-auth.json`），不保存凭据；access token 过期时借 dsh-grok-kit（≥0.2.0）的官方登录链（`new XaiOAuthSession().models.getAuth("xai")`）续约并由该链写回同一文件（同一把写锁、compare-and-write，非本插件裸刷），未安装 grok-kit 或续约失败才提示手动重新登录；API Key 路线取不到订阅周池。用量优先走官方 CLI 的计费代理（`cli-chat-proxy.grok.com` 的 `/v1/billing?format=credits`）；该格式在部分统一计费账号上 500 时，用同一 OAuth Bearer 回退 `grok.com` 的 `GetGrokCreditsConfig` gRPC-web。
+`xai-oauth` 路由由 dsh-grok-kit 注册。插件读取 Grok CLI / dsh-grok-kit 共享的 OAuth 登录文件（`~/.grok/auth.json`，回退 `~/.dsh/.xai-oauth-auth.json`），不保存凭据；access token 过期时借 dsh-grok-kit（≥0.2.0）的官方登录链（`new XaiOAuthSession().models.getAuth("xai")`）续约并由该链写回同一文件（同一把写锁、compare-and-write，非本插件裸刷），未安装 grok-kit 或续约失败才提示手动重新登录；API Key 路线取不到订阅周池。用量优先走官方 CLI 的计费代理（`cli-chat-proxy.grok.com` 的 `/v1/billing?format=credits`）；该格式在部分统一计费账号上 500 时，用同一 OAuth Bearer 回退 `grok.com` 的 `GetGrokCreditsConfig` gRPC-web。REST 成功但缺百分比时也最多补查一次（6 秒）；仅当 gRPC 周期与 REST 一致才采纳。完整成功 protobuf 中，活跃周/月周期省略的隐式 float 表示已用 0%；其它缺字段、补查失败或周期不匹配保持部分数据，不把充值支出当订阅用量。
 
 ### MiMo 登录与 Cookie
 

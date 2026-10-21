@@ -18,7 +18,7 @@
 
 </div>
 
-> **0.13.4**：Grok 的 `?format=credits` 在部分 X 订阅迁移账号上会 500；同一 OAuth 回退 grok.com `GetGrokCreditsConfig`，恢复周池百分比。发布与本机升级分开；本页图片是虚构数据离线预览，不是实机验收证明。[查看更新记录](docs/changelog.md)。
+> **0.14.4**：修复 Grok 官方 App 显示已用 0%，插件却只显示部分数据的问题；缺百分比时补查 consumer gRPC，确认有效当前周期的 proto3 隐式零值。发布与本机升级分开；本页图片是虚构数据离线预览，不是实机验收证明。[查看更新记录](docs/changelog.md)。
 
 ## 快速开始
 
@@ -134,7 +134,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 - 各家的**窗口语义、明细字段与单位换算**（例如 ZenMux / Ollama 的 0–1 小数、Novita 的 1/10000 USD、Kimi 随套餐变化的窗口集合）见 [提供商清单与额度语义](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md)。
 - 评估过但**不接入**的厂商与理由见 [提供商覆盖与取舍](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/provider-coverage.md)（含已由用户决策跳过的 Anthropic）。
 
-非公开控制台接口可能变更；缺失或非法百分比不会被当作零用量；「读取成功」只表示接口读取健康度，不保证仍有额度。
+非公开控制台接口可能变更；缺失或非法百分比不会直接当作零用量（Grok 完整成功 protobuf 的活跃周期可确认协议隐式零值）；「读取成功」只表示接口读取健康度，不保证仍有额度。
 
 ## Support status / 实测覆盖
 
@@ -159,7 +159,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 - [官方套餐](https://docs.x.ai/x-subscription/pricing)：Plus / Premium / Super / Ultra；价格与倍数不用于反推绝对额度。
 - [官方用量规则](https://docs.x.ai/x-subscription/usage-limits)：每个付费席位有一个共享周池，覆盖符合条件的 Grok、Grok Bot 与 Cursor 第一方用量；第三方模型与超额消费使用充值余额。团队周池按席位独立，充值余额共享。
 - 复用 [官方 Grok CLI 计费链](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-shell/src/extensions/billing.rs)：`GET /v1/billing?format=credits` 与 `GET /v1/settings`。credits 格式 500 时，同一 OAuth Bearer 回退 `POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`（gRPC-web）读取周池百分比。百分比、重置日期、套餐名和美元充值余额只取上游字段；不请求购买、合并账号或修改订阅。
-- 代理有时只返回周期和余额，没有 `creditUsagePercent`。此时保留套餐/余额并标记部分数据，**不伪造 0%**，不把按量消费上限当作订阅额度。官方 `Cent` 空对象 `{}` 表示零余额，缺失消息仍为未知。
+- 代理有时只返回周期和余额，没有 `creditUsagePercent`。此时用同一凭据最多补查一次 consumer gRPC（6 秒），仅在周/月周期与 REST 一致时采纳百分比；完整成功 protobuf 的活跃当前周期省略 float 标量时，按官方协议认定已用 0%。补查失败、周期不一致或响应不完整仍保留套餐/余额并标记部分数据，不把按量消费上限当作订阅额度。官方 `Cent` 空对象 `{}` 表示零余额，缺失消息仍为未知。
 - 验证边界：2026-10-16 已迁移账号上 REST `?format=credits` 持续 500，无 format 的旧月度形态 `monthlyLimit: 0` 不能当额度；同一凭据的 grok.com gRPC-web 返回周池百分比。新套餐四档与 gRPC 回退有隔离测试。此入口只读取当前登录身份，不提供工作区切换/全团队汇总。gRPC 回退拿不到 prepaidBalance 时不显示 0 余额。
 
 ### Cursor Pro 能作为 DSH 模型订阅吗？

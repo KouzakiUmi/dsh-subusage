@@ -20,26 +20,31 @@ function encodeVarint(n) {
 	bytes.push(v);
 	return Buffer.from(bytes);
 }
-function encodeCreditsGrpcWeb({ percent, start, end }) {
+function protoBytes(number, bytes) { return Buffer.concat([encodeVarint(number * 8 + 2), encodeVarint(bytes.length), bytes]); }
+function protoTimestamp(number, iso) {
+	const ms = Date.parse(iso), seconds = Math.floor(ms / 1000), nanos = ms % 1000 * 1000000;
+	return protoBytes(number, Buffer.concat([Buffer.from([8]), encodeVarint(seconds), ...(nanos ? [Buffer.from([16]), encodeVarint(nanos)] : [])]));
+}
+function grpcFrame(message, flag = 0) {
+	const header = Buffer.alloc(5); header[0] = flag; header.writeUInt32BE(message.length, 1);
+	return Buffer.concat([header, message]);
+}
+function encodeCreditsGrpcWeb({ percent, start, end, currentPeriod, trailerStatus, extraConfig = Buffer.alloc(0) }) {
 	const parts = [];
 	if (percent !== undefined) {
-		const f = Buffer.alloc(4);
-		f.writeFloatLE(percent, 0);
+		const f = Buffer.alloc(4); f.writeFloatLE(percent, 0);
 		parts.push(Buffer.from([0x0d]), f);
 	}
-	const ts = (iso, tag) => {
-		if (!iso) return;
-		const seconds = Math.floor(Date.parse(iso) / 1000);
-		const inner = Buffer.concat([Buffer.from([8]), encodeVarint(seconds)]);
-		parts.push(Buffer.from([tag]), encodeVarint(inner.length), inner);
-	};
-	ts(start, 0x22);
-	ts(end, 0x2a);
-	const config = Buffer.concat(parts);
-	const message = Buffer.concat([Buffer.from([0x0a]), encodeVarint(config.length), config]);
-	const header = Buffer.alloc(5);
-	header.writeUInt32BE(message.length, 1);
-	return Buffer.concat([header, message]);
+	if (start) parts.push(protoTimestamp(4, start));
+	if (end) parts.push(protoTimestamp(5, end));
+	if (currentPeriod) parts.push(protoBytes(8, Buffer.concat([
+		Buffer.from([8]), encodeVarint(currentPeriod.type ?? 2),
+		...(currentPeriod.start ? [protoTimestamp(2, currentPeriod.start)] : []),
+		...(currentPeriod.end ? [protoTimestamp(3, currentPeriod.end)] : [])
+	])));
+	parts.push(extraConfig);
+	const data = grpcFrame(protoBytes(1, Buffer.concat(parts)));
+	return trailerStatus === undefined ? data : Buffer.concat([data, grpcFrame(Buffer.from(`grpc-status: ${trailerStatus}\r\n`), 0x80)]);
 }
 {
 	const parsed = parseGrokCreditsGrpcWeb(encodeCreditsGrpcWeb({ percent: 40, start: "2026-10-14T03:32:51Z", end: "2026-10-21T03:32:51Z" }));
@@ -53,6 +58,51 @@ function encodeCreditsGrpcWeb({ percent, start, end }) {
 	assert.equal(startOnly.config.currentPeriod.start, "2026-10-14T03:32:51.000Z");
 	assert.equal(startOnly.config.currentPeriod.end, undefined, "缺结束时间不拿开始时间冒充重置");
 	assert.equal(startOnly.config.currentPeriod.type, undefined);
+}
+// 官方 descriptor：config[1] 是隐式 float 百分比（不是 0–1 比率），current_period 为 field 8。
+const ZERO_PERIOD = { type: 2, start: "2026-10-21T03:32:51.963Z", end: "2026-10-28T03:32:51.963Z" };
+const ZERO_NOW = Date.parse("2026-10-21T04:00:00Z");
+const zeroFrame = (overrides = {}) => encodeCreditsGrpcWeb({ currentPeriod: ZERO_PERIOD, trailerStatus: 0, ...overrides });
+{
+	const result = parseGrokCreditsGrpcWeb(zeroFrame(), ZERO_NOW);
+	assert.equal(result.config.creditUsagePercent, 0, "完整成功且活跃的当前周池，省略 float 就是 proto3 零值");
+	assert.deepEqual(result.config.currentPeriod, { ...ZERO_PERIOD, type: "USAGE_PERIOD_TYPE_WEEKLY" });
+	assert.equal(parseGrokCreditsGrpcWeb(zeroFrame({ percent: 0.4 }), ZERO_NOW).config.creditUsagePercent.toFixed(1), "0.4", "显式小数百分比不乘 100");
+	assert.equal(parseGrokCreditsGrpcWeb(zeroFrame({ percent: 100 }), ZERO_NOW).config.creditUsagePercent, 100);
+	assert.equal(parseGrokCreditsGrpcWeb(zeroFrame(), Date.parse(ZERO_PERIOD.start)).config.creditUsagePercent, 0, "起点包含在周期中");
+	for (const time of [Date.parse(ZERO_PERIOD.start) - 1, Date.parse(ZERO_PERIOD.end), NaN]) {
+		assert.equal(parseGrokCreditsGrpcWeb(zeroFrame(), time).config.creditUsagePercent, undefined, "未来/过期周期或非法时钟不能推断零");
+	}
+	for (const currentPeriod of [
+		{ ...ZERO_PERIOD, type: 0 }, { ...ZERO_PERIOD, type: 3 },
+		{ ...ZERO_PERIOD, start: undefined }, { ...ZERO_PERIOD, end: undefined },
+		{ ...ZERO_PERIOD, start: ZERO_PERIOD.end, end: ZERO_PERIOD.start }
+	]) assert.equal(parseGrokCreditsGrpcWeb(zeroFrame({ currentPeriod }), ZERO_NOW)?.config.creditUsagePercent, undefined);
+	const month = parseGrokCreditsGrpcWeb(zeroFrame({ currentPeriod: { type: 1, start: "2026-10-01T00:00:00Z", end: "2026-11-01T00:00:00Z" } }), ZERO_NOW);
+	assert.equal(month.config.creditUsagePercent, 0);
+	assert.equal(month.config.currentPeriod.type, "USAGE_PERIOD_TYPE_MONTHLY");
+	assert.equal(parseGrokCreditsGrpcWeb(zeroFrame({ trailerStatus: undefined }), ZERO_NOW).config.creditUsagePercent, undefined, "无成功 trailer 不确认隐式零");
+	assert.equal(parseGrokCreditsGrpcWeb(zeroFrame({ currentPeriod: undefined, start: ZERO_PERIOD.start, end: ZERO_PERIOD.end }), ZERO_NOW).config.creditUsagePercent, undefined, "只有旧账期字段不能确认当前周池");
+	assert.equal(parseGrokCreditsGrpcWeb(zeroFrame({ extraConfig: protoBytes(20, Buffer.from([0, 255, 255])) }), ZERO_NOW).config.creditUsagePercent, 0, "未知 opaque 字段不递归猜消息");
+	assert.equal(parseGrokCreditsGrpcWeb(zeroFrame({ extraConfig: protoBytes(12, Buffer.alloc(0)) }), ZERO_NOW).config.creditUsagePercent, 0, "零金额消息不阻止零用量");
+	const share = Buffer.alloc(4); share.writeFloatLE(20);
+	assert.equal(parseGrokCreditsGrpcWeb(zeroFrame({ extraConfig: protoBytes(7, Buffer.concat([Buffer.from([8, 4, 21]), share])) }), ZERO_NOW).config.creditUsagePercent, undefined, "产品百分比不能冒充总量，也不能把缺总量认成零");
+	const history = protoBytes(6, protoBytes(3, Buffer.concat([Buffer.from([8, 2]), protoTimestamp(2, ZERO_PERIOD.start), protoTimestamp(3, ZERO_PERIOD.end)])));
+	assert.equal(parseGrokCreditsGrpcWeb(encodeCreditsGrpcWeb({ extraConfig: history, trailerStatus: 0 }), ZERO_NOW), undefined, "仅历史周期不算当前周期");
+	for (const trailerStatus of [1, 13, 16]) assert.equal(parseGrokCreditsGrpcWeb(zeroFrame({ percent: 40, trailerStatus }), ZERO_NOW), undefined, "错误 trailer 即使有数据也拒绝");
+	for (const bytes of [
+		zeroFrame().subarray(0, -1), Buffer.concat([zeroFrame(), Buffer.from([0])]),
+		grpcFrame(Buffer.from([0x0a, 0x05, 0x0d, 0, 0])), // 子消息 length 越界
+		grpcFrame(protoBytes(1, Buffer.from([0]))), // 零字段号
+		grpcFrame(protoBytes(1, Buffer.from([0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 2]))),
+		grpcFrame(protoBytes(1, Buffer.from([0x0a, 0]))), // 已知 float 错 wire type
+		zeroFrame({ percent: NaN }), zeroFrame({ percent: Infinity }), zeroFrame({ percent: -1 }),
+		Buffer.concat([zeroFrame(), zeroFrame()]), grpcFrame(protoBytes(1, Buffer.alloc(0)), 1),
+		zeroFrame({ extraConfig: protoBytes(8, Buffer.alloc(0)) }), // 重复 current_period
+		zeroFrame({ extraConfig: protoBytes(6, Buffer.from([0])) }) // 已知历史消息损坏
+	]) assert.equal(parseGrokCreditsGrpcWeb(bytes, ZERO_NOW), undefined, "不完整/畸形/压缩/重复数据不产生隐式零");
+	const declared = { type: 1, start: "2026-10-01T00:00:00Z", end: "2026-11-01T00:00:00Z" };
+	assert.equal(parseGrokCreditsGrpcWeb(zeroFrame({ percent: 2, start: ZERO_PERIOD.start, end: ZERO_PERIOD.end, currentPeriod: declared }), ZERO_NOW).config.currentPeriod.type, "USAGE_PERIOD_TYPE_MONTHLY", "field 8 是周期真源，不能被旧账期的周长度覆盖");
 }
 const billing = (config = {}, extra = {}) => ({ config: { currentPeriod: PERIOD, creditUsagePercent: 1, prepaidBalance: { val: 0 }, ...config }, ...extra });
 const settings = (tier = "SuperGrok") => ({ subscription_tier_display: tier });
@@ -120,10 +170,10 @@ assert.throws(() => normalizeSuperGrok(billing({ creditUsagePercent: undefined, 
 assert.ok(!normalizeSuperGrok(billing({ prepaidBalance: { val: "10" } })).extras.some(x => x.kind === "balance"));
 
 // ── 服务路径：共享登录文件解析、请求头、并行拉取、错误映射 ─────────────────
-function harness({ grokText, dshText, respond, stored, grokKit, useDefaultLoader } = {}) {
+function harness({ grokText, dshText, respond, stored, grokKit, useDefaultLoader, initialNow = Date.parse("2026-01-01T00:00:00Z") } = {}) {
 	const files = new Map([[GROK_AUTH, grokText], [DSH_AUTH, dshText]].filter(([, v]) => v !== undefined));
 	if (stored) files.set("memory/config", JSON.stringify(stored));
-	let now = Date.parse("2026-01-01T00:00:00Z");
+	let now = initialNow;
 	const calls = [];
 	const kitCalls = [];
 	let response = respond ?? ((url) => url.includes("billing") ? billing() : settings());
@@ -196,6 +246,59 @@ for (const call of served.calls) {
 	assert.equal(call.options.headers["x-grok-client-version"], "1.0.13");
 }
 assert.deepEqual(entry.extras, [{ kind: "plan", value: "SuperGrok" }, { kind: "balance", value: "0.00 USD" }]);
+
+// ── REST 200 缺百分比：有界 consumer 核验；保留 REST 周期、套餐与余额 ──────
+{
+	const period = { ...ZERO_PERIOD, type: "USAGE_PERIOD_TYPE_WEEKLY" };
+	function partialHarness(grpc, { restPeriod = period, percent, http = 200 } = {}) {
+		return harness({ grokText: grokDoc(), initialNow: ZERO_NOW, respond: url => {
+			if (String(url).includes("GetGrokCreditsConfig")) return typeof grpc === "function" ? grpc() : grpc;
+			if (String(url).includes("billing")) return http !== 200 ? { http } : billing({ creditUsagePercent: percent, currentPeriod: restPeriod, prepaidBalance: { val: 1250 } });
+			return settings("SuperGrok");
+		} });
+	}
+	const verified = partialHarness({ grpcWeb: zeroFrame() });
+	const result = (await verified.service.refresh({ providerIds: [X], force: true })).entries[0];
+	assert.equal(result.state, "ok"); assert.equal(result.coverage, "complete");
+	assert.equal(result.windows[0].kind, "week"); assert.equal(result.windows[0].percent, 0);
+	assert.equal(result.windows[0].status, "ok"); assert.equal(result.windows[0].resetsAt, ZERO_PERIOD.end);
+	assert.deepEqual(result.extras, [{ kind: "plan", value: "SuperGrok" }, { kind: "balance", value: "12.50 USD" }]);
+	assert.equal(verified.calls.length, 3, "REST + settings + 一次可选核验");
+	assert.equal(verified.calls[2].options.headers.authorization, "Bearer oauth-bearer");
+	await verified.service.refresh({ providerIds: [X], force: false });
+	assert.equal(verified.calls.length, 3, "核验结果复用既有缓存");
+	verified.service.dispose();
+	const explicit = partialHarness({ grpcWeb: zeroFrame({ percent: 12.5 }) });
+	assert.equal((await explicit.service.refresh({ providerIds: [X], force: true })).entries[0].windows[0].percent, 12.5, "补查也接受真正上线路的百分比");
+	explicit.service.dispose();
+	for (const grpc of [
+		{ http: 401 }, { http: 500 }, new Error("network failed"),
+		{ grpcWeb: zeroFrame({ trailerStatus: 16 }) }, { grpcWeb: zeroFrame().subarray(0, -1) },
+		{ grpcWeb: zeroFrame({ currentPeriod: { ...ZERO_PERIOD, start: "2026-10-14T03:32:51.963Z", end: ZERO_PERIOD.start } }) },
+		{ grpcWeb: zeroFrame({ currentPeriod: { ...ZERO_PERIOD, end: "2026-10-29T03:32:51.963Z" } }) },
+		{ grpcWeb: zeroFrame({ percent: 40, currentPeriod: { ...ZERO_PERIOD, type: 1 } }) },
+		{ grpcWeb: zeroFrame({ percent: 40, currentPeriod: undefined }) }
+	]) {
+		const h = partialHarness(grpc);
+		const row = (await h.service.refresh({ providerIds: [X], force: true })).entries[0];
+		assert.equal(row.state, "ok"); assert.equal(row.coverage, "partial"); assert.deepEqual(row.windows, []);
+		assert.equal(row.extras.at(-1).value, "12.50 USD", "核验失败/过期/周期不一致保留 REST 余额");
+		assert.equal(h.calls.length, 3, "不因可选核验失败无限重试"); h.service.dispose();
+	}
+	const known = partialHarness({ http: 500 }, { percent: 0 });
+	assert.equal((await known.service.refresh({ providerIds: [X], force: true })).entries[0].windows[0].percent, 0);
+	assert.equal(known.calls.length, 2, "REST 显式零不补查"); known.service.dispose();
+	const fallback = partialHarness({ grpcWeb: zeroFrame() }, { http: 500 });
+	const recovered = (await fallback.service.refresh({ providerIds: [X], force: true })).entries[0];
+	assert.equal(recovered.state, "ok"); assert.equal(recovered.windows[0].percent, 0, "原有 500 回退同样支持隐式零");
+	fallback.service.dispose();
+	const parent = new AbortController();
+	const aborting = partialHarness(() => { parent.abort(); return new Error("cancelled"); });
+	const partial = await aborting.service.fetchProvider(X, { key: "oauth-bearer" }, {}, parent.signal);
+	assert.equal(partial.coverage, "partial");
+	assert.equal(aborting.calls[2].options.signal.aborted, true, "补查信号随父生命周期取消");
+	aborting.service.dispose();
+}
 
 // ── 过期 token：借 dsh-grok-kit 官方会话链续约，而不是只读不刷或自己裸 POST ──
 // 登录文件里的 access token 短命，而 grok-kit 的自动刷新是懒触发（仅聊天/搜索遇过期才刷）；
