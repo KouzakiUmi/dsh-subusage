@@ -172,6 +172,58 @@ const okFetch = calls => async (url, options) => {
 		{ providerId: "chutes", label: "Chutes", state: "disabled", windows: [], extras: [] }
 	] })[0].text;
 	assert.ok(allMissing.includes("未配置凭据 1 条") && allMissing.includes("检测已关闭 1 条"), "一条都没读到时给汇总原因");
+	// 同一额度池的多个窗口并成一段（Antigravity 三个池各带周窗 + 5 小时窗、ARK 的「文本/向量」同此）：
+	// 池名只写一次、窗口顺序不变，跨池仍分开；只合并**相邻**同池窗口。
+	const merged = tool.output.render({}, { providers: [{
+		providerId: "antigravity", label: "Antigravity", state: "ok", freshness: "fresh",
+		windows: [
+			{ kind: "week", percent: 4.2, status: "ok", groupLabel: "Gemini Models" },
+			{ kind: "5h", percent: 3.4, status: "ok", groupLabel: "Gemini Models" },
+			{ kind: "week", percent: 97.9, status: "ok", groupLabel: "Claude and GPT models" },
+			{ kind: "week", percent: 61.4, status: "ok", groupLabel: "Gemini 4 Argon" }
+		],
+		extras: [{ kind: "balance", value: "0 credits" }]
+	}] })[0].text;
+	assert.equal((merged.match(/Gemini Models ·/g) ?? []).length, 1, "池名只写一次");
+	assert.ok(merged.includes("Gemini Models · week 95.8% 剩余 / 5h 96.6% 剩余"), "同池窗口用 / 顺序并列");
+	assert.ok(merged.includes("；Claude and GPT models · week 2.1% 剩余"), "跨池仍分开");
+	assert.ok(merged.includes("；Gemini 4 Argon · week 38.6% 剩余"), "单窗池不带多余的 /");
+	// 交错下发时不合并（只并相邻）：order 由上游决定，不能为了省字重排。
+	const interleaved = tool.output.render({}, { providers: [{
+		providerId: "fixture", label: "Fixture", state: "ok",
+		windows: [
+			{ kind: "5h", percent: 0, status: "ok", groupLabel: "A" },
+			{ kind: "5h", percent: 0, status: "ok", groupLabel: "B" },
+			{ kind: "5h", percent: 0, status: "ok", groupLabel: "A" }
+		],
+		extras: []
+	}] })[0].text;
+	assert.equal((interleaved.match(/A ·/g) ?? []).length, 2, "非相邻同池不合并");
+	// 全是联动项且都没读到时：不能说成「读取失败」，也不该把用户指去本插件的凭据文档。
+	const linkedOnly = tool.output.render({}, { providers: [
+		{ providerId: "trae-global", label: "Trae Global", state: "error", windows: [], extras: [], error: "这个区域还没有登录 Trae" },
+		{ providerId: "trae-enterprise", label: "Trae 企业版", state: "error", windows: [], extras: [], error: "本机没有 Trae 企业版账号" }
+	] })[0].text;
+	assert.ok(linkedOnly.includes("联动项 2 条"), "联动项单独计数");
+	assert.ok(linkedOnly.includes("兄弟插件"), "下一步指向兄弟插件，而不是本插件凭据文档");
+	assert.ok(!linkedOnly.includes("其余 2 条为读取失败"), "未登录/插件没跑不是读取失败");
+	assert.ok(!linkedOnly.includes("docs/credentials.md"));
+	const mixedMissing = tool.output.render({}, { providers: [
+		{ providerId: "kimi-coding", label: "Kimi", state: "no-key", windows: [], extras: [] },
+		{ providerId: "trae", label: "Trae", state: "error", windows: [], extras: [], error: "x" },
+		{ providerId: "novita", label: "Novita", state: "error", windows: [], extras: [], error: "HTTP 500" }
+	] })[0].text;
+	assert.ok(mixedMissing.includes("联动项 1 条") && mixedMissing.includes("其余 1 条为读取失败"), "混合时分别计数");
+	assert.ok(mixedMissing.includes("docs/credentials.md"), "有本插件条目时仍给凭据文档");
+	assert.ok(!interleaved.includes("A · 5h 100% 剩余 / "), "不跨池拼一段");
+	// 无标注窗口各成一段、不加前缀（与改动前逐字一致）：没有池名可依时不能凭空造一个。
+	const unlabeled = tool.output.render({}, { providers: [{
+		providerId: "fixture", label: "Fixture", state: "ok",
+		windows: [{ kind: "5h", percent: 0, status: "ok" }, { kind: "week", percent: 50, status: "ok" }],
+		extras: []
+	}] })[0].text;
+	assert.ok(unlabeled.includes("：5h 100% 剩余；week 50% 剩余"), "无标注时逐窗平铺、不加前缀");
+	assert.ok(!unlabeled.includes(" · 5h"), "无标注窗口不得被套上池名");
 	// 服务还没就绪时给可读原因，而不是一句没有信息量的报错。
 	const bare = [];
 	const bareScope = { ...scope, tools: { register: t => { bare.push(t); return () => {}; } }, get: () => undefined };

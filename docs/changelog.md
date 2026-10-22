@@ -2,6 +2,14 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.15.1：报告文本按额度池合并「一池一段」
+
+- 用户实测反馈：Antigravity 那一行读起来「额度冗余」。核对后确认数据本身没有重复——`agy /usage` 返回的是 **3 个真实额度池**（Gemini Models / Claude and GPT models / Gemini 4 Argon，其中 Argon 在 Pro 计划下按官方说明**是独立池**），冗余来自展示：我们按「池名 · 窗口」逐窗平铺，同一池名重复两三遍，5 段窗口 + 1 段余额挤成一行。
+- 文本层改为**同池相邻窗口并成一段**：`Gemini Models · week 95.8% 剩余（重置 …） / 5h 96.6% 剩余（重置 …）`。池名只写一次，窗口顺序保持上游下发次序，跨池仍分开；只合并**相邻**同池窗口（交错下发时不为省字重排）。该规则对所有带额度池标注的 provider 同样生效（ARK 与 Volc AFP 的「文本/向量 · 5h / week」——文本路径里 `detail.scope` 优先于 `groupLabel`），数据结构与 `windows[]` 不变。
+- 有意**没有**把 Gemini 4 Argon 并进 Gemini Models：官方说明 Pro 计划下两者的额度是分开的，合并会把独立池说成同一份额度。
+- 顺带修掉联动项实测暴露的一处措辞错误：当一次查询里**只有联动项**且都没读到时（例如只问 `trae-global` 而该区域没登录），末尾汇总原本把它们算进「其余为读取失败」并把用户指向 dsh-subusage 的凭据文档；现在联动项单独计数并注明「兄弟插件未运行或对应区域未登录」，下一步指向 设置 → Trae / Antigravity ACP 卡片。混合场景仍分别计数；顺带把「其余为读取失败」改成带条数的「其余 N 条为读取失败」，且 `rest === 0` 时整段不再出现——旧文案在「没有任何失败条目」时也会写「其余为读取失败」，本身是错的。
+- 测试：`tests/test-quota-api.mjs` 增加「同池并段 / 池名只写一次 / 跨池分开 / 单窗池不带多余 `/` / 交错不重排」断言；`node tests/run-all.mjs` 与 `scripts/check-manifest.mjs` 通过。
+
 ## 0.15.0：Antigravity / Trae 额度联动与 OpenDesign 额度标签消歧
 
 - 新增**兄弟插件联动**：本机运行 `dsh-antigravity-acp`（包名 `dsh-bundle-antigravity-host`）时，`quota()` 视图与 `subusage_quota` 工具报告里会多一条 `antigravity`。数据取自该插件已经算好的 Cordis 服务 `agyQuota`（`read({ force })`），本插件**不读凭据、不请求上游、不写任何设置**。联动项没有自己的检测开关与设置卡片；插件不在场时顺带查询里不出现该条目，被点名却没检测到服务时回一条可执行说明，而不是空结果。
