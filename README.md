@@ -72,7 +72,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 “看一下 Kimi 和 Codex 还剩多少额度。”
 
-模型可调用只读工具 `subusage_quota`，读取与界面同源的额度与余额；可按提供商筛选，Command Code 可分别返回各账户状态。不会通过该工具修改设置。[工具与 Host 服务契约](#额度查询-api)
+模型可调用只读工具 `subusage_quota`，读取与界面同源的额度与余额；可按提供商筛选，Command Code 可分别返回各账户状态。本机装了 [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) 或 [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae) 时，报告里还会带上它们所报的 Antigravity / Trae 额度（**联动项**：读它们自己算好的结果，不读凭据、不写设置）。不会通过该工具修改设置。[工具与 Host 服务契约](#额度查询-api)
 
 ## 使用前，先知道这三点
 
@@ -97,7 +97,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 ## 支持的数据 / Supported data
 
-共 **29 条 provider id**：新安装**有效默认开启 13 条、关闭 16 条**。清单取自 [`lib/index.js`](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 的组归一化为准：Ark 四路共用默认开启的组开关，团队两路也随组开启，不能只统计注册元数据。展示顺序与短名取自 [`lib/client.js`](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
+共 **29 条 provider id**：新安装**有效默认开启 13 条、关闭 16 条**。另有 **4 条联动项**（`antigravity`、`trae`、`trae-global`、`trae-enterprise`）：它们没有自己的凭据、检测开关与设置卡片，只在本机运行对应兄弟插件（[`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) / [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae)）时才出现在 `subusage_quota` 工具报告与 `quota()` 视图里，数据取自那些插件自己算好的额度（一个读它的 Cordis 服务，一个读它挂在本机的只读用量路由）。清单取自 [`lib/index.js`](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 的组归一化为准：Ark 四路共用默认开启的组开关，团队两路也随组开启，不能只统计注册元数据。展示顺序与短名取自 [`lib/client.js`](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
 
 | 提供商 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|---|
@@ -129,7 +129,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 | Vercel AI Gateway | `vercel-ai-gateway` | 余额 | Bearer | 关 |
 | ZenMux | `zenmux` | 5 小时 / 周窗口 + PAYG 余额 | **Management API Key** | 关 |
 | LiteLLM | `litellm` | Key / 用户 / 团队预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
-| OpenDesign | `opendesign` | Design Plan 5 小时 / 7 天窗口 + 个人钱包余额、订阅额度剩余 | **控制台会话 Cookie**（不是模型调用的 sk- Key） | 关 |
+| OpenDesign | `opendesign` | Design Plan 5 小时 / 7 天窗口 + 套餐余额（订阅额度）、总额度（钱包合计 = 订阅 + 充值） | **控制台会话 Cookie**（不是模型调用的 sk- Key） | 关 |
 
 - 各家的**窗口语义、明细字段与单位换算**（例如 ZenMux / Ollama 的 0–1 小数、Novita 的 1/10000 USD、Kimi 随套餐变化的窗口集合）见 [提供商清单与额度语义](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md)。
 - 评估过但**不接入**的厂商与理由见 [提供商覆盖与取舍](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/provider-coverage.md)（含已由用户决策跳过的 Anthropic）。
@@ -151,7 +151,8 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 | Command Code | 月额度 | 提供方插件的凭据链 |
 | SuperGrok | 统一周池 + 加量余额 | 真实 `~/.grok/auth.json` |
 | Codex (ChatGPT) | 主 / 次窗口 + 档位 | 真实 `~/.codex/auth.json`（本插件默认关闭） |
-| OpenDesign | 历史接口实测（2026-10-18 / 20）：真实 workspaceId、Design Plan 扁平窗口、个人钱包/订阅额度剩余及零余额；本次认证失效修复只做隔离回归，未验收当前 GUI | 用户浏览器手动导入的控制台会话 Cookie；自动登录仍受 Cloudflare 阻碍 |
+| OpenDesign | 历史接口实测（2026-10-18 / 20）：真实 workspaceId、Design Plan 扁平窗口、套餐余额 / 总额度（钱包合计）及零余额（当时界面文案为「月额度剩余 / 余额」）；本次认证失效修复只做隔离回归，未验收当前 GUI | 用户浏览器手动导入的控制台会话 Cookie；自动登录仍受 Cloudflare 阻碍 |
+| Trae（联动，`trae` / `trae-global` / `trae-enterprise`） | 2026-10-23 对**运行中的 DSH** 实测：`region=cn` 返回 `signed-in` 的真实账号数据（积分包合计 / 已用 / 余量、Work 与通用两个桶、到期分组），企业版与国际版在该机返回 `signed-out` 时**不产生条目**；真实 `SubUsageService` 首次 527ms、缓存命中 0ms、`force` 552ms 且两次条目逐字一致 | 由 `dsh-connect-trae` 自己持有的登录态（本插件不读凭据、不碰上游）；尚未在装上新版本后从界面验收 |
 
 ### The X Subscription（新统一订阅）
 
@@ -381,6 +382,8 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 - 一个名字都认不出时，返回里会**先**给一条说明（写明可用写法），**再读取全部路由，并按下述规则保留有数据或读取失败的条目**——数据先给出去，判断交给调用方，而不是回一个空结果。
 - **点名的家原样返回，其余按「有没有数据」收起**：`providers: ["kimi"]` 时被点中的家即使没配凭据也照原样给出（用户问的正是「它为什么没数据」）；**不点名时**——以及名字一个都没认出来、走全量兜底时——省略检测已关闭、未配置凭据、以及接口没报告任何额度的条目，省略条数按**家**写进 `omitted`（同一家的多个 Command Code 账户只算一家），否则二十多条路由会把真正的数字淹掉。**读取失败的条目会保留**——那是「这次没读到」，不是「没配置」，省略掉只会把排障方向带偏；认不出的名字自己那行也保留。
 - **Command Code 按账户各回一条**：账户清单读自提供方插件的 `llm-commandcode` 设置，每条带 `account`（账户名）、`accountActive`（当前激活的那个）与 `accountMode`（`fixed` 固定账户 / `auto` 自动轮换），激活账户排在最前。「还剩多少」与「现在实际用哪个账户」一次问清。
+- **Trae 也是联动项**：本机运行 [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae) 时最多出现三条——`trae`（国内版积分：`period` 窗口的百分比是「已用积分 / 积分包合计」，余量与 Work / 通用两个桶、积分到期提醒放 extras）、`trae-global`（国际版订阅状态：档位、试用期、是否买了套餐）与 `trae-enterprise`（**只在真有企业版账号时出现**，且照实说「企业租户额度只能在企业控制台看」，绝不把个人积分挪到企业标题下）。数据来自该插件注册在本机 web 服务器上的只读路由 `/plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>`（它自己的卡片读同一条），本插件只做换算：不读取它的凭据、不自己请求 Trae 上游、不写设置；取数结果缓存 60 秒，`refresh: true` 绕过。厂商名 `trae` 命中三块面板（与 `zai` / `ark` 同口径），单块面板没登录时静默，点名某一块（如 `trae-global`）却没登录时才回说明。
+- **Antigravity 是联动项，不是本插件登记的 provider**：本机运行 [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) 时，报告里会多一条 `providerId` 为 `antigravity` 的条目（可传 `antigravity` / `agy` / `antigravity-acp` 点名）。数据来自该插件自己的 Cordis 服务 `agyQuota`，本插件不读它的凭据、不请求上游、不写设置；插件不在场时顺带查询里不出现这一行，点名时会回一条「未检测到额度服务，装好并重启 DSH 后自动出现」的说明。它的 `windows[].percent` 同样是**已用**百分比（由官方下发的剩余比例换算），`groupLabel` 是它自己的分组（如 `Gemini Models`）。
 
 **Host 服务**（Cordis `Service`，key 为 `subUsage`）：
 
@@ -402,6 +405,7 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 - 视图里**不出现值为 `undefined` 的字段**：字段缺席表示「这家没有报告」，而不是「报告了空」——带 `undefined` 的键会被调用方的 schema 校验判成型别错误
 - 单家读取失败只影响它自己的条目，其余照常返回
 - 与设置页共用同一份缓存（TTL 60 秒），频繁调用不会反复请求各家接口；多账户各按「路由 id + 账户引用名」占一份缓存，读全部账户不会互相驱逐
+- 联动项（`antigravity` / `trae*`）不出现在本插件的设置页：它们没有凭据、没有检测开关，也没有可写的设置；取数有 15 秒独立预算，请求带取消信号（随 `dispose()` 与预算自断）；对方报错时只产出它自己那条 `state: "error"`（`error` 里有截断后的脱敏原因），其它家照常返回。**默认的全量查询遇到超时静默**（不制造噪声，对方缓存会随后补上），**点名**的查询超时仍如实报——否则问「Trae 还剩多少」会得到像「没登录」的空结果
 - `quota()` 本身**不过滤**条目（第三方可能正需要「这家没配」这个事实）；`subusage_quota` 工具的不点名调用才省略空条目
 
 ## Troubleshooting / 常见问题

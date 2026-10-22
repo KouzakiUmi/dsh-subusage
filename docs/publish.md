@@ -25,6 +25,8 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 ## npm
 
+0.15.0 新增两条兄弟插件联动额度（`antigravity` 读 `dsh-antigravity-acp` 的 `agyQuota` 服务；`trae` / `trae-global` / `trae-enterprise` 读 `dsh-connect-trae` 挂在本机 web 服务器上的只读用量路由），并把 OpenDesign 的两个美元数字按池子改名为「套餐余额 / 总额度」。Trae 链接已用真实运行中的 DSH 实测（CN 面板 `signed-in`、企业版/国际版 `signed-out` 不产生条目、60 秒缓存与 `force` 行为均核对），`antigravity` 仍是进程内服务、只在隔离测试中验证。同步包版本与 Host 标识；以 registry 与对应 Actions/Release 结果为发布完成依据，不自动安装或重启本机 DSH。
+
 0.14.5 修复 OpenDesign 认证错误被双端点降级吞成部分数据的问题；同步更正有效默认开关 13 开 / 16 关、29 条提供商清单、保存后独立验证及历史实测覆盖口径。包版本与 Host 标识同步；发布完成仍以对应 Actions、GitHub Release 资产与 npm registry 的实际结果为准，不自动安装或重启本机 DSH。
 
 0.14.4 修复 Grok 零值百分比省略：REST 缺百分比时补查 consumer gRPC，仅完整成功且活跃的匹配周期确认隐式零；失败保持部分数据。同步包版本与 Host 标识，以 registry 与对应 Actions/Release 结果核验发布，不自动安装或重启本机 DSH。

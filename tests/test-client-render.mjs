@@ -121,6 +121,29 @@ const monthlyRow = plugin.__test.UsageWindowRow({ w: monthlyEntry.windows[0], t:
 assert.ok(visibleText(monthlyRow).includes("wmonth"));
 assert.ok(visibleText(monthlyRow).includes("14.14/70 credits"));
 assert.ok(visibleText(monthlyRow).includes("planSnapshotLimit"));
+// OpenDesign 的美元数字分属两个池：用户反馈旧文案「月额度剩余 / 余额」像在互相比较（谁大谁小、
+// 是不是同一份额度），所以按池子改名为「套餐余额 / 总额度」。通用 provider（上面 monthlyEntry 的
+// 「月额度剩余」）保持原样 —— 那条确实是 Command Code 的月池。
+{
+  const zh = plugin.__test.zh, en = plugin.__test.en;
+  assert.equal(zh.planBalanceLabel, "套餐余额");
+  assert.equal(zh.totalBalanceLabel, "总额度");
+  assert.equal(en.planBalanceLabel, "Plan balance");
+  assert.equal(en.totalBalanceLabel, "Total balance");
+  const odEntry = { providerId: "opendesign", label: "OpenDesign", state: "ok", coverage: "complete", freshness: "fresh",
+    windows: [{ kind: "week", percent: 40, status: "ok" }],
+    extras: [{ kind: "plan", value: "Plus" }, { kind: "monthly-balance", value: "15 USD" }, { kind: "balance", value: "16 USD" }] };
+  const odPill = renderWrapper("opendesign");
+  stateValues = [{ entry: odEntry, updatedAt: 0 }, null, null, false, true];
+  stateIndex = 0;
+  const odText = visibleText(odPill.type(odPill.props));
+  assert.ok(odText.includes("planBalanceLabel"), "套餐（订阅）额度用「套餐余额」");
+  assert.ok(odText.includes("totalBalanceLabel"), "钱包合计用「总额度」");
+  assert.ok(odText.includes("15 USD") && odText.includes("16 USD"), "两个数字都还在，只是换了标签");
+  assert.ok(!odText.includes("monthlyBalanceLabel"), "OpenDesign 不再出现「月额度剩余」");
+  // 同样的 extras 在别的 provider 上仍走通用标签（Command Code 的月池确实是月额度）。
+  assert.ok(visibleText(renderPill(monthlyEntry, true)).includes("monthlyBalanceLabel"));
+}
 // 按钮导航、提供商开关、套餐单选按钮；整个设置页不使用 select/option。
 const flattenNodes = (node) => Array.isArray(node) ? node.flatMap(flattenNodes) : node && typeof node === "object" ? [node, ...flattenNodes(node.children || [])] : [];
 const settings = { revision: "public-1", zai: { type: 1 }, hasKeys: { "zai-coding-cn": true }, keyModes: {}, xiaomi: { hasCookie: true } };

@@ -2,6 +2,18 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.15.0：Antigravity / Trae 额度联动与 OpenDesign 额度标签消歧
+
+- 新增**兄弟插件联动**：本机运行 `dsh-antigravity-acp`（包名 `dsh-bundle-antigravity-host`）时，`quota()` 视图与 `subusage_quota` 工具报告里会多一条 `antigravity`。数据取自该插件已经算好的 Cordis 服务 `agyQuota`（`read({ force })`），本插件**不读凭据、不请求上游、不写任何设置**。联动项没有自己的检测开关与设置卡片；插件不在场时顺带查询里不出现该条目，被点名却没检测到服务时回一条可执行说明，而不是空结果。
+- 快照按本插件语义换算：它报的是**剩余**（`remainingPct` 或 0..1 的 `remainingFraction`），对外 `percent` 是**已用** = 100 − 剩余；`window` / `name` 归到 `5h` / `week` / `month` / `day` / `period`；组名（`Gemini Models` 等）进 `groupLabel`——它说明这条百分比约束哪批模型；`disabled` 窗口**不**冒充「已达限额」，只在 extras 里说明；接口只给比例、不给绝对值，因此不写 `detail.used/limit`。AI Credits 余额进 `balance`，套餐名进 `plan`。
+- 联动取数有独立预算（默认 15 秒）并折叠成一条 error 条目：官方 CLI 首次取数慢不会拖垮整份报告；超时后提供方插件自己的缓存仍会补上，下次查询即可命中。
+- OpenDesign 的两个美元数字按池子改名：`monthly-balance`（套餐订阅额度）显示「套餐余额」（en `Plan balance`），`balance`（钱包合计 = 订阅 + 充值）显示「总额度」（en `Total balance`）。通用 provider 的「月额度剩余 / 余额」不变——Command Code 那条确实是月池。
+- 新增第二路联动：`dsh-connect-trae`（v4.3.0，**不是本仓库写的插件**）把用量挂在本机 web 服务器的只读路由 `/plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>` 上，它自己的卡片读的就是这条；本插件从 `webServer` 服务取回环 origin、带上自己的 `Origin` 头请求它，再把 `TraeWebUsage` 换算成条目：`trae`（国内版积分 → `period` 窗口，percent 是「已用积分 / 积分包合计」，余量、Work/通用两个桶与积分包到期提醒进 extras）、`trae-global`（国际版订阅档位、试用期、是否买了套餐）、`trae-enterprise`（只在真有企业账号时出现；企业租户额度它自己也读不到，照实说明，不把个人积分挪过去）。通道 404 = 插件没装（静默缺席），其它非 2xx / 非 JSON / 超时才折叠成一条 error；结果缓存 60 秒，`refresh: true` 绕过。
+- 点名语义细化：只有**单目标名字**（`antigravity`、`trae-global`）算点名，缺席时回可执行说明；厂商名 `trae` 命中三块面板（与 `zai` / `ark` 同口径）时缺席静默，但「问了一家、一个条目都没有」时仍补一条说明，避免空列表被读成「本机没配任何额度」。
+- 推送前交叉核验（独立只读代理，对照本机已安装的真实 `dsh-bundle-antigravity-host` 0.1.25 与 `dsh-connect-trae` 4.3.0 逐项核对契约）提出并已修复：① Trae 取数请求补取消信号（此前是全文件唯一不接 `AbortSignal` 的请求，超时只是「不再等待」、连接与 `dispose()` 都收不回来）；② 默认全量查询的超时改为静默（对方 CLI 单命令预算 45s，冷启动会把一次超时顶成 error），点名查询仍如实报；③ 上游错误文本截断到 200 字符、多账号的账号名（实测邮箱形态）掩码后才进工具输出；④ Work / 通用积分桶缺席时不再补 0；⑤ `read`/`refresh` 收到联动 id 时指回 `quota()`，不再误报「Host 版本较旧」；⑥ 删掉 README 里重复的联动项条目。
+- 测试：新增 `tests/test-antigravity-link.mjs`（快照换算、别名、缺席/失败/超时降级、工具报告与文本）与 `tests/test-trae-link.mjs`（三种面板语义、回环路由 + Origin 头、60 秒缓存与 force、404 语义、非 JSON / 超时降级、工具报告），`tests/test-client-render.mjs` 增加 OpenDesign 标签断言（中英文案 + 通用 provider 不变）；`node tests/run-all.mjs` 与 `scripts/check-manifest.mjs` 全部通过。**未发布、未安装**：`antigravity` 仍需 `dsh-antigravity-acp` 处于加载状态才能验收（它是进程内 Cordis 服务，没有可外部探测的 HTTP 口，本轮只在隔离测试里验证）。
+- **Trae 链接已用真实运行中的 DSH 实测**（2026-10-23，经用户授权）：对 `dsh-connect-trae` 注册的只读路由实际请求三块面板——`region=cn` 返回 `signed-in`（真实 CN 账号、11 个积分包、Work / 通用两个桶与到期分组齐全），`region=enterprise` 与 `region=ai` 返回 `signed-out`（该机没有对应登录，响应里带 `searched` 诊断）。真实 `SubUsageService` 走生产取数路径的结果：`quota({ providerIds: ["trae"] })` 首次 527ms 只回 `trae` 一条（`period` 窗口 percent = 已用/积分包合计、余量与 Work/通用备注齐全），第二次 0ms（60 秒缓存命中、条目逐字相同），`force: true` 552ms 重新取数且结果一致；不点名时报告只多这一行（其余 29 家按「有数据才留」收起，`omitted: 29`）。`.trae-auth.cn.json` 是 0 个凭据也不影响结论——该插件从 Trae 客户端存储读登录态（响应里的 `searched` 路径就是它自己的诊断）。**仍未做**：把新版本装进运行中的 DSH 后从界面上验收（安装/重启需另行授权）。
+
 ## 0.14.5：OpenDesign Cookie 失效不再显示为部分数据
 
 - OpenDesign 额度或钱包接口返回已识别的认证错误时，整条结果明确报告登录/凭据失效，不再被另一端成功结果吞成「数据不完整」，也不沿用旧额度与余额缓存。

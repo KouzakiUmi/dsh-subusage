@@ -48,7 +48,7 @@
 | Ollama Cloud | session / 周 / 月 | `limits.*.usage` 是 **0–1 小数**；缺层跳过该窗口而不判失败 |
 | ZenMux | 5 小时 / 周滚动窗口 | `usage_percentage` 是 **0–1 小数**，另附 flows 明细与 `resets_at`；有 Management Key 时显示 PAYG 余额。两个端点各拿各的——余额被拒不影响配额；**订阅端点失败时保留余额但标部分数据并写明「套餐状态暂不可确认」，不据此宣称未订阅** |
 | LiteLLM | 独立 Key / User / Team 预算周期 | 各层已用 / 预算、百分比和可用重置；**没有预算上限时不编造百分比**，只如实显示已用金额 |
-| OpenDesign（`opendesign`） | Design Plan 5 小时 / 7 天窗（按套餐下发；plan model credits 无窗、按账期） | 已用 / 上限（credits 整数）与重置时间、档位（Go / Plus / Pro / Max）。窗口接口不下发百分比，由 `usedCredits / limitCredits` 算；个人工作区另读 `/api/v1/billing/summary` 显示钱包合计（订阅 + 充值）及订阅额度剩余。两个端点对普通取数故障独立降级；认证/凭据错误不参与降级，应明确提示登录失效或凭据被拒，且不沿用旧额度缓存。零余额照常显示且不影响 Design Plan 窗口；不按模型倍率或套餐价格推算钱包上限。**5 小时窗不是每个套餐都有**，只有 7 天窗不构成缺数据 |
+| OpenDesign（`opendesign`） | Design Plan 5 小时 / 7 天窗（按套餐下发；plan model credits 无窗、按账期） | 已用 / 上限（credits 整数）与重置时间、档位（Go / Plus / Pro / Max）。窗口接口不下发百分比，由 `usedCredits / limitCredits` 算；个人工作区另读 `/api/v1/billing/summary`：钱包合计（订阅 + 充值）显示为**总额度**、订阅额度（换算成美元）显示为**套餐余额**——两者是**两个池**，旧文案「月额度剩余 / 余额」会被读成同份额度的两个比较值（0.15.0 起改名，见 [界面文案](#opendesign-额度文案)）。两个端点对普通取数故障独立降级；认证/凭据错误不参与降级，应明确提示登录失效或凭据被拒，且不沿用旧额度缓存。零余额照常显示且不影响 Design Plan 窗口；不按模型倍率或套餐价格推算钱包上限。**5 小时窗不是每个套餐都有**，只有 7 天窗不构成缺数据 |
 
 非公开控制台接口可能变更；缺失或非法百分比不会当作零用量。部分数据、未知额度和暂时失败有明确状态，不能据此保证推理接口一定可用。
 
@@ -167,6 +167,42 @@ Cookie 落在通用的手动 Key 槽，并把凭据模式切成 manual，不额�
 | 别名 | — | `deepseek-official` |
 
 账号入口**不读取、导出或保存 OAuth token，也不使用 `DEEPSEEK_API_KEY`**；请在 DSH 的 设置 → 账号与余额 登录。本插件拿到的是投影后的余额列表，只解析币种与金额并据此显示余额，不保留原始对象。它与其它余额型条目一样不要求本机装有对应模型路由。
+
+### OpenDesign 额度文案
+
+弹层与设置页的两个美元数字按池子命名，**不要**改回通用标签：
+
+- `monthly-balance`（`balances.subscriptionCredits ÷ creditsPerUsd`）→ **套餐余额**（en `Plan balance`）
+- `balance`（`balanceUsd`，订阅 + 充值）→ **总额度**（en `Total balance`）
+
+通用 provider 的「月额度剩余 / 余额」保持原样（Command Code 那条确实是月池）。OpenDesign 的 5 小时 / 7 天窗口仍按已用百分比展示，与这两个美元数字互不换算。
+
+### Antigravity（联动项）
+
+`antigravity` **不是本插件登记的 provider id**，也不出现在设置页：本机运行 [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp)（包名 `dsh-bundle-antigravity-host`）时，它注册的 Cordis 服务 `agyQuota` 已经算好套餐额度快照，本插件只读那份快照并折算成同样的条目形状，并入 `quota()` 视图与 `subusage_quota` 报告。
+
+- 换算：它报**剩余**（`remainingPct` 或 0..1 的 `remainingFraction`），对外 `percent` 是**已用** = 100 − 剩余；`window` / `name` 归到 `5h` / `week` / `month` / `day` / `period`；组名进 `groupLabel`（它说明这条百分比约束哪批模型，单组也保留）。
+- `disabled` 窗口表示「此窗口对本账号不可用」，**不等于**已达限额，因此不产出窗口、只在 extras 里留一条说明；没有比例就不产出窗口（绝不补 0）；接口只给比例不给绝对值，所以不写 `detail.used/limit`。
+- AI Credits 余额进 `balance`（单位 `credits`）、套餐名进 `plan`；刷新失败但手里有上次成功数据时由提供方插件标 `stale`，本插件照实报 `freshness: "stale"`。
+- 取数有 15 秒独立预算，请求本身带取消信号（`AbortSignal.any([controller.signal, timeout])`，随 `dispose()` abort）；对方的报错只影响这一条（`state: "error"`，`error` 截断到 200 字符）。**默认（不点名）全量查询遇到超时静默**——对方冷启动可达 45s，一次超时不该在默认报告里顶出一条 error（它的缓存随后会被补上）；**点名**查询超时仍如实报。插件不在场时顺带查询里不出现该条目；**点名**却检测不到服务时回一条可执行说明，而不是空结果。
+
+### Trae（联动项）
+
+`trae` / `trae-global` / `trae-enterprise` **不是本插件登记的 provider id**，也不出现在设置页。本机运行 [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae)（v4.3.0，非本仓库项目）时，它把三个 tab 的用量挂在**本机 web 服务器**的只读路由上（它自己的卡片读同一条）：
+
+```
+GET /plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>
+```
+
+本插件从 Cordis 的 `webServer` 服务取回环 origin（`getOrigin()`，如 `http://127.0.0.1:3080`），带上自己的 `Origin` 头请求这条路由——对方只校验 loopback，所以这个头既能过校验，也不依赖「没有 Origin 头」这种默认行为。**不读它的凭据、不自己请求 Trae 上游、不写设置**：登录态、设备号、token 刷新与并发都由它负责，本插件只换算它的答案。
+
+- `region=cn` → `trae`：积分制。响应里的 `credits.total / consumed / available` 是积分包的**合计上限 / 已用 / 余量**（绝对值），所以 `period` 窗口的 `percent` = `consumed / total`，`detail` 带 `used / limit / remaining`（单位 `credits`）。**`total = 0` 时不给百分比**，只报余量。余量进 `balance`；Work 积分 / 通用积分两个桶与积分包到期提醒（对方四档：已过期 / 24 小时 / 3 天 / 7 天）进 `note`。
+- `region=ai` → `trae-global`：订阅制，**没有积分字段**（对方文档如此），只有 `payStatus`：档位（`payIdentityStr`，如 `Free` / `Pro`）进 `plan`，试用期与「未订阅付费套餐」进 `note`。
+- `region=enterprise` → `trae-enterprise`：**只在真有企业版账号时才算一块面板**（`accounts[].enterprise`）。企业租户额度对方自己也读不到（所有租户额度端点 404），所以只写一条说明；**绝不把个人积分挪到企业标题下**——那会让人以为租户余额就那么点。
+- 通道语义：HTTP **404 = 插件没装**（静默缺席）；其它非 2xx、非 JSON、带 `{ error }` 信封或超时，才折叠成该条目自己的 `state: "error"`。取数结果缓存 **60 秒**，`refresh: true` 绕过。
+- 点名：厂商名 `trae` 命中三块面板（与 `zai` / `ark` 同口径，全部去读、缺席静默）；点名 `trae-global` 这类**单块**名字却没登录时，回一条可执行说明。
+
+> 契约来源：该插件 `lib/index.d.ts` 的 `TraeWebUsage`、`TraeWebCredits`、`TraeWebPayStatus` 与 `lib/index.js` 里的 `traeWebUsage()` / `registerTraeUsageRoute()`（本机安装版本 4.3.0）。它是第三方插件，路由与字段若在升级中改动，本插件会以「无法识别的响应用」或该条目的 error 呈现，而不会编造数字。
 
 ### Command Code 账户
 
