@@ -2,6 +2,16 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.16.0：GitHub Copilot 额度（第 30 条 provider `github-copilot`，默认关闭）
+
+- 新增 GitHub Copilot 订阅额度。**复用**已安装的 Copilot 提供方插件 `@inventec/dsh-copilot-auth`（1.2.21 实测）经 DSH 凭据库保存的 OAuth 记录 `llm-pi-ai/github-copilot`：取 `payload.refresh`（长期 GitHub OAuth token），以 `Authorization: token …` 调 `GET https://api.github.com/copilot_internal/user`（企业版按 `enterpriseUrl` 换 `api.<域名>`，主机名只取 hostname 并做格式校验）。严格只读：不铸造 Copilot 会话令牌、不写回、不续期；没有记录 / 没有 `refresh` 按未登录，坏记录报凭据错误且不回显 token。
+- 归一化 `normalizeCopilotUsage`：`premium_interactions` 画成月度主池窗口（接口给剩余百分比，对外输出已用；缺百分比时由 entitlement / remaining 推算；夹在 0–100）；`unlimited` / `-1` 哨兵与零额度占位桶不画 0%；主池用尽且 `overage_permitted` 时标「可按量续用」并显示超额次数；免费档新形态（chat / completions 真实计数）与旧形态（`limited_user_quotas` 为剩余 / `monthly_quotas` 为总量）都支持，旧形态只在没有其他窗口时读取；组织席位（`token_based_billing`）返回合法空状态说明。
+- Client：`PROVIDER_META` / `PROVIDER_ORDER`（追加末尾）、无凭据提示、设置页说明与凭据来源标签、分组标签中英文；「已检测到凭据即可查询、不依赖路由表」的豁免从 Codex 扩展为 OAuth 类（Codex + Copilot）。名字别名：`copilot` / `ghc` / `ghcp` / `dsh-copilot-auth`。
+- 测试：新增 `tests/test-copilot.mjs`（凭据读取与企业域名、付费 / 免费 / 组织三种形态、端到端请求形状与缓存隔离、401 映射、未登录不发请求、拒绝本地 Key、别名）；`tests/test-client-behavior.mjs` 增加「无路由表仍可查询」断言；各处 provider 计数 29→30 同步。
+- **真机验证（2026-10-23，经用户授权）**：用本机 `~/.dsh/.credentials.yaml` 中该记录的真实 `refresh`，走本插件 Host 的完整解析链对 `GET https://api.github.com/copilot_internal/user` 发一次只读请求，**HTTP 200**，`Authorization: token` 被接受；个人档（`copilot_plan: individual`）读到 `premium_interactions` 月池 entitlement 1500、`percent_remaining` 50.3、`credits_used` 744（已用 49.7%，重置 2026-11-01），`chat` / `completions` 为 `unlimited` 不画窗口，entry 为 `ok` / `complete` / `copilot-oauth`。实测还暴露两点并已据此修正：① 顶层与各桶的 `token_based_billing` 在个人档也是 `true`，只能在「没有任何窗口」时才用它判断组织席位；② `remaining` 是取整（755）而 `quota_remaining` 是浮点（755.6），明细已用 `credits_used`（744）与账面一致。过程只读、不输出 token。
+- 推送前交叉核验（独立只读代理，DeepSeek V4.1 Flash / high）无阻断项，采纳并修复：① 「主池不设限」改发 Client 认得的 `quota-status`（此前发 `credit-status`，药丸会落到「暂无额度数据」）；② 组织席位不再仅凭 `token_based_billing` 判断（个人档也为 true），改看套餐名 / 零额度占位桶；③ 窗口明细补 `unit: "requests"`；④ 缓存指纹纳入 API 主机（企业域名变化即时失效）。未采纳：上游 403/404 专属错误映射（语义未核验，保持 401/403 统一为登录失效）。
+- **未做**：企业版（`enterpriseUrl`）、免费档、组织席位三种形态无真实账号可验，仅有隔离测试；未安装到桌面 Profile，界面验收需重启 DSH 后由用户执行。
+
 ## 0.15.1：报告文本按额度池合并「一池一段」
 
 - 用户实测反馈：Antigravity 那一行读起来「额度冗余」。核对后确认数据本身没有重复——`agy /usage` 返回的是 **3 个真实额度池**（Gemini Models / Claude and GPT models / Gemini 4 Argon，其中 Argon 在 Pro 计划下按官方说明**是独立池**），冗余来自展示：我们按「池名 · 窗口」逐窗平铺，同一池名重复两三遍，5 段窗口 + 1 段余额挤成一行。

@@ -11,7 +11,7 @@
 
 ## 1. 清单与默认开关
 
-29 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 13 条、关闭 16 条**，以 `defaultSettings()` 和 `parseStored()` 的组归一化结果为准：注册元数据原始为 11 开 / 18 关，但火山方舟的 4 条路由共用默认开启的组开关，团队两条也随组开启，不能只按 `defaultEnabled` 统计有效值。Codex 仍默认关闭，避免与提供方自带药丸重复。设置页里这 29 条合并成 **26 张卡片**；历史已保存开关继续合并，不按新安装数量覆盖。
+30 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 13 条、关闭 17 条**，以 `defaultSettings()` 和 `parseStored()` 的组归一化结果为准：注册元数据原始为 11 开 / 19 关，但火山方舟的 4 条路由共用默认开启的组开关，团队两条也随组开启，不能只按 `defaultEnabled` 统计有效值。Codex 仍默认关闭，避免与提供方自带药丸重复。设置页里这 30 条合并成 **27 张卡片**；历史已保存开关继续合并，不按新安装数量覆盖。
 
 新增厂商须同时改 `PROVIDERS`、`PROVIDER_META` / `PROVIDER_ORDER`、帮助文案、README 与默认值测试；未获明确需求的新订阅商一律 `defaultEnabled: false`，原有偏好通过存储合并保留。
 
@@ -19,7 +19,7 @@
 
 各家「默认继承变量」与逐家说明的完整表格维护在 [README 的「凭据与环境」折叠表](../README.md#configuration--配置)（取自 `PROVIDERS[id].envName`），本文件不重复维护同一份事实。留空表示不使用继承变量（凭据来自登录文件或官方平台会话）。
 
-解析顺序（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；自定义（`manual`）模式只使用保存的手动 Key。由提供方插件管理的模型商（`commandcode` / `xai-oauth` / `openai-codex`）不接受本插件的手动 Key。Cookie 与登录文件型凭据不走这条链，见第 4 节。火山方舟的 AK/SK 还必须**同源配对**：两个字段要么都来自凭据服务、要么都来自启动环境、要么都用本机保存值，跨来源拼接只会 401 且报错看不出根因。修改启动环境后是否需要重启取决于目标部署，不能把用户环境即时变化当作已经被运行进程读到。
+解析顺序（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；自定义（`manual`）模式只使用保存的手动 Key。由提供方插件管理的模型商（`commandcode` / `xai-oauth` / `openai-codex` / `github-copilot`）不接受本插件的手动 Key。Cookie 与登录文件型凭据不走这条链，见第 4 节。火山方舟的 AK/SK 还必须**同源配对**：两个字段要么都来自凭据服务、要么都来自启动环境、要么都用本机保存值，跨来源拼接只会 401 且报错看不出根因。修改启动环境后是否需要重启取决于目标部署，不能把用户环境即时变化当作已经被运行进程读到。
 
 ## 3. 窗口与明细
 
@@ -102,6 +102,22 @@ provider id 必须与注册这些路由的插件**逐字一致**（arkcli 官方
 窗口按接口实际时长解析；Pro / ProLite / ProMax 缺时长时按周，其他未知档位不强猜 5 小时。旧个人档保留兼容。`credits` 余额须有真实报告，`unlimited` 单独解释；没有 rate_limit 仍保留企业 Credits 与 spend_control。所选 accountId 随请求头发送并参与缓存指纹；额外模型池尚未映射时标 partial。
 
 > 这是未公开的私有接口（CodexBar / cc-switch / QuotaRadar 三家实现互相印证），官方没有文档承诺，存在变更风险。
+
+### GitHub Copilot 凭据
+
+额度走 GitHub 的私有接口 `GET https://api.github.com/copilot_internal/user`（官方 Copilot 客户端同款；企业版 GHE.com 按记录里的 `enterpriseUrl` 换 `api.<域名>`）。凭据**复用** [`@inventec/dsh-copilot-auth`](https://github.com/iasiv5/dsh-copilot-auth) 经 DSH 凭据库保存的 OAuth 记录 `llm-pi-ai/github-copilot`（即内置 `github-copilot` 路由的登录）：
+
+- 记录的 `payload.refresh` 是**长期的 GitHub OAuth token**，额度接口认它，且 scheme 是 `Authorization: token …`（不是 Bearer）；`payload.access` 是十几分钟的 Copilot 会话令牌，**不用于**额度查询。
+- 严格只读：不用 `refresh` 去铸新会话令牌、不写回、不删除记录；登录与续约都由 Copilot 提供方负责。没有记录或没有 `refresh` 按「未登录」处理；记录格式异常时报凭据错误，不回显 token。
+- `defaultEnabled: false`，不接受本地 Key，也不提供继承变量。
+
+窗口语义（均按**已用**百分比输出，接口给的是剩余）：
+
+- `quota_snapshots.premium_interactions` 是月度主池，画成一条「月」窗口（总量、剩余、`percent_remaining`、重置日 `quota_reset_date`）；启用额外计费（`overage_permitted`）且主池用尽时标注「可按量续用」并显示超额次数。`unlimited` / `-1` 哨兵不画百分比，主池不设限单独标注。
+- `chat` / `completions`：付费档通常是不设限，不画成 0%；免费档才是真实月计数。免费档旧形态（`limited_user_quotas` 为**剩余**、`monthly_quotas` 为总量、`limited_user_reset_date`）仅在没有任何新形态窗口时才读取。
+- 组织席位（Business / Enterprise）GitHub 不返回个人额度，是合法空状态：说明原因，不画 0%。判据是套餐名含 business / enterprise / team，或主池为零额度占位桶且套餐不是个人 / 免费；`token_based_billing` 在个人档真机也是 `true`，**不能单独**作为组织席位的依据。
+
+> 这是未公开的私有接口（字段依据 GitHub Copilot SDK 的类型定义与 CodexBar / ryu-usage 等第三方实现互相印证），官方没有文档承诺，存在变更风险。个人档已于 2026-10-23 用真实账号联机验证（HTTP 200，月池 1500 / 已用 744）；企业版、免费档与组织席位形态无真实账号可验，仅有隔离测试。
 
 ### SuperGrok 凭据
 

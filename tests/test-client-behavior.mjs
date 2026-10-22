@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go", "commandcode", "xai-oauth", "minimax-cn", "deepseek-account", "deepseek", "arkcli-agent-plan"];
 // 默认关闭的厂商：在提供商管理里可见开关、但不产生 tab。新增厂商时同步这里。
 // openai-codex 默认关闭——它的提供方插件自带用量药丸。
-const defaultOff = ["zai-coding", "synthetic", "nanogpt", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "arkcli-agent-plan-team", "arkcli-coding-plan-team", "openai-codex"];
+const defaultOff = ["zai-coding", "synthetic", "nanogpt", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "arkcli-agent-plan-team", "arkcli-coding-plan-team", "openai-codex", "github-copilot"];
 const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
 let spec, clock = Date.parse("2026-10-01T10:00:00Z"), nextTimer = 0;
 const intervals = new Map(), timeouts = new Map(), events = new Map();
@@ -128,6 +128,25 @@ codexTransport = "ok"; const callsBeforeRecovery = codexCalls;
 await codexReader(); await flush();
 assert.equal(codexCalls, callsBeforeRecovery + 1, "retry still sends RPC without provider remount");
 assert.ok(codexHooks.render(api.UsagePill, codexProps));
+// GitHub Copilot：凭据是 OAuth 记录（与 Codex 同类），路由表暂缺时只要已检测到凭据就仍可查询并显示。
+{
+  const copilotResult = value => ({ ...result([value]), configured: { "github-copilot": false }, settings: { ...publicSettings(), visibility: { providers: { "github-copilot": true }, hideWithoutApi: true } } });
+  let copilotCalls = 0;
+  const copilotStore = api.createUsageStore(method => {
+    if (method === "read") return copilotResult(entry("github-copilot", 40, { apiDetected: true, keySource: "copilot-oauth" }));
+    copilotCalls++;
+    return copilotResult(entry("github-copilot", 42, { apiDetected: true, keySource: "copilot-oauth" }));
+  });
+  await copilotStore.readAll();
+  const copilotReader = copilotStore.reader("github-copilot"), copilotHooks = new Hooks();
+  const copilotProps = { providerId: "github-copilot", label: "GitHub Copilot", readEntry: copilotReader, t, getLocale: () => "zh" };
+  copilotHooks.render(api.UsagePill, copilotProps); await flush();
+  assert.ok(copilotHooks.render(api.UsagePill, copilotProps), "已检测到 Copilot 登录时，路由表暂缺也显示药丸");
+  await copilotReader(); await flush();
+  assert.equal(copilotCalls >= 1, true, "无路由时仍能发起刷新");
+  assert.equal(copilotStore.getSnapshot().entries[0].keySource, "copilot-oauth");
+  copilotStore.dispose?.();
+}
 assert.equal(codexStore.getSnapshot().entries[0].state, "ok");
 const codexPoll = [...intervals.values()].find(timer => timer.ms === 60000);
 assert.ok(codexPoll, "visible Codex owns an active polling subscription");
@@ -208,8 +227,8 @@ let tabs = nodes(tree).filter((n) => n.props.role === "tab");
 assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Grok", "MiniMax CN", "DeepSeek 账号", "DeepSeek API", "ARK Plan"]);
 assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
 assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
-// 设置页卡片数：25 家非 Ark provider + 1 张 Ark 合并卡片（组内 4 条路由） + 1 个「默认隐藏」开关 = 27。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 27); assert.ok(!textOf(tree).includes("保存设置"));
+// 设置页卡片数：26 家非 Ark provider + 1 张 Ark 合并卡片（组内 4 条路由） + 1 个「默认隐藏」开关 = 28。
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 28); assert.ok(!textOf(tree).includes("保存设置"));
 let focused; tabs[0].props.onKeyDown({ key: "End", preventDefault() {}, currentTarget: { parentElement: { querySelectorAll: () => tabs.map((_, i) => ({ focus() { focused = i; } })) } } });
 assert.equal(focused, ids.length - 1); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids.at(-1));
 // End 键跳到最后一个 tab，其技术信息应显示该 provider 的继承变量名。
@@ -420,8 +439,8 @@ const management = tree.children.at(-1);
 assert.equal(management.type, "details", "管理区为设置页末尾的折叠菜单");
 assert.equal(management.props.id, "subusage-provider-management"); assert.notEqual(management.props.open, true, "默认折叠");
 assert.equal(management.children[0].type, "summary"); assert.equal(management.children[0].children[0], "提供商管理");
-// 关闭/隐藏的提供商仍保留管理开关；Ark 的 4 条路由合并成一张卡片，所以是 27 个开关（29 条 provider − 4 + 1 张合并卡片 + 1 个「默认隐藏」）。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 27, "所有关闭/隐藏提供商保留管理开关（Ark 组已合并，双 DeepSeek 入口独立）");
+// 关闭/隐藏的提供商仍保留管理开关；Ark 的 4 条路由合并成一张卡片，所以是 28 个开关（30 条 provider − 4 + 1 张合并卡片 + 1 个「默认隐藏」）。
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 28, "所有关闭/隐藏提供商保留管理开关（Ark 组已合并，双 DeepSeek 入口独立）");
 assert.deepEqual(nodes(tree).filter(n => n.props.role === "tab").map(n => n.props.id), ids.filter(id => ![ids[1], ids[3]].includes(id)).map(id => `subusage-tab-${id}`));
 assert(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick({ preventDefault() {} }); tree = ch.render(api.SubusageSection, cp);
@@ -453,9 +472,9 @@ const beforeToggle = controlPatches.length; await nodes(tree).find(n => n.props[
 ch.unmount();
 controlSnapshot = withPrefs(result(controlSnapshot.entries), preferences(Object.fromEntries(ids.map(id => [id, false]))));
 const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSection, cp);
-// 设置页的卡片数：25 家非 Ark provider + 1 张 Ark 合并卡片（组内 4 条路由） + 1 个「默认隐藏」开关 = 27。
+// 设置页的卡片数：26 家非 Ark provider + 1 张 Ark 合并卡片（组内 4 条路由） + 1 个「默认隐藏」开关 = 28。
 // 注意不能写成 ids + defaultOff 再减——那两个列表只覆盖到 Ark 组的一部分成员。
-assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 27);
+assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 28);
 assert.equal(nodes(tree).find(n => n.props.id === "subusage-provider-management").props.open, true, "空状态展开配置入口");
 assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.role === "tabpanel"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick({ preventDefault() {} }); tree = emptyControls.render(api.SubusageSection, cp);

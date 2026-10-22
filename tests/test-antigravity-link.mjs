@@ -99,7 +99,7 @@ function harness(agy, options = {}) {
 	const calls = [];
 	const agy = { read: async request => { calls.push(request); return SNAPSHOT; } };
 	const { service } = harness(agy);
-	// 点名联动项：只回它一条，不夹带另外 29 家（否则模型问「Antigravity 还剩多少」会拿到一屏无关数据）。
+	// 点名联动项：只回它一条，不夹带另外 30 家（否则模型问「Antigravity 还剩多少」会拿到一屏无关数据）。
 	const only = await service.quota({ providerIds: ["antigravity"] });
 	assert.deepEqual(only.providers.map(p => p.providerId), ["antigravity"]);
 	assert.deepEqual(only.providers[0].windows.map(w => [w.kind, w.percent]), [["5h", 40]]);
@@ -109,9 +109,9 @@ function harness(agy, options = {}) {
 	await service.quota({ providerIds: ["agy"], force: true });
 	assert.deepEqual(calls[1], { force: true }, "refresh 要透传给提供方插件");
 	assert.deepEqual((await service.quota({ providerIds: ["antigravity-acp"] })).providers.map(p => p.providerId), ["antigravity"], "别名按大小写与分隔符归一");
-	// 不点名：29 家 + 联动 1 家。
+	// 不点名：30 家 + 联动 1 家。
 	const all = await service.quota();
-	assert.equal(all.providers.length, 30);
+	assert.equal(all.providers.length, 31);
 	assert.ok(all.providers.some(p => p.providerId === "antigravity"));
 	// 视图里不能出现 undefined 值的键（调用方 schema 会判成型别错误）。
 	for (const entry of all.providers) for (const [key, value] of Object.entries(entry)) assert.notEqual(value, undefined, `${entry.providerId}.${key} 不得是 undefined`);
@@ -122,7 +122,7 @@ function harness(agy, options = {}) {
 {
 	const { service } = harness(undefined);
 	const all = await service.quota();
-	assert.equal(all.providers.length, 29, "没有兄弟插件就只有本插件登记的 29 家");
+	assert.equal(all.providers.length, 30, "没有兄弟插件就只有本插件登记的 30 家");
 	assert.ok(!all.providers.some(p => p.providerId === "antigravity"));
 	const named = await service.quota({ providerIds: ["antigravity"] });
 	const row = named.providers.find(p => p.providerId === "antigravity");
@@ -166,16 +166,16 @@ function harness(agy, options = {}) {
 	assert.ok(tool.parameters.providers.description.includes("antigravity"), "参数说明要能点名它");
 	const asked = await tool.execute({ providers: ["antigravity"] }, {});
 	assert.deepEqual(asked.providers.map(p => p.providerId), ["antigravity"]);
-	// 不点名：其余 29 家都没配凭据被收起，联动项留下并计入 omitted。
+	// 不点名：其余 30 家都没配凭据被收起，联动项留下并计入 omitted。
 	const auto = await tool.execute({}, {});
 	assert.deepEqual(auto.providers.map(p => p.providerId), ["antigravity"], "没配凭据的家要被收起");
-	assert.equal(auto.omitted, 29);
+	assert.equal(auto.omitted, 30);
 	const text = tool.output.render({}, auto)[0].text;
 	assert.ok(text.includes("Antigravity [ok]"), "文本里要有一行能读的 antigravity");
 	assert.ok(text.includes("60% 剩余"), "文本按剩余口径展示（条目里存的是已用 40%）");
 	assert.ok(text.includes("Gemini Models · 5h"), "组名要留住，否则看不出这条百分比管哪批模型");
 	assert.ok(text.includes("plan: Pro"));
-	assert.ok(text.includes("另有 29 家"), "省略计数照旧");
+	assert.ok(text.includes("另有 30 家"), "省略计数照旧");
 	service.dispose();
 }
 // 插件不在场时，工具输出里不得出现 antigravity 行（也不能报成「未配置凭据」）。

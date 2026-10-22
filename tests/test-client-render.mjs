@@ -154,8 +154,8 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   const all = flattenNodes(section), selects = all.filter((n) => n.type === "select");
   assert.equal(selects.length, 0, "设置页不使用任何下拉列表");
   // 火山方舟的 4 条路由在设置页合并成**一张**卡片（共用一个组开关），
-  // 所以是 29 − 4 + 1 = 26 张 provider 卡片 + 1 个「没有检测到 API 的默认隐藏」开关 = 27。
-  assert.equal(all.filter(n => n.props?.role === "switch").length, 27, "提供商卡片与默认隐藏开关均可见（Ark 组已合并，新增独立 DeepSeek 账号入口）");
+  // 所以是 30 − 4 + 1 = 27 张 provider 卡片 + 1 个「没有检测到 API 的默认隐藏」开关 = 28。
+  assert.equal(all.filter(n => n.props?.role === "switch").length, 28, "提供商卡片与默认隐藏开关均可见（Ark 组已合并，新增独立 DeepSeek 账号入口）");
   if (provider === "xiaomi-token-plan-cn") {
     assert.ok(visibleText(section).includes("登录并自动导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));

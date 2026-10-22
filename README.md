@@ -55,11 +55,11 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 ## 支持什么
 
-**29 条数据入口，新安装默认开启 13 条。** 按使用场景，主要分为：
+**30 条数据入口，新安装默认开启 13 条。** 按使用场景，主要分为：
 
 | 你想看什么 | 代表提供商 |
 |---|---|
-| 订阅窗口与重置时间 | Kimi、MiMo、Codex、SuperGrok、MiniMax、Z.ai、OpenCode Go、OpenDesign |
+| 订阅窗口与重置时间 | Kimi、MiMo、Codex、GitHub Copilot、SuperGrok、MiniMax、Z.ai、OpenCode Go、OpenDesign |
 | 账号钱包与 API 余额 | DeepSeek API / 账号、SiliconFlow、Novita、Hyperbolic、DeepInfra |
 | 套餐、余额与多层预算 | Command Code、NanoGPT、OpenRouter、ZenMux、LiteLLM |
 | 账号级套餐与企业席位 | 火山方舟 Agent Plan / Coding Plan |
@@ -97,7 +97,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 ## 支持的数据 / Supported data
 
-共 **29 条 provider id**：新安装**有效默认开启 13 条、关闭 16 条**。另有 **4 条联动项**（`antigravity`、`trae`、`trae-global`、`trae-enterprise`）：它们没有自己的凭据、检测开关与设置卡片，只在本机运行对应兄弟插件（[`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) / [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae)）时才出现在 `subusage_quota` 工具报告与 `quota()` 视图里，数据取自那些插件自己算好的额度（一个读它的 Cordis 服务，一个读它挂在本机的只读用量路由）。清单取自 [`lib/index.js`](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 的组归一化为准：Ark 四路共用默认开启的组开关，团队两路也随组开启，不能只统计注册元数据。展示顺序与短名取自 [`lib/client.js`](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
+共 **30 条 provider id**：新安装**有效默认开启 13 条、关闭 17 条**。另有 **4 条联动项**（`antigravity`、`trae`、`trae-global`、`trae-enterprise`）：它们没有自己的凭据、检测开关与设置卡片，只在本机运行对应兄弟插件（[`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) / [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae)）时才出现在 `subusage_quota` 工具报告与 `quota()` 视图里，数据取自那些插件自己算好的额度（一个读它的 Cordis 服务，一个读它挂在本机的只读用量路由）。清单取自 [`lib/index.js`](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 的组归一化为准：Ark 四路共用默认开启的组开关，团队两路也随组开启，不能只统计注册元数据。展示顺序与短名取自 [`lib/client.js`](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
 
 | 提供商 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|---|
@@ -110,6 +110,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 | Command Code | `commandcode` | 5 小时 / 周 / 月额度池 | 提供方插件的凭据链 | 开 |
 | SuperGrok | `xai-oauth` | 周期池 | 共享 Grok CLI 登录文件，过期经 grok-kit 续约 | 开 |
 | Codex (ChatGPT) | `openai-codex` | ChatGPT 订阅窗口 | 只读 Subscription 独立 OAuth（0.13.0 起）或 Codex CLI 登录文件 | 关 |
+| GitHub Copilot | `github-copilot` | 月度高级请求池（免费档为聊天 / 补全月计数） | 只读 Copilot 提供方（`dsh-copilot-auth`）存入 DSH 凭据库的 OAuth 记录，调用 GitHub 私有额度接口 | 关 |
 | MiniMax（中国） | `minimax-cn` | 短周期 / 周 | Bearer | 开 |
 | ARK Agent Plan (arkcli) | `arkcli-agent-plan` | 订阅窗口（AFP） | IAM AK/SK 签名 | 开 |
 | ARK Coding Plan (arkcli) | `arkcli-coding-plan` | 订阅窗口 | IAM AK/SK 签名 | 开 |
@@ -249,6 +250,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | Command Code | [`@mars-sea/dsh-commandcode-provider`](https://www.npmjs.com/package/@mars-sea/dsh-commandcode-provider) | 在该插件的设置页登录，或运行 `cmd login`（兜底读 `~/.commandcode/auth.json`） |
 | SuperGrok | [`dsh-grok-kit`](https://github.com/KouzakiUmi/dsh-grok-kit) | 运行 `grok login`，登录文件 `~/.grok/auth.json` |
 | Codex（ChatGPT 订阅） | [`dsh-codex-connect`](https://github.com/franksong2702/dsh-codex-connect) 或 [`dsh-codex-subscription`](https://github.com/WSL043/dsh-codex-subscription)（0.13.0 起兼容） | Connect / CLI：`codex login`；Subscription：在其设置页独立 OAuth 登录，无需 CLI |
+| GitHub Copilot | [`@inventec/dsh-copilot-auth`](https://github.com/iasiv5/dsh-copilot-auth)（内置 `github-copilot` 路由的设备码登录） | 在其设置页完成设备码登录；本插件复用凭据库里的这条 OAuth 记录，无需另行登录 |
 
 > **Codex 默认关闭**：它的提供方插件本身就带一个用量药丸，两个并排只是重复信息。想要本插件这一份（比如想把 Codex 和别家放在一起看）可以在**提供商管理**里手动开启。
 >
@@ -258,11 +260,11 @@ dsh plugin --profile <profile> remove dsh-subusage
 
 - **设置页路径**：设置 → **订阅用量** → 提供商管理。「没有检测到API的默认隐藏」默认开启；首次没有可见条目时管理区自动展开。关闭的提供商仍可配置凭据，只是不会发起用量请求。
 - **凭据从哪来**：每一类凭据的**官网入口、环境变量名与界面填入位置**都写在[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)——包括火山的 IAM AK/SK（子用户还要挂 `ArkReadOnlyAccess` 且不限制到项目）、MiMo 的平台会话 Cookie、以及各家 API Key 的对照表。**注意推理 Key 与额度凭据不通用。**
-- **默认开关策略**：新安装默认开启 13 条、默认关闭 16 条（**Codex 默认关闭**——它的提供方插件自带用量药丸）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
+- **默认开关策略**：新安装默认开启 13 条、默认关闭 17 条（**Codex 默认关闭**——它的提供方插件自带用量药丸；GitHub Copilot 按新订阅商惯例默认关闭）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
 - **火山方舟是一组**：4 条路由共用同一组 IAM AK/SK，所以设置页只呈现**一张卡片、一个开关**（本机已装的第一条路由作为代表，都没装则用第一条），卡片里写明本机实际装了哪几条。这些 provider id 并没有合并——药丸仍按 id 匹配路由。旧插件 `@volcengine/ark-plan-api` 的两个国内路由（`ark-coding-plan-cn` / `ark-agent-plan-cn`）**已移除**：它们与 arkcli 的路由查同一份订阅，并列显示只会让人以为买了两个套餐；装了旧插件的用户，药丸仍按那两个 id 显示同一份数据（入口归并到 arkcli 路由）。
 - **火山方舟不按路由收起**：它的额度走**账号级管控面**，一组 AK/SK 就能查到名下所有套餐（`GetCodingPlanUsage` 与 `GetAFPUsage` 是同一套协议、同一组凭据）。推理路由装没装只影响模型能不能用，**不影响额度能不能查**——所以只持有 Coding Plan、却没在 DSH 里配 coding-plan 路由时，那条额度照样会显示（前提是配了 AK/SK）。
 - **凭据来源优先级**（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；切到自定义（`manual`）模式时只使用保存的手动 Key。界面会区分这三种来源。
-- **不接受本地 Key 的提供商**：`commandcode`（凭据链属提供方插件）、`xai-oauth`、`openai-codex`（只读各自 CLI 的登录文件），以及 MiMo（Cookie 会话）。
+- **不接受本地 Key 的提供商**：`commandcode`（凭据链属提供方插件）、`xai-oauth`、`openai-codex`（只读各自 CLI 的登录文件）、`github-copilot`（只读 Copilot 提供方存入凭据库的 OAuth 记录），以及 MiMo（Cookie 会话）。
 - **保存与验证分离**：凭据先确认持久化，再独立做在线验证；检测关闭的提供商只保存凭据、不发起验证，验证失败不代表保存失败。
 - **出错时在卡片上修**：MiMo 未登录 / Cookie 被拒 → 「登录并自动导入」；Cookie 临近到期或已过期 → 「重新登录」；其他家缺凭据 → 「配置凭据」（展开该厂商编辑器并滚动过去）。正常状态不显示行动条。
 
@@ -285,6 +287,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | Command Code | `COMMANDCODE_API_KEY` | 凭据由提供方插件管理，本页只读继承；兜底读取 `~/.commandcode/auth.json`（`cmd login`） |
 | SuperGrok | 无 | `xai-oauth` 路由；读取 dsh-grok-kit / Grok CLI 共享的 OAuth 登录文件 `~/.grok/auth.json`（旧版 `~/.dsh/.xai-oauth-auth.json`），不保存凭据。access token 过期时**借 dsh-grok-kit（≥0.2.0）的官方登录链自动续约**——同一文件、同一把写锁、compare-and-write，不会顶掉共享登录态（本插件绝不自行裸 POST 刷新）；未安装 grok-kit 或续约失败时才提示手动重新登录。API Key（`XAI_API_KEY`）取不到订阅周池 |
 | Codex | 无 | `openai-codex` 路由；0.13.0 起优先只读 Subscription 活动 OAuth 账号，再回退 CLI 文件（`$CODEX_HOME/auth.json` 或 `~/.codex/auth.json`，要求 `auth_mode` 为 `chatgpt`）；不保存或刷新 token，续约由所属插件负责 |
+| GitHub Copilot | 无 | `github-copilot` 路由；只读凭据库记录 `llm-pi-ai/github-copilot` 中的长期 GitHub OAuth token（`refresh`），以 `Authorization: token …` 调用 `GET https://api.github.com/copilot_internal/user`（企业版按记录里的 `enterpriseUrl` 换 `api.<域名>`）；不用它铸造会话令牌、不保存或续期，登录与续约由 Copilot 提供方负责。私有接口，字段可能变化 |
 | 火山方舟 Ark（4 条路由） | `VOLC_ACCESSKEY` + `VOLC_SECRETKEY` | 额度查询要 **IAM Access Key 的 AK/SK 配对**，与推理 API Key（`ARKCLI_*_API_KEY` / `ARK_*_API_KEY`）**不是同一套**；4 条路由共用一组 AK/SK。这一组 AK/SK 能**同时**查到 Agent Plan 与 Coding Plan（含团队版席位）——不存在「Coding Plan 专用查询 key」 |
 | SiliconFlow | `SILICONFLOW_API_KEY` | 余额型：`GET /v1/user/info` 返回账户余额，**与推理是同一把 Key** |
 | OpenRouter | `OPENROUTER_API_KEY` | key 限额与用量用推理 key 即可；**账户余额需要 management / provisioning key**，普通 key 会被 403 拒——此时静默降级为只显示限额，不判失败 |
@@ -312,6 +315,7 @@ opencode-go              OPENCODE_API_KEY
 commandcode              COMMANDCODE_API_KEY
 xai-oauth                —                              （OAuth 登录文件）
 openai-codex             —                              （OAuth 登录文件）
+github-copilot           —                              （凭据库 OAuth 记录 llm-pi-ai/github-copilot，只读）
 minimax                  MINIMAX_API_KEY
 minimax-cn               MINIMAX_CN_API_KEY
 synthetic                SYNTHETIC_API_KEY

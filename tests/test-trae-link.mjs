@@ -179,7 +179,7 @@ function harness({ webServer, replies = {}, now } = {}) {
 {
 	const { service } = harness({ webServer: { getOrigin: () => BASE } });
 	const all = await service.quota();
-	assert.equal(all.providers.length, 29, "没有 Trae 通道就只有本插件登记的 29 家");
+	assert.equal(all.providers.length, 30, "没有 Trae 通道就只有本插件登记的 30 家");
 	assert.ok(!all.providers.some(p => p.providerId.startsWith("trae")));
 	const named = await service.quota({ providerIds: ["trae-global"] });
 	const row = named.providers.find(p => p.providerId === "trae-global");
@@ -200,7 +200,7 @@ function harness({ webServer, replies = {}, now } = {}) {
 	service.linkedTimeoutMs = 20;
 	const all = await service.quota();
 	assert.ok(!all.providers.some(p => p.providerId === "trae"), "非点名的超时不出条目（缓存随后会补上）");
-	assert.equal(all.providers.length, 29);
+	assert.equal(all.providers.length, 30);
 	service.dispose();
 }
 

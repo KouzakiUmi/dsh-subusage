@@ -4,7 +4,7 @@
 
 > 本文件是决策记录，不是接入指引。当前行为、凭据与窗口语义见 [README](../README.md)。
 
-## 已支持（29 条 provider id，含独立 DeepSeek 账号与 OpenDesign）
+## 已支持（30 条 provider id，含独立 DeepSeek 账号、OpenDesign 与 GitHub Copilot）
 
 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|
@@ -16,6 +16,7 @@
 | `opencode-go` | 订阅窗口 | Bearer | 开 |
 | `commandcode` | 5h / 周 / 月额度池 | 提供方插件的凭据链 | 开 |
 | `openai-codex` | ChatGPT 订阅窗口 | 优先只读 Subscription 活动账号 OAuth，无该来源再读 Codex CLI 登录文件 | 关（提供方插件自带用量药丸） |
+| `github-copilot` | 月度高级请求池（免费档为聊天 / 补全月计数） | 只读 dsh-copilot-auth 存入凭据库的 OAuth 记录（`refresh`） | 关 |
 | `xai-oauth` | 周期池 | 共享 Grok CLI 登录文件，过期经 grok-kit 官方链续约 | 开 |
 | `minimax-cn` | 短周期 / 周 | Bearer | 开 |
 | `arkcli-agent-plan` / `arkcli-coding-plan` | 订阅窗口（AFP / 按次数） | 管控面 IAM AK/SK 签名 | 开 |
@@ -30,9 +31,9 @@
 | `litellm` | 预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
 | `opendesign` | Design Plan 窗口 + 个人钱包/订阅额度剩余 | 控制台会话 Cookie；与模型 Key 不通用 | 关 |
 
-> 另有 **4 条联动项**（`antigravity`、`trae`、`trae-global`、`trae-enterprise`），不计入上面的 29 条：它不是本插件登记的 provider id（没有凭据、检测开关与设置卡片），只在本机运行 [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) 时，把该插件 `agyQuota` 服务的套餐额度并入 `quota()` 视图与 `subusage_quota` 报告；插件不在场时条目不出现。`trae*` 三块面板同理，来自 `dsh-connect-trae` 挂在本机 web 服务器上的只读用量路由（`/plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>`）。取舍：读兄弟插件**已经算好**的结果，而不是自己实现官方取数，避免第二份凭据读取路径与两套缓存；代价是依赖对方的输出契约（其版本变化时本插件报错而不是编数字）。
+> 另有 **4 条联动项**（`antigravity`、`trae`、`trae-global`、`trae-enterprise`），不计入上面的 30 条：它不是本插件登记的 provider id（没有凭据、检测开关与设置卡片），只在本机运行 [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) 时，把该插件 `agyQuota` 服务的套餐额度并入 `quota()` 视图与 `subusage_quota` 报告；插件不在场时条目不出现。`trae*` 三块面板同理，来自 `dsh-connect-trae` 挂在本机 web 服务器上的只读用量路由（`/plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>`）。取舍：读兄弟插件**已经算好**的结果，而不是自己实现官方取数，避免第二份凭据读取路径与两套缓存；代价是依赖对方的输出契约（其版本变化时本插件报错而不是编数字）。
 
-> 火山方舟以官方 CLI（`arkcli helper configure`）写入的 `arkcli-*` 为准：个人版 2 条 + 团队版 2 条，共 **4 条**，共用一组 IAM AK/SK。旧插件 `@volcengine/ark-plan-api` 的两个国内 id（`ark-agent-plan-cn` / `ark-coding-plan-cn`）已从 Host 移除，但 Client 入口（`ROUTE_PROVIDER_ALIAS`）会把它们**归并**到对应的 arkcli 路由——装了旧插件的用户选中那些模型时，药丸仍显示同一份订阅数据，不需要改装。BytePlus 站点（`ark-coding-plan-byteplus`）本机无账号可验证，已整条移除：Host 不识别、Client 也不归并。企业版 / 团队版需要查看席位的权限；四条路由共用组开关，新安装有效默认均随 Ark 组开启。注册元数据中的团队默认关不是归一化后的运行值，实际新安装为 13 开 / 16 关；详情以 README 的当前清单为准。
+> 火山方舟以官方 CLI（`arkcli helper configure`）写入的 `arkcli-*` 为准：个人版 2 条 + 团队版 2 条，共 **4 条**，共用一组 IAM AK/SK。旧插件 `@volcengine/ark-plan-api` 的两个国内 id（`ark-agent-plan-cn` / `ark-coding-plan-cn`）已从 Host 移除，但 Client 入口（`ROUTE_PROVIDER_ALIAS`）会把它们**归并**到对应的 arkcli 路由——装了旧插件的用户选中那些模型时，药丸仍显示同一份订阅数据，不需要改装。BytePlus 站点（`ark-coding-plan-byteplus`）本机无账号可验证，已整条移除：Host 不识别、Client 也不归并。企业版 / 团队版需要查看席位的权限；四条路由共用组开关，新安装有效默认均随 Ark 组开启。注册元数据中的团队默认关不是归一化后的运行值，实际新安装为 13 开 / 17 关；详情以 README 的当前清单为准。
 
 
 ## 评估后不接入
