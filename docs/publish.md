@@ -25,6 +25,8 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 ## npm
 
+0.15.1 已于 2026-10-23 发布并核验：`v0.15.1` tag → `release.yml` 发布 npm；首轮同样在 60 秒可见性窗口内报 `Publication verification failed`，这一次 registry **确实还没读到**该版本（等约 4 分钟后 `versions["0.15.1"]` 与 `dist-tags.latest` 才变成 0.15.1，`published 2026-10-22T18:01:53Z`），按「依据只能是 registry」的固定处置：先在 registry 确认可读，再 `workflow_dispatch`（`version_tag=v0.15.1`）重跑转绿，未重复发布；`v0.15.1` Release 资产与 npm tarball 的 SHA256 一致（`sha256:f7638911021c4d63a30f142cc1e347f59b85b360f2c85abb0d8c16c16295475b`，165290 字节）。随后用随包 Desktop CLI（`plugin --profile desktop add dsh-subusage@0.15.1`）装进 `desktop` profile：依赖与已安装包 `version` 均为 `0.15.1`，已安装产物里能查到并段逻辑与联动项汇总文案；重启验收由用户执行。
+
 0.15.0 已于 2026-10-23 发布并核验：`v0.15.0` tag → `release.yml` 发布 npm；registry 的 `dist-tags.latest` 与 `versions["0.15.0"]` 均读到该版本（`published 2026-10-22T17:10:51Z`），`v0.15.0` Release 资产与 npm tarball 的 SHA256 一致（`sha256:43d41bd9e347a40e873d9f4e48efab83caab87f2e1b36cdf5ae08374974672f5`，164599 字节）；主分支 `build-47599fcaddd0` 保持 latest。首轮 `Publish to npm` 在 60 秒可见性窗口内报 `Publication verification failed`（既有已知形态：上传已成功、registry 稍后才可读），先在 registry 确认版本可读，再 `workflow_dispatch`（`version_tag=v0.15.0`）重跑转绿，未重复发布。随后用随包 Desktop CLI（`plugin --profile desktop add dsh-subusage@0.15.0`）装进 `desktop` profile，profile 的 `package.json` 依赖与已安装包的 `version` 均核对为 `0.15.0`；重启验收由用户执行。
 
 0.15.0 新增两条兄弟插件联动额度（`antigravity` 读 `dsh-antigravity-acp` 的 `agyQuota` 服务；`trae` / `trae-global` / `trae-enterprise` 读 `dsh-connect-trae` 挂在本机 web 服务器上的只读用量路由），并把 OpenDesign 的两个美元数字按池子改名为「套餐余额 / 总额度」。Trae 链接已用真实运行中的 DSH 实测（CN 面板 `signed-in`、企业版/国际版 `signed-out` 不产生条目、60 秒缓存与 `force` 行为均核对），`antigravity` 仍是进程内服务、只在隔离测试中验证。同步包版本与 Host 标识；以 registry 与对应 Actions/Release 结果为发布完成依据，不自动安装或重启本机 DSH。
