@@ -25,6 +25,8 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 ## npm
 
+0.15.0 已于 2026-10-23 发布并核验：`v0.15.0` tag → `release.yml` 发布 npm；registry 的 `dist-tags.latest` 与 `versions["0.15.0"]` 均读到该版本（`published 2026-10-22T17:10:51Z`），`v0.15.0` Release 资产与 npm tarball 的 SHA256 一致（`sha256:43d41bd9e347a40e873d9f4e48efab83caab87f2e1b36cdf5ae08374974672f5`，164599 字节）；主分支 `build-47599fcaddd0` 保持 latest。首轮 `Publish to npm` 在 60 秒可见性窗口内报 `Publication verification failed`（既有已知形态：上传已成功、registry 稍后才可读），先在 registry 确认版本可读，再 `workflow_dispatch`（`version_tag=v0.15.0`）重跑转绿，未重复发布。随后用随包 Desktop CLI（`plugin --profile desktop add dsh-subusage@0.15.0`）装进 `desktop` profile，profile 的 `package.json` 依赖与已安装包的 `version` 均核对为 `0.15.0`；重启验收由用户执行。
+
 0.15.0 新增两条兄弟插件联动额度（`antigravity` 读 `dsh-antigravity-acp` 的 `agyQuota` 服务；`trae` / `trae-global` / `trae-enterprise` 读 `dsh-connect-trae` 挂在本机 web 服务器上的只读用量路由），并把 OpenDesign 的两个美元数字按池子改名为「套餐余额 / 总额度」。Trae 链接已用真实运行中的 DSH 实测（CN 面板 `signed-in`、企业版/国际版 `signed-out` 不产生条目、60 秒缓存与 `force` 行为均核对），`antigravity` 仍是进程内服务、只在隔离测试中验证。同步包版本与 Host 标识；以 registry 与对应 Actions/Release 结果为发布完成依据，不自动安装或重启本机 DSH。
 
 0.14.5 修复 OpenDesign 认证错误被双端点降级吞成部分数据的问题；同步更正有效默认开关 13 开 / 16 关、29 条提供商清单、保存后独立验证及历史实测覆盖口径。包版本与 Host 标识同步；发布完成仍以对应 Actions、GitHub Release 资产与 npm registry 的实际结果为准，不自动安装或重启本机 DSH。
