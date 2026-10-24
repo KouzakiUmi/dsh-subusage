@@ -148,7 +148,7 @@ assert.ok(visibleText(monthlyRow).includes("planSnapshotLimit"));
 const flattenNodes = (node) => Array.isArray(node) ? node.flatMap(flattenNodes) : node && typeof node === "object" ? [node, ...flattenNodes(node.children || [])] : [];
 const settings = { revision: "public-1", zai: { type: 1 }, hasKeys: { "zai-coding-cn": true }, keyModes: {}, xiaomi: { hasCookie: true } };
 const usageStore = { subscribe: () => () => {}, getSnapshot: () => ({ settings, configured: {}, entries: [] }) };
-for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", "xai-oauth"]) {
+for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", "xai-oauth", "opendesign"]) {
   stateValues = [provider]; stateIndex = 0;
   const section = plugin.__test.SubusageSection({ usageStore, t: (key) => key, getLocale: () => "zh" });
   const all = flattenNodes(section), selects = all.filter((n) => n.type === "select");
@@ -166,6 +166,13 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
     assert.ok(visibleText(section).includes("grokManaged"), "SuperGrok 只读说明");
     assert.ok(!visibleText(section).includes("继承变量："), "SuperGrok 无继承变量");
     assert.equal(all.filter((n) => typeof n.props?.["aria-pressed"] === "boolean").length, 0, "SuperGrok 无凭据编辑按钮");
+  } else if (provider === "opendesign") {
+    // 自动登录按钮在这家可用（2026-10-24 实测；0.14.2「会被 Cloudflare 挡住」的结论已证伪）：
+    // 说明引导用户在弹出窗口完成人机验证，手动导入与控制台入口保留为备选。
+    assert.ok(visibleText(section).includes("登录并自动导入"), "OpenDesign 提供自动登录按钮");
+    assert.ok(visibleText(section).includes("Cloudflare"), "说明人机验证的完成方式");
+    assert.ok(visibleText(section).includes("不会自动导入"), "保留控制台入口");
+    assert.equal(all.filter((n) => typeof n.props?.["aria-pressed"] === "boolean").length, 2, "OpenDesign 保留 Key 来源模式按钮");
   } else assert.equal(all.filter((n) => typeof n.props?.["aria-pressed"] === "boolean").length, 2);
 }
 

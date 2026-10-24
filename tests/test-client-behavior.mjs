@@ -28,7 +28,7 @@ const react = {
   useMemo: (fn, deps) => harness.memo(fn, deps),
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot()
 };
-vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, canShowUsage, validateCookieText, settingsPatch, draftFor, SubusageSection, SubusagePillEntry, UsagePill, UsageWindowRow, computeStatus, providerVisible, parseSettings, localError, zh, en, PROVIDER_ORDER }; exports.apply = apply;"), {
+vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, canShowUsage, validateCookieText, settingsPatch, draftFor, SubusageSection, SubusagePillEntry, UsagePill, UsageWindowRow, computeStatus, providerVisible, parseSettings, parseQuery, localError, zh, en, PROVIDER_ORDER }; exports.apply = apply;"), {
   window: { localStorage: { getItem: (key) => memory.get(key), setItem: (key, value) => memory.set(key, value) }, __ModuleLoader__: { load: (value) => { spec = value; } } },
   document, console, Date: FakeDate,
   setInterval: (fn, ms) => { const id = ++nextTimer; intervals.set(id, { fn, ms }); return id; }, clearInterval: (id) => intervals.delete(id),
@@ -80,6 +80,10 @@ assert.equal(settingsCalls.length, 1);
 assert.equal(settingsCalls[0].method, "read");
 assert.equal(settingsCalls[0].query.providerIds.length, 0, "空 providerIds 不发起额度网络查询");
 settingsOnly.dispose();
+// 客户端 query codec 与 Host 同口径：空 providerIds 合法（readSettings 依赖），未知 id / 非法 force 仍拒绝。
+assert.doesNotThrow(() => api.parseQuery({ providerIds: [], force: false, commandCodeAccount: "" }), "空 providerIds 是合法的只读设置请求");
+assert.throws(() => api.parseQuery({ providerIds: ["not-a-provider"], force: false }), /Invalid dsh-subusage query/);
+assert.throws(() => api.parseQuery({ providerIds: [ids[0]], force: "yes" }), /Invalid dsh-subusage query/);
 // 客户端冷启动/重建时，默认关闭但已由用户开启的 Codex 必须先读本机设置，不能自行过滤后永久消失。
 const coldCodexCalls = [];
 const coldCodexStore = api.createUsageStore((method, query) => {
@@ -429,7 +433,7 @@ let controlSnapshot = withPrefs(result([...ids.map(id => entry(id, 20, { apiDete
 const controlPatches = [], controlRefreshes = [];
 const controlStore = { ...uiStore, getSnapshot: () => controlSnapshot, readAll: async () => controlSnapshot, refresh: async (ids) => { controlRefreshes.push(ids); return controlSnapshot; }, save: async patch => {
  controlPatches.push(patch); const old = controlSnapshot.settings.visibility, v = patch.visibility;
- controlSnapshot = withPrefs(result(controlSnapshot.entries, String(controlPatches.length + 1)), { hideWithoutApi: v.hideWithoutApi ?? old.hideWithoutApi, providers: { ...old.providers, ...v.providers } });
+ controlSnapshot = withPrefs(result(controlSnapshot.entries, String(controlPatches.length + 1)), { hideWithoutApi: v.hideWithoutApi ?? old.hideWithoutApi, providers: { ...old.providers, ...v.providers }, ...(v.ark !== undefined || old.ark !== undefined ? { ark: v.ark ?? old.ark } : {}) });
  return controlSnapshot;
 } };
 memory.set("dsh-subusage:last-provider", ids[0]);
@@ -457,6 +461,16 @@ assert.equal(controlPatches.at(-1).visibility.hideWithoutApi, false); assert(nod
 await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax CN").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.providers["minimax-cn"], true); assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), ["minimax-cn"], "手工重新开启立即刷新");
 assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-minimax-cn"));
+// Ark 组开关走组级字段（visibility.ark），不在 providers 里：关闭不追加刷新，重新开启要立即刷新全部 4 条路由。
+const arkSwitch = () => nodes(tree).find((n) => n.props["aria-label"] === "启用 火山方舟（Ark）");
+const arkRefreshCount = controlRefreshes.length;
+await arkSwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert.equal(controlPatches.at(-1).visibility.ark, false); assert.equal(controlRefreshes.length, arkRefreshCount, "关闭组不追加刷新");
+assert(!nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-arkcli-agent-plan"), "关闭组后 Ark 标签收起");
+await arkSwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert.equal(controlPatches.at(-1).visibility.ark, true);
+assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), ["arkcli-agent-plan", "arkcli-coding-plan", "arkcli-agent-plan-team", "arkcli-coding-plan-team"], "开启 Ark 组立即刷新全部 Ark 路由");
+assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-arkcli-agent-plan"), "重新开启后 Ark 标签恢复");
 nodes(tree).find(n => n.type === "button" && n.children.includes("更换")).props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert(nodes(tree).filter(n => n.props.role === "switch").every(n => n.props.disabled), "凭据脏草稿期间只锁定即时开关");
 assert.equal(nodes(kimiEditor).find(n => n.type === "fieldset").props.disabled, false, "行内凭据不能被开关锁定误禁用");
