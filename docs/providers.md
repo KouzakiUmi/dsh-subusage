@@ -153,7 +153,7 @@ provider id 必须与注册这些路由的插件**逐字一致**（arkcli 官方
 
 OpenDesign（open-design.ai，Powerformer）的订阅额度走**控制台接口**（`amr-api.open-design.ai`），鉴权是**浏览器登录会话 Cookie**。它与 `sk-` 开头的模型 API Key 是两套：那把 Key 只换模型响应（`amr-link.open-design.ai` 的 `/v1/models`、`/v1/chat/completions`）；对 `amr-link` 的 `/v1/credits`、`/v1/usage`、`/v1/balance` 等路径做过**无凭据探测**、一律 404，带 Key 时是否另有端点**未验证**，因此本插件不用 `sk-` Key 查额度。
 
-**推荐手动导入**。卡片里的「登录并自动导入」（与 MiMo 同一套流程）在 OpenDesign 上**走不通**：插件启动的临时 Chrome 过不了站点的 Cloudflare 人机验证（2026-10-18 实测，即使已把 `navigator.webdriver` 压成 false 也一样），登录窗口会停在挑战处。该入口保留着，等站点放宽时可用；日常请按下面的手动步骤。
+卡片里的「登录并自动导入」（与 MiMo 同一套流程）**可用**：2026-10-18 曾实测临时 Chrome 过不了站点的 Cloudflare 人机验证（即使已把 `navigator.webdriver` 压成 false），该结论已被 2026-10-24 的实测推翻——临时浏览器不自报自动化身份后，人机验证会在弹出窗口里出现，由用户亲自完成即可。手动导入仍是备选路径，步骤见下。
 
 手动导入（设置 → 订阅用量 → 提供商管理 → **OpenDesign** 卡片）：
 
@@ -233,7 +233,7 @@ Command Code 的凭据由提供方插件 `@mars-sea/dsh-commandcode-provider` �
 | 用途 | 域名 |
 |---|---|
 | 各订阅 / 余额接口 | `api.deepseek.com`、`open.bigmodel.cn`、`api.z.ai`、`api.kimi.com`、`opencode.ai`、`api.siliconflow.cn`、`openrouter.ai`、`api.synthetic.new`、`nano-gpt.com`、`api.novita.ai`、`api.hyperbolic.ai`、`api.deepinfra.com`、`api.chutes.ai`、`ollama.com`、`ai-gateway.vercel.sh`、`zenmux.ai`、`api.minimax.io`、`api.minimaxi.com` |
-| 会话 / 登录文件型 | `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`（Command Code 计费）、`cli-chat-proxy.grok.com`（SuperGrok 计费代理）、`grok.com`（credits 格式失败时的 GetGrokCreditsConfig gRPC-web）、`chatgpt.com/backend-api`（Codex 订阅用量）、`amr-api.open-design.ai`（OpenDesign 控制台额度：先读 `/v1/workspaces/current` 取 workspaceId，再读该工作区的 coding-plan-usage） |
+| 会话 / 登录文件型 | `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`（Command Code 计费）、`cli-chat-proxy.grok.com`（SuperGrok 计费代理）、`grok.com`（credits 格式失败时的 GetGrokCreditsConfig gRPC-web）、`chatgpt.com/backend-api`（Codex 订阅用量）、`api.github.com`（GitHub Copilot 私有额度接口；企业版按记录里的 `enterpriseUrl` 换 `api.<域名>`，主机名只取普通域名）、`amr-api.open-design.ai`（OpenDesign 控制台额度：先读 `/v1/workspaces/current` 取 workspaceId，再读该工作区的 coding-plan-usage） |
 | 火山方舟管控面 | `open.volcengineapi.com` |
 | 自建网关 | 用户自填的 LiteLLM proxy 地址（只去掉 `/v1` 这类版本段，其余路径原样保留） |
 | 复用宿主账号请求链 | `deepseek-account`：调用本机 `deepseekAccount` 服务，由 DSH 完成鉴权与余额请求；宿主服务可能按自身配置联网，本插件不另发 HTTP、不复制 token |

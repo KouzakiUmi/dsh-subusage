@@ -43,19 +43,20 @@ try {
       };
     });
     assert.equal(info.overflow, false, `${theme}/${width} 不得横向溢出：${JSON.stringify(info.overflowNodes)}`);
-    // 预览桩下可见 13 条 = 桩里显式开启的 8 条（zai/kimi/mimo/opencode/commandcode/minimax/minimax-cn/xai-oauth）
-    // + 默认开启的 deepseek + Ark 的 4 条路由（DeepSeek 与 Ark 不在桩的 visibility.providers 里，按默认开关放行；
-    // Ark 不按路由收起，configured=false 也不影响）。codex 与其余 13 家默认关闭，因此不可见。
-    assert.equal(info.providerCount, 13, '预览桩下的可见 provider 数');
+    // 预览桩下可见 11 条 = 桩里显式开启的 8 条（zai/kimi/mimo/opencode/commandcode/minimax/minimax-cn/xai-oauth）
+    // + 默认开启的 deepseek 与 deepseek-account + Ark 的代表标签 1 条（DeepSeek 两入口与 Ark 均不在桩的
+    // visibility.providers 里，按默认开关放行；余额型不按路由收起，Ark 在订阅状态未知时只显示组代表，
+    // configured=false 也不影响）。openai-codex 与其余默认关闭各家（共 16 家）不可见。
+    assert.equal(info.providerCount, 11, '预览桩下的可见 provider 数');
     assert.equal(info.selectedProvider, 'subusage-tab-xiaomi-token-plan-cn', '标签选中态必须匹配当前详情');
     assert.equal(info.tabsVisible, true, '窄屏仍使用按钮导航');
     assert(info.tabWidths.every(width => width > 0), '所有标签均有可点击区域');
     assert.equal(info.selectCount, 0, '整个设置页不使用下拉列表');
-    // 30 条 provider 里有 7 条 Ark 路由合并成一张卡片，所以是 (30 − 6) + 1 个默认隐藏开关 = 25。
-    assert.equal(info.switches.length, 25, '提供商卡片（Ark 组已合并）与默认隐藏开关');
+    // 30 条 provider 里 Ark 的 4 条路由合并成一张卡片，所以是 (30 − 4) 张卡片 + 1 个默认隐藏开关 = 28。
+    assert.equal(info.switches.length, 28, '提供商卡片（Ark 组已合并）与默认隐藏开关');
     assert(info.switches.every(item => item.label), '开关有无障碍名称');
-    // 预览桩下关闭的卡片数 = 默认关闭 20 条 − Ark 组内被合并掉的 5 条 − 桩里打开的 MiniMax 国际版 1 条 = 14。
-    assert.equal(info.switches.filter(item => item.state === 'false').length, 14, '预览桩下关闭的 14 张卡片');
+    // 预览桩下关闭的卡片数 = 默认关闭 17 条 − 桩里显式打开的 MiniMax 国际版 1 条 = 16（Ark 组默认开启，不在其中）。
+    assert.equal(info.switches.filter(item => item.state === 'false').length, 16, '预览桩下关闭的 16 张卡片');
     await page.screenshot({ path: file.replace(/\.html$/, '.png'), fullPage: true });
     await context.close();
     console.log(`PASS ${theme}/${width} 提供商开关、可换行按钮、无下拉、无溢出`);

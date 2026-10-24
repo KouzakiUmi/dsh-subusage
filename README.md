@@ -18,7 +18,7 @@
 
 </div>
 
-> **0.14.5**：修复 OpenDesign Cookie 失效却显示「数据不完整」的问题；已识别的认证错误明确报告登录/凭据失效，不再被另一额度池的成功结果掩盖。普通网络与服务故障仍独立降级。同步修正默认开关数量、凭据保存流程与实测覆盖说明。发布与本机升级分开；本页图片是虚构数据离线预览，不是实机验收证明。[查看更新记录](docs/changelog.md)。
+> **0.16.0**：新增 GitHub Copilot 订阅额度（第 30 条入口，默认关闭）——只读复用 `dsh-copilot-auth` 保存在 DSH 凭据库的 GitHub OAuth 记录读取私有额度接口，不保存凭据、不铸会话令牌、不续期。发布与本机升级分开；本页图片是虚构数据离线预览，不是实机验收证明。[查看更新记录](docs/changelog.md)。
 
 ## 快速开始
 
@@ -152,7 +152,8 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 | Command Code | 月额度 | 提供方插件的凭据链 |
 | SuperGrok | 统一周池 + 加量余额 | 真实 `~/.grok/auth.json` |
 | Codex (ChatGPT) | 主 / 次窗口 + 档位 | 真实 `~/.codex/auth.json`（本插件默认关闭） |
-| OpenDesign | 历史接口实测（2026-10-18 / 20）：真实 workspaceId、Design Plan 扁平窗口、套餐余额 / 总额度（钱包合计）及零余额（当时界面文案为「月额度剩余 / 余额」）；本次认证失效修复只做隔离回归，未验收当前 GUI | 用户浏览器手动导入的控制台会话 Cookie；自动登录仍受 Cloudflare 阻碍 |
+| GitHub Copilot | 2026-10-23 真机联调：真实凭据库记录的长期 token 调 `GET /copilot_internal/user` **HTTP 200**（个人档 `premium_interactions` 月池 1500 / 已用 744，重置 2026-11-01；chat / completions 为 unlimited 不画窗口）；企业版、免费档与组织席位仅有隔离测试 | 复用 `@inventec/dsh-copilot-auth` 写入 DSH 凭据库的 OAuth 记录（`refresh` 长期 token），只读不续期 |
+| OpenDesign | 历史接口实测（2026-10-18 / 20）：真实 workspaceId、Design Plan 扁平窗口、套餐余额 / 总额度（钱包合计）及零余额（当时界面文案为「月额度剩余 / 余额」）；本次认证失效修复只做隔离回归，未验收当前 GUI | 控制台会话 Cookie：「登录并自动导入」实测可用（2026-10-24 确认，Cloudflare 人机验证在弹出窗口中由用户完成），手动导入仍是备选 |
 | Trae（联动，`trae` / `trae-global` / `trae-enterprise`） | 2026-10-23 对**运行中的 DSH** 实测：`region=cn` 返回 `signed-in` 的真实账号数据（积分包合计 / 已用 / 余量、Work 与通用两个桶、到期分组），企业版与国际版在该机返回 `signed-out` 时**不产生条目**；真实 `SubUsageService` 首次 527ms、缓存命中 0ms、`force` 552ms 且两次条目逐字一致 | 由 `dsh-connect-trae` 自己持有的登录态（本插件不读凭据、不碰上游）；尚未在装上新版本后从界面验收 |
 
 ### The X Subscription（新统一订阅）
@@ -189,7 +190,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 - **未验证的提供商会随接口变化而失效**（见上一节）。失效时在设置页关掉那一家的检测即可，其余不受影响；欢迎开 issue 帮我们补上。
 - **凭据以明文落盘**：本插件的配置不是加密凭据库；Windows 上真正的访问边界取决于目录 ACL，`chmod` 不能替代它。
 - **火山方舟是账号级读取**：一组 IAM AK/SK 能查到该账号名下**所有**套餐（Agent Plan、Coding Plan、团队席位）。把装了本插件的机器或配置文件交给别人时请注意这一点。
-- **浏览器自动化**：支持自动登录的提供商（MiMo、OpenDesign）会启动一个隔离的 Chromium 会话——不点「登录并自动导入」就不会触发。**OpenDesign 这家会被其 Cloudflare 人机验证挡住，实际请按手动流程复制会话 Cookie**（见凭据表）。
+- **浏览器自动化**：支持自动登录的提供商（MiMo、OpenDesign）会启动一个隔离的 Chromium 会话——不点「登录并自动导入」就不会触发。OpenDesign 的 Cloudflare 人机验证会在弹出窗口中出现，由你亲自完成即可（自动登录实测可用）；手动导入仍是备选（见凭据表）。
 - **收录不等于安全审计**：无论 DSH STORE 还是 awesome-dsh-plugin，收录只表示满足它们各自的清单规则，都不是对代码的安全审查。
 
 ## Compatibility / 兼容性
@@ -301,7 +302,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | Vercel AI Gateway | `AI_GATEWAY_API_KEY` | 余额型；金额是**十进制字符串** |
 | ZenMux | `ZENMUX_MANAGEMENT_API_KEY` | 额度端点**只认 Management API Key**（推理 key 不适用），所以变量名单独区分。在 <https://zenmux.ai/platform/management> 创建该 key |
 | LiteLLM | `LITELLM_API_KEY` + 代理地址 | 自建网关：除虚拟 Key（**与推理同一把**）还要在凭据区填写自己的 proxy 地址。管理端点在 **proxy 根**——填了 `/v1` 也会被去掉，不会拼成 `/v1/key/info` |
-| OpenDesign | `OPEN_DESIGN_COOKIE`（或在凭据区手填会话 Cookie） | 额度只在**控制台接口**上，鉴权是浏览器登录会话 Cookie——`sk-` 模型 Key 换的是 `amr-link.open-design.ai` 的模型响应，**没有额度端点**。**「登录并自动导入」会被站点 Cloudflare 挡住**，请手动取：在自己浏览器登录 open-design.ai → 进入「方案与余额」页 → `F12` → Network（筛 Fetch/XHR）→ `F5` 刷新 → 点状态 200 的 `coding-plan-usage` → Headers → Request Headers → 复制 `cookie` 字段的**完整值**（不要包含 `cookie:` 字段名，应含 `__Secure-better-auth.session_token`）→ 粘进凭据区先保存、再独立验证；认证失效会明确报告，不当作部分数据，此时重新复制会话 Cookie |
+| OpenDesign | `OPEN_DESIGN_COOKIE`（或在凭据区手填会话 Cookie） | 额度只在**控制台接口**上，鉴权是浏览器登录会话 Cookie——`sk-` 模型 Key 换的是 `amr-link.open-design.ai` 的模型响应，**没有额度端点**。「登录并自动导入」可用（Cloudflare 人机验证在弹出窗口中完成）；也可手动取：在自己浏览器登录 open-design.ai → 进入「方案与余额」页 → `F12` → Network（筛 Fetch/XHR）→ `F5` 刷新 → 点状态 200 的 `coding-plan-usage` → Headers → Request Headers → 复制 `cookie` 字段的**完整值**（不要包含 `cookie:` 字段名，应含 `__Secure-better-auth.session_token`）→ 粘进凭据区先保存、再独立验证；认证失效会明确报告，不当作部分数据，此时重新复制会话 Cookie |
 
 按 provider id 的字面映射（补齐上表按语义分组、未逐条列出的 4 条火山路由，逐条对应 `PROVIDERS[id].envName`）：
 
@@ -351,7 +352,7 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 | `~/.grok/auth.json`（回退 `~/.dsh/.xai-oauth-auth.json`） | Grok CLI / dsh-grok-kit 的 OAuth 登录 | 平时只读；过期时经 grok-kit 官方链续约并写回同一文件，不自行裸刷 |
 | `~/.commandcode/auth.json` | Command Code CLI（`cmd login`）的 Key | **只读**兜底 |
 
-**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`grok.com`（仅 Grok credits 回退）、`chatgpt.com/backend-api`、`amr-api.open-design.ai`（OpenDesign 控制台额度）、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#网络端点)。**`deepseek-account` 不自行发起 HTTP 请求**——它复用 DSH 的 `deepseekAccount` 服务，由宿主完成鉴权与余额请求（宿主服务可能按自身配置联网）；本插件不读取、导出或保存 OAuth token。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
+**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`grok.com`（仅 Grok credits 回退）、`chatgpt.com/backend-api`、`api.github.com`（GitHub Copilot 私有额度接口；企业版按记录里的 `enterpriseUrl` 换 `api.<域名>`）、`amr-api.open-design.ai`（OpenDesign 控制台额度）、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#网络端点)。**`deepseek-account` 不自行发起 HTTP 请求**——它复用 DSH 的 `deepseekAccount` 服务，由宿主完成鉴权与余额请求（宿主服务可能按自身配置联网）；本插件不读取、导出或保存 OAuth token。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
 
 **命令、进程与安装期行为**
 
@@ -443,7 +444,9 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 | `lib/index.js` | 提供商适配、凭据解析、持久化、缓存、Host RPC 与 `subusage_quota` 工具 |
 | `lib/client.js` | Client 模块、共享 store、设置页与模型药丸（含界面中英文文案） |
 | `lib/volcengine.js` | 火山方舟 AK/SK 签名与窗口解析（纯函数、零依赖） |
-| `lib/mimo-login.js` | 隔离 Chrome 登录、Cookie 提取与任务生命周期 |
+| `lib/cookie-login.js` | 通用「会话 Cookie 登录器」骨架：临时 Chrome、轮询验证、取消/超时与终态回放（MiMo / OpenDesign 共用） |
+| `lib/mimo-login.js` / `lib/opendesign-login.js` | 两家 Cookie 型站点的参数（登录入口、Cookie 域规则与会话提取） |
+| `lib/grok-credits.js` | Grok 计费 gRPC-web 帧解析（纯函数、零依赖） |
 | `cordis.patch.yml`、`package.json` | bundle 注册、入口、依赖与打包白名单 |
 | `tests/`、`scripts/` | 桩网络 / 隔离文件系统回归；清单、打包、离线预览与浏览器检查 |
 | `docs/` | 开发约定、提供商覆盖、UX 设计、发布与更新记录 |
@@ -456,6 +459,10 @@ node scripts/check-manifest.mjs
 node --check lib/index.js
 node --check lib/client.js
 node --check lib/mimo-login.js
+node --check lib/cookie-login.js
+node --check lib/opendesign-login.js
+node --check lib/volcengine.js
+node --check lib/grok-credits.js
 ```
 
 离线预览（生成 HTML，使用虚构用量与桩 Hook，不连接 DSH、不读取真实凭据）：

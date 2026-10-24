@@ -95,6 +95,10 @@ node scripts/check-manifest.mjs
 node --check lib/index.js
 node --check lib/client.js
 node --check lib/mimo-login.js
+node --check lib/cookie-login.js
+node --check lib/opendesign-login.js
+node --check lib/volcengine.js
+node --check lib/grok-credits.js
 npm publish --dry-run --ignore-scripts
 npm login --auth-type=web --registry=https://registry.npmjs.org/
 npm publish --access public --ignore-scripts

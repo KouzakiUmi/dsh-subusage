@@ -2,6 +2,15 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.16.1（未发布）：三处客户端小修
+
+- OpenDesign 设置页的自动登录说明纠正：0.14.2 时记录的「Playwright 自动登录会被 Cloudflare 挑战挡住、手动导入是唯一路径」已不成立——实测按钮可用（2026-10-24 确认：临时浏览器不自报自动化身份后，人机验证由用户在弹出窗口里亲自完成）。按钮与登录流程保留原样，原「会被挡住、请用手动方式」的段落改为引导在弹出窗口完成验证，手动导入与控制台入口保留为备选。
+- 设置页拨动火山方舟**组开关**后立即刷新那 4 条路由：组级字段 `visibility.ark` 不在 `providers` 里，旧逻辑收集不到要刷新的条目，开启后界面停留在旧的「检测已关闭」直到点进标签页或 60 秒定时刷新。现在 `ark: true` 的保存会把全部 Ark 路由加入刷新列表（关闭不需要刷新）。
+- Client 的 query codec 允许空 `providerIds`：`readSettings` 的「只读设置」请求本来就发 `providerIds: []`（Host 端同口径接受），但 Client 端 `parseQuery` 此前要求非空——当前网关出站不校验所以没炸，属于潜伏契约地雷；现在两端对齐。
+- 测试：`tests/test-client-render.mjs` 增加 OpenDesign 标签页「自动登录按钮在场 / 人机验证说明与控制台入口保留」断言；`tests/test-client-behavior.mjs` 增加组开关「关闭不追加刷新、重新开启立即刷新全部 4 条路由」与 `parseQuery` 空数组/未知 id/非法 force 断言；`node tests/run-all.mjs` 通过。
+- **文档新鲜度巡检（2026-10-24）**：OpenDesign 一事暴露「现行文档沿用旧实测结论」的风险，据此全量核对 README 与 docs/。修正：README 顶部版本横幅停在 0.14.5（0.15.0–0.16.0 三个版本未更新）→ 0.16.0；README 实测覆盖表补上 0.16.0 已真机验证的 GitHub Copilot 行；README 与 `docs/providers.md` 的网络端点清单补 `api.github.com`（0.16.0 新增 Copilot 时漏记）；`docs/design-ux.md` 的设置页卡片数 25 → 27（30 条 provider − Ark 4 条 + 1）、默认开启序列补 DeepSeek 账号并把 OpenDesign 登录入册；`docs/development.md` 的 managedByPlugin 名单补 github-copilot、RPC 契约补 OpenDesign 三个登录方法与 `visibility.ark` 字段、「设置页首次 readAll 是全量 RPC」改为 0.13.0 起的 `readSettings()` 只读元数据、三处互相矛盾的开关/标签计数统一为当前值；README / development.md / publish.md 的语法检查命令块补齐 CI 实际检查的 7 个文件；文件职责表补 `cookie-login.js` / `opendesign-login.js` / `grok-credits.js`。
+- **`scripts/check-browser-runtime.mjs` 计数断言过时会必挂**：断言停在 13 可见 / 25 开关 / 14 关闭（注释还写着不存在的「7 条 Ark 路由」「默认关闭 20 条」），与当前代码的真实值 11 / 28 / 16 不符。已按重新生成的预览实测修正断言与注释，并真跑八组（深浅 × 4 宽度）全部通过——此前该脚本自 0.13.x 后就没人跑过，属「文档/脚本随版本漂移」的同一类问题。
+
 ## 0.16.0：GitHub Copilot 额度（第 30 条 provider `github-copilot`，默认关闭）
 
 - 新增 GitHub Copilot 订阅额度。**复用**已安装的 Copilot 提供方插件 `@inventec/dsh-copilot-auth`（1.2.21 实测）经 DSH 凭据库保存的 OAuth 记录 `llm-pi-ai/github-copilot`：取 `payload.refresh`（长期 GitHub OAuth token），以 `Authorization: token …` 调 `GET https://api.github.com/copilot_internal/user`（企业版按 `enterpriseUrl` 换 `api.<域名>`，主机名只取 hostname 并做格式校验）。严格只读：不铸造 Copilot 会话令牌、不写回、不续期；没有记录 / 没有 `refresh` 按未登录，坏记录报凭据错误且不回显 token。

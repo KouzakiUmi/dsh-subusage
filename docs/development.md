@@ -14,7 +14,9 @@
 | `lib/volcengine.js` | 火山方舟 AK/SK 签名与 Coding / Agent Plan 窗口解析（纯函数、零依赖，可单独测试） |
 | `docs/provider-coverage.md` | 提供商覆盖与**不接入**的决策记录：已支持清单、评估后不做的厂商与理由、用户决策跳过的厂商 |
 | `lib/client.js` | Client 模块、共享 store、设置页与模型药丸；内含界面中英文文案 |
-| `lib/mimo-login.js` | 隔离 Chrome 登录、Cookie 提取与任务生命周期 |
+| `lib/cookie-login.js` | 通用「会话 Cookie 登录器」骨架：临时 Chrome、轮询验证、取消 / 超时 / revision 冲突与终态回放（MiMo / OpenDesign 共用，新增 Cookie 型站点只写 site 参数） |
+| `lib/mimo-login.js` / `lib/opendesign-login.js` | 两家 Cookie 型站点的参数：登录入口、取 Cookie 的 URL 与会话提取规则 |
+| `lib/grok-credits.js` | Grok 计费 gRPC-web 帧解析（纯函数、零依赖；隐式零值需成功 trailer + 活跃周期核验） |
 | `cordis.patch.yml`、`package.json` | bundle 注册、入口、依赖与打包白名单 |
 | `tests/` | 桩网络/隔离文件系统回归 |
 | `scripts/` | 清单、打包、离线预览与浏览器检查 |
@@ -119,7 +121,7 @@ desktop 安装包只读取证为 0.13.0，旧失败分支仍存在。桌面窗�
 
 ## 3. RPC v0.2 契约
 
-Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，测试机械比较 service、namespace、method、wire、codec typeSymbol。
+Host 与 Client 均声明 `read / refresh / save` 及 MiMo / OpenDesign **各三个**登录方法（`startXxxLogin` / `getXxxLoginStatus` / `cancelXxxLogin`，共九个 invocation），测试机械比较 service、namespace、method、wire、codec typeSymbol。
 
 - `startMimoLogin(request)`：必需 `{ expectedRevision: string }`，codec 为 `dsh-subusage#MimoLoginStart`。
 - `getMimoLoginStatus()`：无参数。
@@ -128,8 +130,8 @@ Host 与 Client 均声明 `read / refresh / save` 及三个 MiMo 登录方法，
 
 - `read(request?)`：request 在 wire 层可选（两端描述符声明 `acceptsUndefined`，网关对缺参放行、service 直调无参同样兜底），缺参/undefined 等价于全量 `refresh({ providerIds: 全部, force: false })`（默认账户）；也可传入与 refresh 相同的查询（Client 初始读取会携带 `commandCodeAccount`）。
 - `refresh(request)`：`request = { providerIds: string[], force: boolean, commandCodeAccount?: string }`，只读取指定厂商；`commandCodeAccount` 仅对 commandcode 生效（空串/缺省 = 默认账户，额外账户 id 即其凭据引用名）；返回的 entries 由 Client 合并。Client store 按 id 独立 in-flight 与 RPC：同一家仍去重，不同家互不等待；设置页刷新锁（`refreshing`）与保存锁（`busy`）分离，刷新不得禁用其它提供商开关。
-- `save(settings)`：provider patch，包含 `providerId`、`expectedRevision`、来源模式、凭据保持/替换/清除动作与可选 Z.ai 参数。凭据由提供方插件管理的厂商（`managedByPlugin`，现即 commandcode、xai-oauth 与 openai-codex）拒绝一切凭据补丁，只接受裸 patch。
-- 检测开关使用独立补丁 `{ expectedRevision, visibility: { providers?, hideWithoutApi? } }`，不得混入凭据字段；provider 开关增量合并，不重置未提交条目。
+- `save(settings)`：provider patch，包含 `providerId`、`expectedRevision`、来源模式、凭据保持/替换/清除动作与可选 Z.ai 参数。凭据由提供方插件管理的厂商（`managedByPlugin`，现即 commandcode、xai-oauth、openai-codex 与 github-copilot）拒绝一切凭据补丁，只接受裸 patch。
+- 检测开关使用独立补丁 `{ expectedRevision, visibility: { providers?, hideWithoutApi?, ark? } }`（`ark` 是火山方舟组级开关，保存时同步写入组内每条），不得混入凭据字段；provider 开关增量合并，不重置未提交条目。
 - 公共 settings 只含 revision、非秘密参数、hasKeys、keyModes 与 xiaomi 的 `hasCookie`、`loginAt`、`expiresAt`。后两项是本地计时元数据（ISO 串或 null），不是秘密，也不参与凭据有效性判断。
 - 保存与验证分离。保存失败和保存后在线验证失败必须有不同反馈。
 - revision 是配置版本令牌；刷新不得丢弃未保存编辑，过期表单不得覆盖新配置。
@@ -186,6 +188,10 @@ node scripts/check-manifest.mjs
 node --check lib/index.js
 node --check lib/client.js
 node --check lib/mimo-login.js
+node --check lib/cookie-login.js
+node --check lib/opendesign-login.js
+node --check lib/volcengine.js
+node --check lib/grok-credits.js
 ```
 
 测试用虚构凭据、桩网络和隔离文件系统。新增 service 测试不能访问 `~/.dsh` 的真实配置。
@@ -207,7 +213,7 @@ foreach ($theme in @('dark', 'light')) {
 node scripts/check-browser-runtime.mjs
 ```
 
-浏览器检查需要工作区可解析 `playwright-core` 且已安装 Google Chrome；不会下载浏览器。它检查 Cookie 域/路径隔离、26 个开关（28 条路由合并为 25 张提供商卡片 + 1 个默认隐藏开关）、预览桩下 13 个可见标签与 14 张关闭卡片、无下拉列表和横向溢出，并将 PNG 写到 `debug/ui-preview/`。
+浏览器检查需要工作区可解析 `playwright-core` 且已安装 Google Chrome；不会下载浏览器。它检查 Cookie 域/路径隔离、28 个开关（30 条路由的 Ark 4 条合并成一张卡片 = 27 张提供商卡片 + 1 个默认隐藏开关）、预览桩下 11 个可见标签与 16 张关闭卡片、无下拉列表和横向溢出，并将 PNG 写到 `debug/ui-preview/`。
 
 0.12.0 轮换池改进的专项验收（虚构 40 个账户、禁止 HTTP）：
 
@@ -283,7 +289,7 @@ node scripts/render-market-screenshots.mjs
 
 **2026-10-11 兼容声明更新**：`0.2.1-alpha.2` 与 `0.2.0-rc.2` 升为 `compatible`。依据是实机运行证据而非六步闭环——本机 Desktop Core 现为 `0.2.1-alpha.2`（`C:\Program Files\DSH NEXT\resources\app\node_modules\@deepseek-ai\dsh\package.json`），0.10.8 ~ 0.10.11 在其上日常运行（含设置页、药丸、`subusage_quota` 查询）均正常，静态核对 `@deepseek-ai/dsh-tools` / `dsh-typert-protocol` 仍为 `0.2.1-alpha.2` 且导出 `defineTool`；`0.2.0-rc.2` 则有 v0.1.0 ~ v0.3.0 三个发布版本精确锁定它运行的记录。插件只依赖 Core 的公开扩展 API 面（Cordis 服务与核心包公开导出），不碰内部组件、不依赖桌面壳版本，这是 0.2.x 各版本实际全兼容的原因。`0.2.0-rc.1` 没有直接运行记录，维持 `unknown`。
 
-**最后验证汇总**：Core `0.2.1-alpha.2`，日期 `2026-10-11`（日常实机运行 + 离线浏览器检查 + 全量回归）；在线接口与真实账号的最近一轮实测见 0.10.10/0.10.11 各节。打开设置页的首次 `readAll` 仍是一次全量 RPC（拆开会破坏现有 read 契约测试），整页开关在拿到 revision 前保持禁用，上限为 Client 20 秒 RPC deadline。
+**最后验证汇总**：Core `0.2.1-alpha.2`，日期 `2026-10-11`（日常实机运行 + 离线浏览器检查 + 全量回归）；在线接口与真实账号的最近一轮实测见 0.10.10/0.10.11 各节。打开设置页的首次读取自 0.13.0 起是 `readSettings()`（`read({providerIds:[], force:false})`，只读本机元数据、不查询任何额度端点），各提供商按需加载；整页开关在拿到 revision 前保持禁用，上限为 Client 20 秒 RPC deadline。
 
 ### 0.10.0 → 0.10.1 验证记录：火山方舟全面覆盖、额度查询 API、RPC 版本窗口期与设置页排序
 
@@ -322,13 +328,13 @@ node scripts/render-market-screenshots.mjs
 - **`output.schema` 不发给模型**（`dsh-tools` 的投影只保留 `name` / `description` / `parameters`；`output` / `execute` / `finalizeContent` / `timeoutMs` / 呈现回调「绝不会泄漏到协议上」）。因此：**「怎么用」只能写在 `description` 与参数说明里**，而 `output.schema` 的职责是**校验返回值**（`createSuccessResult` → `ToolOutputError`）与 UI 展示。两者不可互相替代。改动 `output.schema` 后必须用真实校验器验证一遍，方法见 `debug/verify-tool-schema.mjs`（debug/ 不入库）：从 `@deepseek-ai/dsh-tools/lib/index.js` 导入 `defineTool` / `validateJsonSchemaValue`，用真实 `quota()` 输出跑校验——0.10.5 就是这样抓到 `errorCode` 越界与 `undefined` 字段这两个会直接炸的问题的。
 - 用量面板内联行动条（UX）：`tests/test-usage-action.mjs` 钉住判定（缺凭据/凭据被拒/已过期 → 重新登录/2 小时与 30 分钟档/正常倒计时不打扰/计时不可解析不编造），`tests/test-client-render.mjs` 钉住渲染（MiMo 失效时面板出现行动条与按钮，正常状态没有）。行动条只负责「把入口送到眼前」，凭据编辑复用同一份编辑器，避免两套字段与校验漂移（沿用本仓库既有的「两入口共用同一渲染」约定）。
 - 余额型聚合商六家：`tests/test-aggregators.mjs` 逐个钉住单位换算（Novita 1/10000、Hyperbolic 美分、DeepInfra 取负、Chutes 绝对量、Ollama 0–1 小数、Vercel 十进制字符串）与边界（`{quota:0}` 不猜比例、Ollama 缺层跳过、DeepInfra 欠款分支），并在 Host 端逐一断言端点与鉴权头（**Ollama Cloud 是裸 `Authorization`**）。**未做**任何真实 Key 的在线验证。
-- MiniMax 国际版改为默认关闭（用户要求：实际使用少）。`tests/test-minimax.mjs` 补上默认值断言并在用例前显式开启两家，`tests/test-client-behavior.mjs` 的可见 tab 列表改用 MiniMax CN。（当时的 15/9 计数已被后续批次改写，**当前值以 `lib/index.js` 的 `PROVIDERS` 为准**——现为默认关闭 17 条、默认开启 11 条；设置页合并 Ark 后是 25 张卡片。）
+- MiniMax 国际版改为默认关闭（用户要求：实际使用少）。`tests/test-minimax.mjs` 补上默认值断言并在用例前显式开启两家，`tests/test-client-behavior.mjs` 的可见 tab 列表改用 MiniMax CN。（当时的 15/9 计数已被后续批次改写，**当前值以 `lib/index.js` 的 `PROVIDERS` 为准**——注册元数据现为默认开启 11 条、关闭 19 条，经 Ark 组归一化后的新安装有效默认为 13 开 / 17 关；设置页合并 Ark 后是 27 张卡片。）
 - OpenRouter：`tests/test-openrouter.mjs` 覆盖限额窗口与 `limit_reset` 映射、免费档日窗口、**余额端点 403 的静默降级**（只少余额，条目仍 `ok`）、`limit_remaining` 越界不产生负用量、无可用信息才报错、Host 端到端两请求与 Client 注册。**未做**真实 Key 的在线验证（无凭据）。
 - DeepSeek 官方余额：`tests/test-deepseek.mjs` 覆盖归一化（不产窗口、字符串金额、多币种取第一条可解析项、货币码不合规时只显示金额、`is_available=false` 提示充值、非法值报错）、Host 端到端（默认开启、Bearer 与推理同 Key、密钥不回显）与 Client 注册。**未做**真实 Key 的在线验证。
 - 顺序约定：新 provider 一律**追加在 `PROVIDER_ORDER` 末尾**。本轮把 Codex 插在中间时，测试里三处按位置写的 `ids[N]` 断言全部错位（改用 id 字面量断言后恢复）；追加在末尾则不影响既有索引。
 - **真机验证（2026-10-09，Codex）**：用本机 `~/.codex/auth.json` 的真实 ChatGPT 登录向 `GET https://chatgpt.com/backend-api/wham/usage` 发一次只读请求，**HTTP 200**，实测 `primary_window.window_seconds=18000`、`secondary_window.window_seconds=604800`、`plan_type="plus"`、`credits={has_credits:false,balance:"0"}`。由此发现并修正两处只有真机才暴露的问题：**① `resets_at` 是 Unix 秒数而实现只接受字符串，导致重置时间被静默丢弃**（桩测试喂的是 ISO 串，所以一直是绿的）；② `plan_type` 未显示。教训：**桩测试里的字段类型必须来自真实响应**，否则"解析正确"只是自洽。验证脚本在 `debug/verify-codex-live.mjs`（debug/ 不入库）。
 - Codex 订阅用量：`tests/test-codex.mjs` 覆盖登录文件解析（`auth_mode` 门禁、`account_id` 可选、缺失/损坏不抛错、`CODEX_HOME` 覆盖路径）、窗口归一化（主/次窗口回退命名、`window_seconds` 判 30 天档、100% 判限流、单窗口 partial、`credits` 四类不显示、`plan_type` 档位、秒级与 ISO 两种重置时间、哨兵 0、非法百分比报错）、Host 端到端（默认开启即读取、Bearer 是 OAuth token 而非 API Key、响应不回显 token、拒绝本地凭据补丁、无登录文件时 no-key 文案点名 `codex login` 与 API Key 模式限制）与 Client 注册。**这是首个"凭据完全由外部 CLI 登录文件提供且默认开启"的 provider**；`tests/test-client-render.mjs` 里原先把 `openai-codex` 当"不支持的路由"的断言改用 `vrtx-gemini`，保留了那条覆盖。
-- 离线预览与浏览器像素验收（**2026-10-09 补做，此前因沙箱受限未做**）：`scripts/check-browser-runtime.mjs` 现可实际运行——本机 Chrome 154 启动正常，深浅主题 × 530/500/499/360px **八组全部通过**（无横向溢出、无下拉列表、开关与标签计数正确）。此前记录的 `chromium.launch: spawn EPERM` 不是 Chrome 的问题：**受限沙箱禁止命名管道**，而 Playwright 正是用 `--remote-debugging-pipe` 与浏览器通信；文件策略放开到完整访问后限制消失。该脚本的计数随后续批次更新（**当前** 31 个开关 / 12 个可见标签 / 预览桩下 18 家关闭）。
+- 离线预览与浏览器像素验收（**2026-10-09 补做，此前因沙箱受限未做**）：`scripts/check-browser-runtime.mjs` 现可实际运行——本机 Chrome 154 启动正常，深浅主题 × 530/500/499/360px **八组全部通过**（无横向溢出、无下拉列表、开关与标签计数正确）。此前记录的 `chromium.launch: spawn EPERM` 不是 Chrome 的问题：**受限沙箱禁止命名管道**，而 Playwright 正是用 `--remote-debugging-pipe` 与浏览器通信；文件策略放开到完整访问后限制消失。该脚本的计数随后续批次更新（**当前** 28 个开关 / 11 个可见标签 / 预览桩下 16 家关闭，与 `scripts/check-browser-runtime.mjs` 的断言一致）。
 
 ### 0.11.0 验证记录：Command Code 多账户额度与设置页账户区
 
