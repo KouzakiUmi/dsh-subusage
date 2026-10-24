@@ -25,6 +25,10 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 ## npm
 
+0.16.1 客户端小修与文档新鲜度巡检（Ark 组开关开启后立即刷新全部路由、Client query codec 允许空 `providerIds`、OpenDesign 自动登录说明纠正为实测可用；README 横幅 / 实测表 / 端点清单与 design-ux / development 的计数及契约描述同步修正，`check-browser-runtime.mjs` 计数断言对齐当前 UI）。发布完成仍以 registry 与对应 Actions / Release 结果为准，不自动安装或重启本机 DSH。
+
+0.16.1 已于 2026-10-24 发布并核验：`v0.16.1` tag → `release.yml` 发布 npm；首轮照旧在 60 秒可见性窗口内报 `Publication verification failed`（`Publication verification failed for dsh-subusage@0.16.1; check registry before retrying`），直接查询 registry 已读到 `versions["0.16.1"]` 与 `dist-tags.latest` 均为 0.16.1（`time.modified 2026-10-24T07:10:54Z`），按「依据只能是 registry」以 `workflow_dispatch`（`version_tag=v0.16.1`）重跑转绿，未重复发布；`v0.16.1` Release 资产、主分支 `build-15451385f176` 资产与 npm tarball 三者 SHA256 一致（`sha256:7cd645c7d32adb63fa9a68c58f7f04c9cbbbe93f34ed8c93cc3a2835546b9c48`，170244 字节）；`build-15451385f176` 为 latest。未安装到桌面 Profile、未重启 DSH。
+
 0.16.0 新增 GitHub Copilot 额度（`github-copilot`，第 30 条 provider，默认关闭；复用 `@inventec/dsh-copilot-auth` 存入凭据库的 OAuth 记录，只读）。发布完成以 `v0.16.0` 标签对应的 Actions、GitHub Release 资产与 npm registry 的实际结果为准，不自动安装或重启本机 DSH。
 
 0.16.0 已于 2026-10-23 发布并核验：`v0.16.0` tag → `release.yml` 发布 npm；首轮同样在 60 秒可见性窗口内报 `Publication verification failed`（`Waiting for registry visibility (6/6)`），随后直接查询 registry，约 30 秒内 `versions["0.16.0"]` 与 `dist-tags.latest` 均读到 0.16.0（`time.modified 2026-10-22T20:04:35Z`），未重跑。`v0.16.0` Release 资产、主分支 `build-d4cd43d90d01` 资产与 npm tarball 的 SHA256 三者一致（`sha256:7aeb2424e224a44b5834567bc6f87656042782bd9814a33bb35190138ecfa93e`，169471 字节）；`build-d4cd43d90d01` 为 latest。未安装到桌面 Profile、未重启 DSH。
