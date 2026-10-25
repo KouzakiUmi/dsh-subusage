@@ -18,7 +18,7 @@
 
 </div>
 
-> **0.16.1**：客户端小修与文档巡检——火山方舟组开关开启后立即刷新全部路由；OpenDesign「登录并自动导入」实测可用，纠正「会被 Cloudflare 挡住」的过时说明；文档全面核对当前行为（实测覆盖表、网络端点、卡片计数等）。发布与本机升级分开；本页图片是虚构数据离线预览，不是实机验收证明。[查看更新记录](docs/changelog.md)。
+> **0.16.2**：OpenCode Go 的凭据引用名补齐——插件同时认 `OPENCODE_GO_API_KEY`（把 Go 套餐单列一把 Key 时路由的 `apiKeyEnv`，优先）与 `OPENCODE_API_KEY`（pi-ai 默认名，回退），修掉「模型能调用、额度却报无凭据」。发布与本机升级分开；本页图片是虚构数据离线预览，不是实机验收证明。[查看更新记录](docs/changelog.md)。
 
 ## 快速开始
 
@@ -148,6 +148,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 | 火山方舟 Agent Plan（个人版，`arkcli-agent-plan`） | 5 小时 / 周 / 月 AFP 绝对值 + 日限额 + 档位 | 本机 IAM AK/SK 直连 `GetAFPUsage`，HTTP 200 |
 | 火山方舟 Coding Plan（个人版，`arkcli-coding-plan`） | session / weekly / monthly 三个窗口 | 同一组 AK/SK 直连 `GetCodingPlanUsage`，HTTP 200 |
 | Kimi Coding | 5 小时 / 周 / 月窗口 | 真实 Key |
+| OpenCode Go | 2026-10-25 真机只读：`GET https://opencode.ai/zen/go/v1/usage` **HTTP 200**，三窗 rolling 3% / week 97% / month 56%（重置 2026-10-25 / 2026-10-26 / 2026-11-13），`state=ok`、`coverage=complete`，用时约 0.9 秒 | 本机 DSH 凭据库里的 `OPENCODE_GO_API_KEY`（desktop profile 该路由的 `apiKeyEnv`）；0.16.2 修复引用名之前，同一份凭据只会报「无凭据」 |
 | 小米 MiMo | 余额 + 套餐额度 | 真实平台会话 Cookie（含自动登录） |
 | Command Code | 月额度 | 提供方插件的凭据链 |
 | SuperGrok | 统一周池 + 加量余额 | 真实 `~/.grok/auth.json` |
@@ -178,7 +179,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 其余提供商**只经过桩测试**——响应形态取自公开文档、第三方实现或抓包，**没有在真实账号上跑通过**：
 
-> Z.ai（中国与国际）、OpenCode Go、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、DeepSeek API、DeepSeek 账号、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM，以及火山方舟的**团队版席位**。
+> Z.ai（中国与国际）、MiniMax（中国与国际）、Synthetic、NanoGPT、SiliconFlow、DeepSeek API、DeepSeek 账号、OpenRouter、Novita、Hyperbolic、DeepInfra、Chutes、Ollama Cloud、Vercel AI Gateway、ZenMux、LiteLLM，以及火山方舟的**团队版席位**。
 
 它们可能可用，也可能因为接口变更、字段差异或权限要求而失败。上表也只是既有账号、当时版本的验证记录，不是持续可用性保证。
 
@@ -270,7 +271,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 - **出错时在卡片上修**：MiMo 未登录 / Cookie 被拒 → 「登录并自动导入」；Cookie 临近到期或已过期 → 「重新登录」；其他家缺凭据 → 「配置凭据」（展开该厂商编辑器并滚动过去）。正常状态不显示行动条。
 
 <details>
-<summary>凭据与环境：各家默认继承变量与说明（取自 <code>PROVIDERS[id].envName</code>）</summary>
+<summary>凭据与环境：各家默认继承变量与说明（取自 <code>PROVIDERS[id].envName</code>，OpenCode Go 另含回退名 <code>envAliases</code>）</summary>
 
 「默认继承变量」指凭据服务 / 启动环境的默认引用名；留空表示不使用继承变量（凭据来自登录文件或官方平台会话）。
 
@@ -282,7 +283,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | Z.ai（国际） | `ZAI_CODING_API_KEY` | 独立国际 Coding Plan Key，鉴权用裸 `authorization`，不带 `Bearer` |
 | Kimi | `KIMI_CODING_API_KEY` | 需要 Kimi Coding Key，不是 Moonshot 开放平台 Key |
 | Xiaomi MiMo | 界面不使用继承 Key | 通过官方平台 Cookie 会话读取（`envName` 只作为服务侧引用名保留） |
-| OpenCode Go | `OPENCODE_API_KEY` | OpenCode Go Key |
+| OpenCode Go | `OPENCODE_GO_API_KEY`，回退 `OPENCODE_API_KEY` | OpenCode Go 订阅 Key。两个引用名都认：把 Go 套餐单列一把 Key 时路由的 `apiKeyEnv` 是 `OPENCODE_GO_API_KEY`；沿用 pi-ai 默认名时是 `OPENCODE_API_KEY`（与 Zen 余额共用同一个变量名）。逐个名字先查凭据服务、再查启动环境，前一个名字两边都没有才看下一个 |
 | MiniMax（国际） | `MINIMAX_API_KEY` | `minimax` 路由；国际站订阅 Key |
 | MiniMax（中国） | `MINIMAX_CN_API_KEY` | `minimax-cn` 路由；中国站订阅 Key |
 | Command Code | `COMMANDCODE_API_KEY` | 凭据由提供方插件管理，本页只读继承；兜底读取 `~/.commandcode/auth.json`（`cmd login`） |
@@ -304,7 +305,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | LiteLLM | `LITELLM_API_KEY` + 代理地址 | 自建网关：除虚拟 Key（**与推理同一把**）还要在凭据区填写自己的 proxy 地址。管理端点在 **proxy 根**——填了 `/v1` 也会被去掉，不会拼成 `/v1/key/info` |
 | OpenDesign | `OPEN_DESIGN_COOKIE`（或在凭据区手填会话 Cookie） | 额度只在**控制台接口**上，鉴权是浏览器登录会话 Cookie——`sk-` 模型 Key 换的是 `amr-link.open-design.ai` 的模型响应，**没有额度端点**。「登录并自动导入」可用（Cloudflare 人机验证在弹出窗口中完成）；也可手动取：在自己浏览器登录 open-design.ai → 进入「方案与余额」页 → `F12` → Network（筛 Fetch/XHR）→ `F5` 刷新 → 点状态 200 的 `coding-plan-usage` → Headers → Request Headers → 复制 `cookie` 字段的**完整值**（不要包含 `cookie:` 字段名，应含 `__Secure-better-auth.session_token`）→ 粘进凭据区先保存、再独立验证；认证失效会明确报告，不当作部分数据，此时重新复制会话 Cookie |
 
-按 provider id 的字面映射（补齐上表按语义分组、未逐条列出的 4 条火山路由，逐条对应 `PROVIDERS[id].envName`）：
+按 provider id 的字面映射（补齐上表按语义分组、未逐条列出的 4 条火山路由，逐条对应 `PROVIDERS[id].envName`，有 `envAliases` 的一并列出）：
 
 ```text
 deepseek                 DEEPSEEK_API_KEY
@@ -312,7 +313,7 @@ zai-coding-cn            ZAI_CODING_CN_API_KEY
 zai-coding               ZAI_CODING_API_KEY
 kimi-coding              KIMI_CODING_API_KEY
 xiaomi-token-plan-cn     XIAOMI_TOKEN_PLAN_CN_API_KEY   （界面走官方平台 Cookie）
-opencode-go              OPENCODE_API_KEY
+opencode-go              OPENCODE_GO_API_KEY            （回退 OPENCODE_API_KEY）
 commandcode              COMMANDCODE_API_KEY
 xai-oauth                —                              （OAuth 登录文件）
 openai-codex             —                              （OAuth 登录文件）
@@ -421,6 +422,7 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 | 药丸不显示 | 依次确认：当前模型的 provider id 是否与上表一致（自定义 id 不会自动映射）→ 该家检测开关是否开启 → 是否被「没有检测到API的默认隐藏」收起（可在设置页临时关掉它）→ 运行中的 Host 与 Client 是否都已重载 |
 | 设置页没有提供商标签 | 展开提供商管理，确认开关和凭据；无凭据的条目默认隐藏，可临时关闭自动隐藏查看指引 |
 | 提示「无凭据 / 未检测到 Key」 | 先确认填的是**额度凭据**而不是推理 Key（两者不通用，见[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)），再按该家小节核对来源、环境变量与权限 |
+| OpenCode Go 提示无凭据，但模型能正常调用 | Go 订阅 Key 的引用名有两种写法，插件两个都认（`OPENCODE_GO_API_KEY` 优先，回退 `OPENCODE_API_KEY`）。核对 DSH 里该路由的 `apiKeyEnv` 与凭据库 / 环境变量里实际保存的名字是否**逐字一致**；两个名字都没配才会报无凭据 |
 | 提示「已保存」但仍是「无凭据」 | 凭据编辑要点「**保存设置**」才提交（提供商开关才是立即保存）；确认后若仍为空，把界面文案反馈上来 |
 | 某家读取失败，其他家正常 | 单家失败只影响自己的条目。按文案分类处理：认证类（401 / 凭据被拒）换对应产品与区域的凭据；权限 / 未订阅类（403）检查账号权限与套餐；限流类等待退避后重试 |
 | 显示认证失效 | 检查是否用了对应产品 / 区域的订阅 Key；MiMo 重新登录或导入 Cookie，OpenDesign 更新控制台会话 Cookie。认证错误不按「部分数据」展示，旧额度不会当作有效数据保留 |

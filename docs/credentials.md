@@ -151,7 +151,7 @@ Cookie 必须**同时包含** `api-platform_serviceToken` 与 `userId`，否则�
 | Z.ai（中国） | `ZAI_CODING_CN_API_KEY` | 智谱开放平台 → API Keys；团队档另需组织 / 项目 ID |
 | Z.ai（国际） | `ZAI_CODING_API_KEY` | Z.ai 平台 → API Keys |
 | Kimi | `KIMI_CODING_API_KEY` | Kimi 开放平台 → API Keys |
-| OpenCode Go | `OPENCODE_API_KEY` | OpenCode Go 控制台 |
+| OpenCode Go | `OPENCODE_GO_API_KEY`，回退 `OPENCODE_API_KEY` | OpenCode Go 控制台。两个引用名都认（见下方说明） |
 | MiniMax（中国 / 国际） | `MINIMAX_CN_API_KEY` / `MINIMAX_API_KEY` | MiniMax 开放平台 |
 | Codex（ChatGPT 订阅） | 无环境变量 | 优先只读 dsh-codex-subscription 活动账号 / 双旧 OAuth 引用（0.13.0 起），无该来源再读 CLI `auth.json`；不迁移或自行续约，详见 [来源优先级](providers.md#codex-chatgpt-订阅凭据) |
 | GitHub Copilot | 无环境变量 | 在 Copilot 提供方设置页完成设备码登录；本插件只读其凭据库 OAuth 记录中的长期 GitHub token，不保存、不续期，详见 [GitHub Copilot 凭据](providers.md#github-copilot-凭据) |
@@ -170,6 +170,19 @@ Cookie 必须**同时包含** `api-platform_serviceToken` 与 `userId`，否则�
 | Synthetic | `SYNTHETIC_API_KEY` | Synthetic 控制台 |
 | LiteLLM | `LITELLM_API_KEY` | **你自建的网关**：虚拟 Key + 在设置页填 proxy 地址 |
 | OpenDesign | `OPEN_DESIGN_COOKIE` | 「登录并自动导入」可用（遇 Cloudflare 人机验证在弹出窗口中完成）；也可手动获取：在自己浏览器登录 open-design.ai → `F12` → Network（筛 Fetch/XHR）→ `F5` 刷新 → 点状态 200 的 `coding-plan-usage` → Headers → Request Headers → 复制 `cookie` 字段的**完整值**（不含 `cookie:` 字段名），粘进卡片里标签为「会话 Cookie」的输入框。手动填写先保存，再独立验证；认证失效明确报告，不归为「数据不完整」，此时更新 Cookie 后再验证。要的是会话 Cookie（含 `__Secure-better-auth.session_token`），不是 `sk-` 模型 Key——那把 Key 只在模型端点生效，没有额度端点 |
+
+### OpenCode Go 的两个引用名
+
+OpenCode Go 的订阅 Key 有两种引用名写法，插件**两个都认**：
+
+| 引用名 | 什么时候是这个名字 |
+|---|---|
+| `OPENCODE_GO_API_KEY` | 把 Go 套餐单列一把 Key 时，DSH 里该路由的 `apiKeyEnv` 就是它（优先使用） |
+| `OPENCODE_API_KEY` | pi-ai 内置 `opencode-go` 路由的默认名；OpenCode Zen（按量付费）余额也共用这个变量名，因此它是**回退**项 |
+
+解析顺序是「名字优先、来源其次」：先看 `OPENCODE_GO_API_KEY` 的凭据服务、再看它的启动环境，两边都没有才看 `OPENCODE_API_KEY`——不会拿通用名里那把 Zen 余额 Key 去查 Go 订阅额度。
+
+所以**模型能正常调用、额度却报「无凭据」**时，先核对 DSH 里该路由的 `apiKeyEnv` 与凭据库 / 环境变量里实际保存的名字是否逐字一致；名字对不上就换成一致的那个，或在设置页选「手动 Key」直接填。
 
 ---
 

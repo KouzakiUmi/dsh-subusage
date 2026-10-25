@@ -14,7 +14,9 @@ const HOST_STUBS = [
 		"class RemoteError extends Error { constructor(code, message, details) { super(message); this.code = code; this.details = details; } }\nclass TypertRemoteService { constructor(ctx, key) { if (typeof key !== 'string' || !key) throw new Error('bad serviceKey'); this.ctx = ctx; } }"
 	],
 	[/import \{ credentialKey, credentialRef, isCredentialRefName \} from "@deepseek-ai\/dsh-credentials";/, "const credentialKey = (scope, id) => `${scope}/${id}`;\nconst credentialRef = (name) => ({ kind: 'env', name });\nconst isCredentialRefName = (value) => typeof value === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);"],
-	[/import \{ launchEnvironmentOf \} from "@deepseek-ai\/dsh-launch-environment";/, "const launchEnvironmentOf = (ctx) => ({ get: (k) => ctx.__env?.[k] });"],
+	// LaunchEnvironmentSnapshot.get 的真实契约是返回 { value, source, path? }（src 里 identity 判 env?.value）；
+	// 桩只返裸字符串会让「启动环境」这一档静默失效，测出来的永远是没有环境变量的世界。
+	[/import \{ launchEnvironmentOf \} from "@deepseek-ai\/dsh-launch-environment";/, "const launchEnvironmentOf = (ctx) => ({ get: (k) => { const value = ctx.__env?.[k]; return typeof value === 'string' ? { value, source: 'process' } : value; } });"],
 	// defineTool 在真实核心包里有校验；测试只需要它原样返回定义，才能核对工具契约。
 	[/import \{ defineTool \} from "@deepseek-ai\/dsh-tools";/, "const defineTool = (spec) => spec;"]
 ];

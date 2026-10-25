@@ -121,5 +121,7 @@ for (const id of host.IDS) {
 	assert.equal(clientMeta.managedByPlugin === true, hostMeta.managedByPlugin === true, `${id} managedByPlugin 两端一致`);
 	assert.equal(clientMeta.defaultEnabled === false, hostMeta.defaultEnabled === false, `${id} 默认开关两端一致`);
 	assert.equal(clientMeta.envName, hostMeta.envName, `${id} envName 两端一致`);
+	// Client 内表在 vm 里物化，跨 realm 的数组用 deepStrictEqual 会因原型不同而失败，比字符串。
+	assert.equal((clientMeta.envAliases ?? []).join(","), (hostMeta.envAliases ?? []).join(","), `${id} 备用凭据引用名两端一致`);
 }
 console.log('PASS Host/Client 六方法 RPC 描述符、登录参数、Cookie 校验与 provider 表一致性');

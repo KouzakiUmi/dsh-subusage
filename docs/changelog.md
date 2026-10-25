@@ -2,6 +2,16 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.16.2：OpenCode Go 的 GO 专属凭据引用
+
+- **问题**：`opencode-go` 的凭据引用此前硬编码为 `OPENCODE_API_KEY`。pi-ai 内置路由确实默认用这个名字，但它同时是 OpenCode Zen（按量付费）的变量名；把 Go 套餐单列一把 Key 时，DSH 里该路由的 `apiKeyEnv` 会写成 `OPENCODE_GO_API_KEY`（本机 desktop profile 即如此）。结果是**模型能正常调用、额度却报「无凭据」**——路由与额度插件读的是两个不同的引用名。
+- **修法**：`PROVIDERS["opencode-go"]` 增加 `envAliases`，凭据解析改为逐引用名进行（`credentialRefNames()`）：先 `OPENCODE_GO_API_KEY`、再回退 `OPENCODE_API_KEY`；**名字优先、来源其次**——同一个名字内部仍是「凭据服务 → 启动环境」，前一个名字两种来源都没有才看下一个名字。这样通用名里那把 Zen 余额 Key 不会被当成 Go 订阅 Key 拿去查额度。其它 provider 没有 `envAliases`，解析路径与顺序完全不变。
+- Client 同步：`PROVIDER_META["opencode-go"].envName` 改为 `OPENCODE_GO_API_KEY`（与 Host 同源，`tests/test-contract.mjs` 增加两端 `envAliases` 一致性断言），设置页「技术信息与帮助」里的「继承变量」显示为 `OPENCODE_GO_API_KEY / OPENCODE_API_KEY`（取第一个有值的）。
+- 测试：`tests/test-opencode.mjs` 新增 7 组凭据引用断言（专属名优先 / 通用名回退 / 专属名认启动环境 / 名字优先级高于来源优先级 / 两者皆无 → `none` / 端到端 Authorization 用的是专属名那把 Key / 条目对外主引用名）；`node tests/run-all.mjs` 全部通过。
+- 文档：README 的「凭据与环境」表与 provider id 映射、`docs/credentials.md`（新增「OpenCode Go 的两个引用名」小节）、README 排错表补一条「模型能调用但额度报无凭据」。
+- **真机只读验证（2026-10-25，经用户授权）**：用本机凭据库里真实的 `OPENCODE_GO_API_KEY` 走 0.16.2 的解析链请求 `GET https://opencode.ai/zen/go/v1/usage`，HTTP 200，`state=ok` / `keySource=credentials` / `envName=OPENCODE_GO_API_KEY` / `coverage=complete`，三窗 rolling 3% · week 97% · month 56%（重置 2026-10-25T07:51:57Z / 2026-10-26T00:00:00Z / 2026-11-13T17:40:48Z），用时约 0.9 秒；密钥未输出、未落盘。修复前同一份凭据因引用名不匹配只会得到「无凭据」。
+- **未做**：没有装进桌面 Profile 并重启验收（发版与安装分开；界面验收需重启 DSH 后由用户执行）。
+
 ## 0.16.1：客户端小修与文档新鲜度巡检
 
 - OpenDesign 设置页的自动登录说明纠正：0.14.2 时记录的「Playwright 自动登录会被 Cloudflare 挑战挡住、手动导入是唯一路径」已不成立——实测按钮可用（2026-10-24 确认：临时浏览器不自报自动化身份后，人机验证由用户在弹出窗口里亲自完成）。按钮与登录流程保留原样，原「会被挡住、请用手动方式」的段落改为引导在弹出窗口完成验证，手动导入与控制台入口保留为备选。

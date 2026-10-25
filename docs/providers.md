@@ -6,7 +6,7 @@
 
 | 内容 | 事实源 |
 |---|---|
-| provider id、`label`、`envName`、`defaultEnabled`、火山方舟的 `volcAction` / `volcHost` / `volcRegion` | [`lib/index.js`](../lib/index.js) 顶部的 `PROVIDERS` |
+| provider id、`label`、`envName`（含备用引用名 `envAliases`）、`defaultEnabled`、火山方舟的 `volcAction` / `volcHost` / `volcRegion` | [`lib/index.js`](../lib/index.js) 顶部的 `PROVIDERS` |
 | 设置页与药丸用的短名、展示顺序、`managedByPlugin` / `volc` 标记 | [`lib/client.js`](../lib/client.js) 顶部的 `PROVIDER_META` / `PROVIDER_ORDER` |
 
 ## 1. 清单与默认开关
@@ -17,9 +17,9 @@
 
 ## 2. 凭据解析顺序
 
-各家「默认继承变量」与逐家说明的完整表格维护在 [README 的「凭据与环境」折叠表](../README.md#configuration--配置)（取自 `PROVIDERS[id].envName`），本文件不重复维护同一份事实。留空表示不使用继承变量（凭据来自登录文件或官方平台会话）。
+各家「默认继承变量」与逐家说明的完整表格维护在 [README 的「凭据与环境」折叠表](../README.md#configuration--配置)（取自 `PROVIDERS[id].envName` 与该家的回退名 `envAliases`），本文件不重复维护同一份事实。留空表示不使用继承变量（凭据来自登录文件或官方平台会话）。
 
-解析顺序（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；自定义（`manual`）模式只使用保存的手动 Key。由提供方插件管理的模型商（`commandcode` / `xai-oauth` / `openai-codex` / `github-copilot`）不接受本插件的手动 Key。Cookie 与登录文件型凭据不走这条链，见第 4 节。火山方舟的 AK/SK 还必须**同源配对**：两个字段要么都来自凭据服务、要么都来自启动环境、要么都用本机保存值，跨来源拼接只会 401 且报错看不出根因。修改启动环境后是否需要重启取决于目标部署，不能把用户环境即时变化当作已经被运行进程读到。
+解析顺序（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；自定义（`manual`）模式只使用保存的手动 Key。带 `envAliases` 的厂商（目前只有 `opencode-go`：`OPENCODE_GO_API_KEY` 为主名、`OPENCODE_API_KEY` 为回退）**按名字逐个走这条链**——主名在凭据服务与启动环境都没有时才看回退名，名字之间不跨源拼接，免得把通用名里那把 OpenCode Zen 余额 Key 当成 Go 订阅 Key。由提供方插件管理的模型商（`commandcode` / `xai-oauth` / `openai-codex` / `github-copilot`）不接受本插件的手动 Key。Cookie 与登录文件型凭据不走这条链，见第 4 节。火山方舟的 AK/SK 还必须**同源配对**：两个字段要么都来自凭据服务、要么都来自启动环境、要么都用本机保存值，跨来源拼接只会 401 且报错看不出根因。修改启动环境后是否需要重启取决于目标部署，不能把用户环境即时变化当作已经被运行进程读到。
 
 ## 3. 窗口与明细
 
