@@ -27,7 +27,9 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 0.16.2 OpenCode Go 的 GO 专属凭据引用（`OPENCODE_GO_API_KEY` 优先、`OPENCODE_API_KEY` 回退；修掉「模型能调用、额度报无凭据」）。发布完成仍以 registry 与对应 Actions / Release 结果为准，不自动安装或重启本机 DSH。
 
-0.16.2 已于 2026-10-25 发布并核验：`v0.16.2` tag → `release.yml` 发布 npm；首轮照旧在 60 秒可见性窗口内报 `Publication verification failed for dsh-subusage@0.16.2; check registry before retrying`（6/6 等待后失败），直接查询 registry 已读到 `versions["0.16.2"]` 与 `dist-tags.latest` 均为 0.16.2（`published 2026-10-25T03:17:43Z`，即验证窗口关闭后 5 秒），按「依据只能是 registry」以 `workflow_dispatch`（`version_tag=v0.16.2`）重跑转绿，未重复发布；同一提交的 CI（main）也通过并发布 `build-dc2fc96dfc3a` 资产。`v0.16.2` Release 资产、`build-dc2fc96dfc3a` 资产与 npm tarball 三者 SHA256 一致（`sha256:41f8d4c48925b20589aaad54f2841e0f900db7ae41370eb904804cf736f7a141`，171530 字节）；`build-dc2fc96dfc3a` 为 latest。未安装到桌面 Profile、未重启 DSH（安装与界面验收另做）。
+0.16.2 已于 2026-10-25 发布并核验：`v0.16.2` tag → `release.yml` 发布 npm；首轮照旧在 60 秒可见性窗口内报 `Publication verification failed for dsh-subusage@0.16.2; check registry before retrying`（6/6 等待后失败），直接查询 registry 已读到 `versions["0.16.2"]` 与 `dist-tags.latest` 均为 0.16.2（`published 2026-10-25T03:17:43Z`，即验证窗口关闭后 5 秒），按「依据只能是 registry」以 `workflow_dispatch`（`version_tag=v0.16.2`）重跑转绿，未重复发布；同一提交的 CI（main）也通过并发布 `build-dc2fc96dfc3a` 资产。`v0.16.2` Release 资产、`build-dc2fc96dfc3a` 资产与 npm tarball 三者 SHA256 一致（`sha256:41f8d4c48925b20589aaad54f2841e0f900db7ae41370eb904804cf736f7a141`，171530 字节）；`build-dc2fc96dfc3a` 为 latest。
+
+0.16.2 已于 2026-10-25 装进 `desktop` Profile（`dsh-subusage@0.16.2`）：发布未满 24 小时，按 pnpm 供应链策略用 Profile 的 `minimumReleaseAgeExclude`（`dsh-subusage@0.16.1 || 0.16.2`）放行，未下调全局 `minimumReleaseAge`；随包 Desktop CLI 的 `add` 两次都在 pnpm `added 0` 处因 Electron crashpad 崩溃（退出码 `4294930435`），改用随包独立 node 驱动同一 pnpm 完成，随后核对依赖 spec / `pnpm-lock.yaml` / 已安装产物均为 `0.16.2`，`dsh.profile.bundles` 不变。未重启 DSH，界面验收由用户重启后执行。
 
 0.16.1 客户端小修与文档新鲜度巡检（Ark 组开关开启后立即刷新全部路由、Client query codec 允许空 `providerIds`、OpenDesign 自动登录说明纠正为实测可用；README 横幅 / 实测表 / 端点清单与 design-ux / development 的计数及契约描述同步修正，`check-browser-runtime.mjs` 计数断言对齐当前 UI）。发布完成仍以 registry 与对应 Actions / Release 结果为准，不自动安装或重启本机 DSH。
 

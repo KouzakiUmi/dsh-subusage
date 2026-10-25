@@ -10,7 +10,7 @@
 - 测试：`tests/test-opencode.mjs` 新增 7 组凭据引用断言（专属名优先 / 通用名回退 / 专属名认启动环境 / 名字优先级高于来源优先级 / 两者皆无 → `none` / 端到端 Authorization 用的是专属名那把 Key / 条目对外主引用名）；`node tests/run-all.mjs` 全部通过。
 - 文档：README 的「凭据与环境」表与 provider id 映射、`docs/credentials.md`（新增「OpenCode Go 的两个引用名」小节）、README 排错表补一条「模型能调用但额度报无凭据」。
 - **真机只读验证（2026-10-25，经用户授权）**：用本机凭据库里真实的 `OPENCODE_GO_API_KEY` 走 0.16.2 的解析链请求 `GET https://opencode.ai/zen/go/v1/usage`，HTTP 200，`state=ok` / `keySource=credentials` / `envName=OPENCODE_GO_API_KEY` / `coverage=complete`，三窗 rolling 3% · week 97% · month 56%（重置 2026-10-25T07:51:57Z / 2026-10-26T00:00:00Z / 2026-11-13T17:40:48Z），用时约 0.9 秒；密钥未输出、未落盘。修复前同一份凭据因引用名不匹配只会得到「无凭据」。
-- **未做**：没有装进桌面 Profile 并重启验收（发版与安装分开；界面验收需重启 DSH 后由用户执行）。
+- **桌面 Profile 安装（2026-10-25，经用户授权）**：`dsh-subusage@0.16.2` 已装进 `desktop` Profile——依赖 spec、`pnpm-lock.yaml` 与 `node_modules/dsh-subusage/package.json` 均核对为 `0.16.2`，已安装产物里能查到 `envAliases` 与 `OPENCODE_GO_API_KEY`；`dsh.profile.bundles` 不变。发布未满 24 小时，按 pnpm 供应链策略用 Profile 的 `minimumReleaseAgeExclude`（`dsh-subusage@0.16.1 || 0.16.2`）放行该版本，未下调全局门槛。随包 Desktop CLI 的 `add` 在该机两次都在 pnpm `added 0` 处因 Electron crashpad 崩溃（退出码 `4294930435`），改用随包独立 node 驱动同一个 pnpm 完成（既有故障的等价通道）。**未重启 DSH**：界面验收需重启后由用户执行，运行中的 Host 仍是 0.16.1。
 
 ## 0.16.1：客户端小修与文档新鲜度巡检
 
