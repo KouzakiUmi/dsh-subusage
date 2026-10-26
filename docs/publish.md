@@ -4,24 +4,22 @@
 
 ## GitHub Release
 
-推送到 `main` 后，[CI](../.github/workflows/ci.yml) 运行回归、清单/语法检查和实际打包。PR 与 `master` 只检查，不发布。
+推送到 `main` / `master` 或提交 PR 时，[CI](../.github/workflows/ci.yml) 运行回归、清单/语法检查和实际打包。`main` 构建包保存在 Actions artifact 中 7 天。
 
-检查通过后，发布 job 下载同一次构建验证过的安装包，使用 `build-<12位提交SHA>` 标签发布 Release，资产名固定为 `dsh-subusage.tgz`，并设为 latest。重跑同一提交复用对应 Release；发布前检查远端主分支，已被新提交取代的构建跳过发布。
-
-主分支 CI 只发布 GitHub Release，不调用 npm。npm 信任绑定 `release.yml`，由下述版本标签工作流执行 Trusted Publishing。
+GitHub Release 与 npm 统一由[版本标签工作流](../.github/workflows/release.yml) 执行。推送 `vX.Y.Z` 标签后，工作流校验标签与包版本一致，完成检查及打包，再发布固定名称的 `dsh-subusage.tgz` 与 npm 包。
 
 固定下载地址：[最新安装包](https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz)。资产名保持不带版本号，确保后续发布仍能通过该地址下载。
 
 自动构建的包版本来自 `package.json`，每次提交不会自动提升版本。GitHub 使用内置 `GITHUB_TOKEN`；仓库策略须允许发布 job 的 `contents: write`。测试不安装依赖，也不使用真实账号。
 
-可选的 [语义版本工作流](../.github/workflows/release.yml) 由 `v*` tag 触发。先更新包版本及相关说明并推送，再分别执行：
+[语义版本工作流](../.github/workflows/release.yml) 仅由版本 tag 推送触发。先更新包版本及相关说明并推送，再分别执行：
 
 ```console
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布版本 Release（`make_latest: false`，避免旧版本覆盖主分支 latest），然后以 GitHub OIDC 身份发布同一已验证 tarball 到 npm。registry 已有该版本时跳过，失败后重跑不会重复发布。
+tag 必须等于 `v` 加包版本。版本 Release 使用 `make_latest: legacy`，由 GitHub 判定 latest；npm 使用 GitHub OIDC Trusted Publishing 发布同一已验证 tarball。registry 已有该版本时跳过；上传后每 10 秒核验一次，最多等待 5 分钟传播。超过窗口仍不可见时先核对 registry，再按实际状态重跑原版本标签的 Actions run。以下旧版本记录保留当时的发布过程，当前入口与等待策略以上述流程为准。
 
 ## npm
 
@@ -69,9 +67,9 @@ tag 必须等于 `v` 加包版本。该工作流再次检查与打包，发布�
 
 `0.10.4` 与 `0.10.5` 已于 2026-10-09 经 `release.yml` 的 Trusted Publishing 发布，registry 的 latest 已核对为 0.10.5。同一条延迟两次都出现：`npm publish --json` 已返回成功结果（脚本因此走到可见性等待，而不是报 `npm publish failed`），但 60 秒窗口内 registry 仍只读到上一个版本；约两分钟后新版本可读，再经 `workflow_dispatch`（`version_tag=v0.10.4` / `v0.10.5`）重跑转绿。
 
-> **发布后核对不到版本时怎么办（0.8.1 起每次发布都会遇到）**：多数情况这是 **npm 侧的发布后验证 / 传播延迟**，不是工作流缺陷——`0.8.1` / `0.8.2` / `0.8.3` / `0.10.0` / `0.10.1` / `0.10.2` / `0.10.3` / `0.10.4` / `0.10.5` / `0.10.6` / `0.10.7` 都出现过。处置固定为「**先查 registry 确认版本可读，再用 `workflow_dispatch` 重跑让工作流转绿**」，不改动已发布版本，也不为此放宽核对窗口。
+> **发布后核对不到版本时**：脚本会自动等待最多 5 分钟的 registry 传播。窗口耗尽后先查询精确版本，再决定是否重跑原标签的 Actions run。
 >
-> **但「核对失败」不等于「已经传上去了」。** `0.10.8` 就出现过一次反例：`npm publish` 返回成功、脚本照常进入可见性等待，而 registry 里**始终没有**这个版本（等了八分钟仍是 404，包版本列表停在 `0.10.7`），重跑一次才真正发布成功。**所以依据只能是 registry，不能是日志**：`npm view <pkg>@<version> version`（或直接请求 `https://registry.npmjs.org/<pkg>/<version>`）读到版本 → 重跑只为转绿；读不到 → 重跑就是恢复手段（脚本会先查 registry，明确 E404 才重新发布，不会重复发布）。**绝不能把工作流那次失败直接当成版本未发布而去手工再发一次**，也不要为了消掉这条失败而放宽核对窗口。
+> **但「核对失败」不等于「已经传上去了」。** `0.10.8` 就出现过一次反例：`npm publish` 返回成功、脚本照常进入可见性等待，而 registry 里**始终没有**这个版本（等了八分钟仍是 404，包版本列表停在 `0.10.7`），重跑一次才真正发布成功。**所以依据只能是 registry，不能是日志**：`npm view <pkg>@<version> version`（或直接请求 `https://registry.npmjs.org/<pkg>/<version>`）读到版本 → 重跑只为转绿；读不到 → 重跑就是恢复手段（脚本会先查 registry，明确 E404 才重新发布，不会重复发布）。**绝不能把工作流那次失败直接当成版本未发布而去手工再发一次**。
 
 **自动发布（默认路径）**：更新版本并推送代码后，推送对应的 `vX.Y.Z` 标签；`release.yml` 检查、打包并发布 npm。认证使用已配置的 npm Trusted Publisher，不要求仓库发布令牌；结果在「Publish to npm (new versions only)」步骤核对。仅推送 `main` 不会更新 npm。
 

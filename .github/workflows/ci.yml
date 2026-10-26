@@ -41,68 +41,11 @@ jobs:
           npm pack --ignore-scripts --json > pack.json
           node scripts/prepare-release.mjs
 
-      - name: Upload verified release asset
+      - name: Upload verified build artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: release-package
+          name: build-package
           path: dist/dsh-subusage.tgz
           if-no-files-found: error
           retention-days: 7
-
-  publish:
-    # 合并 PR 会触发 main 的 push；PR 与其它分支绝不进入有写权限的发布 job。
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: test
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    concurrency:
-      group: release-dsh-subusage
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-package
-          path: dist
-
-      - name: Prepare commit-specific release
-        id: metadata
-        env:
-          COMMIT_SHA: ${{ github.sha }}
-          REPOSITORY: ${{ github.repository }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # 使用有认证的 API，也适用于私有仓库；查询失败直接让 job 失败。
-          # 旧的慢构建不能在新提交到达后覆盖 latest。
-          head=$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq '.object.sha')
-          if [ "$head" != "$COMMIT_SHA" ]; then
-            echo 'current=false' >> "$GITHUB_OUTPUT"
-            echo 'A newer main commit exists; skipping outdated release.'
-            exit 0
-          fi
-          echo 'current=true' >> "$GITHUB_OUTPUT"
-          node --input-type=module <<'NODE'
-          import { appendFileSync, readFileSync } from 'node:fs';
-          const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
-          const sha = process.env.COMMIT_SHA.slice(0, 12);
-          appendFileSync(process.env.GITHUB_OUTPUT, `tag=build-${sha}\nname=v${version} · ${sha}\n`);
-          NODE
-
-      - name: Publish GitHub Release
-        if: steps.metadata.outputs.current == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.metadata.outputs.tag }}
-          name: ${{ steps.metadata.outputs.name }}
-          target_commitish: ${{ github.sha }}
-          files: dist/dsh-subusage.tgz
-          fail_on_unmatched_files: true
-          generate_release_notes: true
-          make_latest: true
-          prerelease: false

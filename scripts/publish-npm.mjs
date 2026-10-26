@@ -31,8 +31,11 @@ export function publishNpm({ pkg, hasArtifact, oidcAvailable, run, log = console
     if (!duplicate) throw new Error(`npm publish failed (${error?.code || `exit ${published.status ?? 'unknown'}`}); check npm Trusted Publisher workflow, environment and direct publish permission.`);
     log('Registry reports this version already published; verifying visibility instead of republishing.');
   }
-  for (let attempt = 0; attempt < 6; attempt++) {
-    if (attempt) wait(10000);
+  // 首次立即核验，之后每 10 秒查询一次，最多等待 5 分钟的 registry 传播。
+  const verificationAttempts = 31;
+  const verificationIntervalMs = 10000;
+  for (let attempt = 0; attempt < verificationAttempts; attempt++) {
+    if (attempt) wait(verificationIntervalMs);
     const verified = lookup();
     let version;
     try { version = JSON.parse(verified.stdout); } catch { /* 核对失败不能报告发布成功。 */ }
@@ -41,7 +44,7 @@ export function publishNpm({ pkg, hasArtifact, oidcAvailable, run, log = console
       return duplicate ? 'skipped' : 'published';
     }
     if (version?.error?.code !== 'E404') break;
-    log(`Waiting for registry visibility (${attempt + 1}/6).`);
+    if (attempt + 1 < verificationAttempts) log(`Waiting for registry visibility (${attempt + 1}/${verificationAttempts}); retrying in ${verificationIntervalMs / 1000}s.`);
   }
   throw new Error(`Publication verification failed for ${spec}; check registry before retrying.`);
 }
