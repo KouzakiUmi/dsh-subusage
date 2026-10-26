@@ -10,7 +10,7 @@
 [![license](https://img.shields.io/badge/license-MIT-64748b)](#license--security--许可与安全)
 [![DSH Core](https://img.shields.io/badge/DSH_Core-0.2.x-64748b)](#compatibility--兼容性)
 
-[快速开始](#快速开始) · [功能预览](#功能预览) · [支持清单](#支持的数据--supported-data) · [凭据指引](docs/credentials.md)
+[快速开始](#快速开始) · [功能预览](#功能预览) · [支持清单](#支持的数据--supported-data) · [兼容插件](#兼容的插件与路由) · [手动匹配](#手动匹配-provider) · [凭据指引](docs/credentials.md)
 
 <img src="https://raw.githubusercontent.com/KouzakiUmi/dsh-subusage/main/assets/title.png" width="1200" alt="dsh-subusage：保留原标题图的深蓝构图，右侧展示真实 Codex 与 OpenCode Go 深浅主题用量弹层；虚构数据离线预览">
 
@@ -67,6 +67,45 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 [查看完整支持清单](#支持的数据--supported-data) · [查看哪些经过真实账号验证](#support-status--实测覆盖)
 
 本插件**只显示用量，不注册模型路由**。Codex 默认关闭，避免与提供方自带药丸重复；需要统一展示时可手动开启。私有额度接口可能变化，数字仅供参考，不是计费依据。
+
+## 手动匹配 provider
+
+模型能够调用，但药丸没有显示，可能是模型路由的 provider 名与订阅入口不同。打开 **设置 → 订阅用量 → 提供商管理 → 手动匹配 provider**：
+
+1. 开启开关（默认关闭）。
+2. 在对应订阅项的下拉列表中选择本机已注册的 provider；同一订阅可连续添加多个，适合不同协议或端点拆成多条路由的情况。
+3. 选择后立即保存；点击绑定旁的 `×` 可移除。一个 provider 只能绑定一个订阅，已绑定项不会出现在其他下拉列表中。
+
+**只改变药丸显示哪份订阅数据**，不改变模型路由、凭据来源、额度查询端点或检测开关。手动绑定优先于内置匹配，未绑定的 provider 继续自动匹配；关闭开关会恢复自动匹配，但保留已保存的绑定。目标订阅仍需启用检测并配置其所需凭据。绑定关系不会校验两个账号是否相同，请选择与该模型实际使用账号对应的订阅。
+
+## 兼容的插件与路由
+
+以下列出当前代码已适配的插件或工具及具体范围。**药丸匹配、登录凭据复用、额度联动是不同能力**；支持其中一项不代表接管该插件的登录、账号切换或全部设置，也不代表所有版本均已实机验证。
+
+### 模型路由与登录凭据
+
+| 插件 / 工具 | provider → 本插件订阅入口 | 适配范围与条件 |
+|---|---|---|
+| `dsh-volcengine-provider` | `volcengine-agent-plan` → `arkcli-agent-plan`；`volcengine-coding-plan` → `arkcli-coding-plan` | 自动匹配对应 Agent / Coding 药丸；仅路由别名，不读取该插件账号选择或 OAuth。额度仍使用本插件配置的 IAM AK/SK。 |
+| `dsh-opendesign-corouter` | `opendesign-corouter-plan`、`opendesign-corouter-paid` → `opendesign` | 套餐赠送和付费模型共用 OpenDesign 订阅药丸；不按模型拆分余额，也不读取该插件的登录态。额度仍使用本插件的控制台 Cookie；OpenDesign 检测默认关闭。 |
+| `@volcengine/ark-plan-api`（旧版） | `ark-agent-plan-cn` → `arkcli-agent-plan`；`ark-coding-plan-cn` → `arkcli-coding-plan` | 保留两条旧国内路由的药丸匹配；额度仍走当前 Ark 订阅入口。 |
+| 官方 `arkcli` | `arkcli-agent-plan`、`arkcli-coding-plan`、`arkcli-agent-plan-team`、`arkcli-coding-plan-team` → 同名入口 | 直接匹配四条路由；个人版与 Team 检测独立，Team 默认关闭；额度需 IAM AK/SK，而非推理 API Key。 |
+| `@mars-sea/dsh-commandcode-provider` | `commandcode` → `commandcode` | 复用凭据来源、账户列表与账号切换；支持固定账户和轮换池摘要。自动轮换时的用量不跟随每次请求实际服务账号。 |
+| `dsh-grok-kit` / 官方 Grok CLI | `xai-oauth` → `xai-oauth` | 共享 Grok 登录文件；token 过期时可借 `dsh-grok-kit` 的登录链续约，再读取 X / SuperGrok 额度。 |
+| `dsh-codex-connect` / DSH 内置 Codex 路由 / 官方 Codex CLI | `openai-codex` → `openai-codex` | 匹配 Codex 药丸，支持读取 CLI 的 ChatGPT 登录文件；API Key 登录不能读取 ChatGPT 订阅额度。检测默认关闭。 |
+| `dsh-codex-subscription` | 其 OAuth 用于 `openai-codex` 额度入口 | 优先只读活动账号记录，兼容旧 OAuth 引用；不迁移或续约凭据。不额外假定它注册的模型路由名，名称不同时使用手动绑定。 |
+| `@inventec/dsh-copilot-auth` | `github-copilot` → `github-copilot` | 只读该插件写入 DSH 凭据库的 OAuth 记录；登录和续约由提供方负责。检测默认关闭。 |
+
+上述火山和 OpenDesign 新别名已根据对应插件源码核对，并通过隔离路由回归；尚未完成安装后的真实 GUI 联调。其他使用标准 provider ID 的模型插件可直接匹配本插件的[支持清单](#支持的数据--supported-data)；自定义名称可使用手动绑定。路由匹配不意味着新增一种额度接口。
+
+### 额度联动（仅工具报告）
+
+| 插件 | 本插件报告入口 | 适配范围 |
+|---|---|---|
+| [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) | `antigravity` | 读取其 `agyQuota` 服务提供的额度快照。 |
+| [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae) | `trae`、`trae-global`、`trae-enterprise` | 读取其本机只读用量接口；仅返回已登录且有可用报告的区域。 |
+
+这两类联动出现在 `subusage_quota` / `quota()` 报告中，**没有本插件的独立检测卡片或药丸**，也不在手动绑定的目标订阅列表中。登录、额度采集及账号管理仍由对应插件负责，本插件不读取它们的凭据。
 
 ## 也可以直接问 Agent
 

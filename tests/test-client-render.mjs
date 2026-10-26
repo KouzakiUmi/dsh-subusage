@@ -50,10 +50,12 @@ plugin.apply(ctx);
 assert.equal(typeof component, "function");
 let readerCalls = 0;
 const readEntry = (provider) => { readerCalls++; return async () => ({ provider }); };
+let mappingVisibility = {};
 const renderWrapper = (provider) => {
   hooks = [];
   return component({
     store: { subscribe: () => () => {}, getSnapshot: () => ({ current: provider ? { provider } : null }) },
+    usageStore: { subscribe: () => () => {}, getSnapshot: () => ({ settings: { visibility: mappingVisibility } }) },
     readEntry, t: (key) => key, getLocale: () => "zh"
   });
 };
@@ -64,13 +66,29 @@ assert.equal(readerCalls, 1, "相同 provider 不得重建 reader");
 for (const provider of ["vrtx-gemini", null, "kimi-coding", "zai-coding-cn", "opencode-go", "commandcode", "xai-oauth", "minimax", "minimax-cn", null, "xiaomi-token-plan-cn", "openai-codex"]) {
   const before = readerCalls;
   const element = renderWrapper(provider);
-  assert.deepEqual(hooks, ["useSyncExternalStore", "useMemo"], `Hook 顺序必须稳定: ${provider}`);
+  assert.deepEqual(hooks, ["useSyncExternalStore", "useSyncExternalStore", "useMemo"], `Hook 顺序必须稳定: ${provider}`);
   // vrtx-gemini 是本机存在但本插件不覆盖的路由：不支持的模型不得创建 reader。
   if (!provider || provider === "vrtx-gemini") {
     assert.equal(element, null);
     assert.equal(readerCalls, before, "不支持的模型不得创建 reader");
   } else assert.ok(element);
 }
+// 已核对两个本地提供方插件的实际注册 ID；两类 OpenDesign 端点显示同一订阅。
+for (const [route, subscription] of Object.entries({
+ "volcengine-agent-plan": "arkcli-agent-plan",
+ "volcengine-coding-plan": "arkcli-coding-plan",
+ "opendesign-corouter-plan": "opendesign",
+ "opendesign-corouter-paid": "opendesign"
+})) assert.equal(renderWrapper(route).props.providerId, subscription);
+mappingVisibility = { manualMatching: true, providerMappings: { "kimi-coding": ["opendesign-corouter-plan"] } };
+assert.equal(renderWrapper("opendesign-corouter-plan").props.providerId, "kimi-coding", "手动配置优先于内置别名");
+mappingVisibility = { manualMatching: true, providerMappings: { "kimi-coding": ["custom-kimi", "custom-kimi-alt", "xiaomi-token-plan-cn"] } };
+for (const route of ["custom-kimi", "custom-kimi-alt", "xiaomi-token-plan-cn"]) assert.equal(renderWrapper(route).props.providerId, "kimi-coding");
+assert.equal(renderWrapper("zai-coding-cn").props.providerId, "zai-coding-cn", "未绑定路由保持自动匹配");
+mappingVisibility.manualMatching = false;
+assert.equal(renderWrapper("custom-kimi"), null);
+assert.equal(renderWrapper("xiaomi-token-plan-cn").props.providerId, "xiaomi-token-plan-cn");
+mappingVisibility = {};
 const pill = renderWrapper("xiaomi-token-plan-cn");
 function renderPill(entry, open = false, failed = null, failState) {
   stateValues = [entry ? { entry, updatedAt: 0 } : null, failed, failState, false, open];
@@ -154,8 +172,8 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   const all = flattenNodes(section), selects = all.filter((n) => n.type === "select");
   assert.equal(selects.length, 0, "设置页不使用任何下拉列表");
   // 火山方舟的 4 条路由在设置页合并成一张卡片，但个人版 / Team 各有一个开关：
-  // 26 家非 Ark + Ark 两个开关 + 1 个「默认隐藏」= 29。
-  assert.equal(all.filter(n => n.props?.role === "switch").length, 29, "提供商开关、Ark Team 独立开关与默认隐藏开关均可见");
+  // 原有 29 个开关 + 手动匹配开关。
+  assert.equal(all.filter(n => n.props?.role === "switch").length, 30, "提供商开关、Ark Team 独立开关与默认隐藏开关均可见");
   if (provider === "xiaomi-token-plan-cn") {
     assert.ok(visibleText(section).includes("登录并自动导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));
@@ -422,3 +440,17 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 }
 
 console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/提供商开关/无下拉布局、用量面板内联行动条、待处理排序与计数跳转、首次加载 gate、路由缺失收起与已启用前置、AFP 分组与明细拆行、CC 轮换池摘要");
+
+// 手动匹配启用后，每个订阅提供本机路由下拉列表，已绑定路由不再重复分配。
+{
+ settings.visibility = { manualMatching: true, providerMappings: { "kimi-coding": ["custom-kimi", "custom-kimi-alt"] } };
+ const mappingStore = { ...usageStore, getSnapshot: () => ({ settings, configured: {}, entries: [], availableProviders: ["custom-kimi", "custom-kimi-alt", "free-route"] }) };
+ stateValues = []; stateIndex = 0;
+ const section = plugin.__test.SubusageSection({ usageStore: mappingStore, t: key => key, getLocale: () => "zh" });
+ const all = flattenNodes(section);
+ assert.equal(all.filter(node => node.type === "select").length, plugin.__test.PROVIDER_ORDER.length);
+ assert.ok(all.filter(node => node.type === "option").some(node => node.props.value === "free-route"));
+ assert.ok(!all.filter(node => node.type === "option").some(node => node.props.value === "custom-kimi"));
+ assert.ok(all.some(node => node.props?.["aria-label"] === "移除 custom-kimi-alt"));
+ delete settings.visibility;
+}

@@ -230,8 +230,8 @@ let tabs = nodes(tree).filter((n) => n.props.role === "tab");
 assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Grok", "MiniMax CN", "DeepSeek 账号", "DeepSeek API", "ARK Plan"]);
 assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
 assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
-// 设置页开关数：26 家非 Ark provider + Ark 个人版 / Team 两个开关 + 1 个「默认隐藏」= 29。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 29); assert.ok(!textOf(tree).includes("保存设置"));
+// 原有 29 个开关，加上默认关闭的手动匹配开关。
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 30); assert.ok(!textOf(tree).includes("保存设置"));
 let focused; tabs[0].props.onKeyDown({ key: "End", preventDefault() {}, currentTarget: { parentElement: { querySelectorAll: () => tabs.map((_, i) => ({ focus() { focused = i; } })) } } });
 assert.equal(focused, ids.length - 1); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids.at(-1));
 // End 键跳到最后一个 tab，其技术信息应显示该 provider 的继承变量名。
@@ -446,7 +446,7 @@ assert.equal(management.type, "details", "管理区为设置页末尾的折叠�
 assert.equal(management.props.id, "subusage-provider-management"); assert.notEqual(management.props.open, true, "默认折叠");
 assert.equal(management.children[0].type, "summary"); assert.equal(management.children[0].children[0], "提供商管理");
 // 关闭/隐藏的提供商仍保留管理开关；Ark 合并卡片包含个人版 / Team 两个独立开关，所以总共 29 个（含「默认隐藏」）。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 29, "所有关闭/隐藏提供商保留管理开关（Ark 个人版与 Team 独立）");
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 30, "所有关闭/隐藏提供商保留管理开关（Ark 个人版与 Team 独立）");
 assert.deepEqual(nodes(tree).filter(n => n.props.role === "tab").map(n => n.props.id), ids.filter(id => ![ids[1], ids[3]].includes(id)).map(id => `subusage-tab-${id}`));
 assert(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick(); tree = ch.render(api.SubusageSection, cp);
@@ -503,7 +503,7 @@ ch.unmount();
 controlSnapshot = withPrefs(result(controlSnapshot.entries), preferences(Object.fromEntries(ids.map(id => [id, false]))));
 const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSection, cp);
 // 空状态仍列出全部管理开关：26 家非 Ark + Ark 两个组开关 + 默认隐藏 = 29。
-assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 29);
+assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 30);
 assert.equal(nodes(tree).find(n => n.props.id === "subusage-provider-management").props.open, true, "空状态展开配置入口");
 assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.role === "tabpanel"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick(); tree = emptyControls.render(api.SubusageSection, cp);
@@ -671,7 +671,7 @@ assert.equal(api.localError("subusage/network", "", t), t("errNetwork"), "原文
 let directoryState = {status:"ready",current:{provider:"openai-codex"}};
 const directory = {subscribe:()=>()=>{},getSnapshot:()=>directoryState};
 const wrapper = new Hooks();
-const wrapperProps = {store:directory,readEntry:id=>id,t,getLocale:()=>"zh"};
+const wrapperProps = {usageStore: { subscribe: () => () => {}, getSnapshot: () => ({}), readSettings: async () => ({}) },store:directory,readEntry:id=>id,t,getLocale:()=>"zh"};
 assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps).props.providerId,"openai-codex");
 for(const status of ["loading","error"]){directoryState={status,current:null};assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps).props.providerId,"openai-codex");}
 directoryState={status:"ready",current:{provider:"kimi-coding"}};
@@ -679,3 +679,45 @@ assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps).props.providerId
 directoryState={status:"ready",current:{provider:"unsupported-model"}};assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps),null);
 directoryState={status:"ready",current:null};assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps),null);wrapper.unmount();
 console.log("PASS provider management switches/no-dropdown/filtering/persistence payloads/dirty guard/pill subscription/race + refresh lock isolation");
+
+// 完整包装层 + store：模型已选中即证明路由存在，但不能放宽设置页或检测开关。
+for (const [target, routes] of [["kimi-coding", ["custom-kimi", "custom-kimi-alt"]], ["opendesign", ["opendesign-corouter-plan", "opendesign-corouter-paid"]]]) {
+ const requestLog = [];
+ const settings = { ...publicSettings(), visibility: { hideWithoutApi: true, manualMatching: target === "kimi-coding", providerMappings: { [target]: routes }, providers: { [target]: true } } };
+ let missingKey = false;
+ const response = rows => ({ ...result(rows), settings, configured: { [target]: false }, availableProviders: routes });
+ const mapped = api.createUsageStore(async (method, query) => { requestLog.push({ method, query }); return response(method === "read" ? [] : [entry(target, 25, missingKey ? { state: "no-key", apiDetected: false } : { apiDetected: true })]); });
+ const hook = new Hooks();
+ let currentRoute = routes[0];
+ const props = { store: { subscribe: () => () => {}, getSnapshot: () => ({ status: "ready", current: { provider: currentRoute } }) }, usageStore: mapped, readEntry: (id, selected) => mapped.reader(id, selected), t, getLocale: () => "zh" };
+ hook.render(api.SubusagePillEntry, props); await flush();
+ const first = hook.render(api.SubusagePillEntry, props);
+ assert.equal(first.props.providerId, target);
+ assert.equal(requestLog.filter(call => call.method === "read").length, 1, "冷启动读取映射元数据");
+ await mapped.refresh([target]);
+ assert.equal(requestLog.filter(call => call.method === "refresh").length, 0, "普通设置页仍遵守原路由判断");
+ currentRoute = routes[1];
+ const second = hook.render(api.SubusagePillEntry, props);
+ assert.equal(second.props.readEntry, first.props.readEntry, "同订阅多个模型路由共用reader");
+ const [one, two] = await Promise.all([first.props.readEntry(), second.props.readEntry()]);
+ assert.equal(one.visible, true); assert.equal(two.visible, true);
+ assert.equal(requestLog.filter(call => call.method === "refresh").length, 1, "双路由共享在途请求");
+ assert.equal(mapped.getSnapshot().configured[target], false, "不改写全局路由检测");
+ assert.equal(api.providerVisible(settings, target, entry(target), mapped.getSnapshot()), false, "普通设置页可见性保持不变");
+ const beforeTimers = new Set(intervals.keys());
+ const stop = first.props.readEntry.activate();
+ const timer = [...intervals].find(([key]) => !beforeTimers.has(key));
+ assert.ok(timer, "药丸注册轮询"); timer[1].fn(); await flush();
+ assert.equal(requestLog.filter(call => call.method === "refresh").length, 2, "轮询保留选中路由上下文");
+ stop();
+ assert.equal(intervals.has(timer[0]), false, "卸载清理轮询及路由活动计数");
+ await mapped.refresh([target]);
+ assert.equal(requestLog.filter(call => call.method === "refresh").length, 2, "卸载后不放宽普通刷新");
+ missingKey = true;
+ assert.equal((await first.props.readEntry(true)).visible, false, "选中路由也不能绕过缺凭据隐藏");
+ settings.visibility.providers[target] = false;
+ const count = requestLog.length;
+ assert.equal((await first.props.readEntry(true)).visible, false, "仍遵守订阅检测开关");
+ assert.equal(requestLog.length, count, "关闭检测后不发请求");
+ hook.unmount(); mapped.dispose();
+}

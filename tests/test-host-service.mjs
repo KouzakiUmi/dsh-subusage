@@ -35,7 +35,7 @@ const h = harness({ keys: { [Z]: "old-manual", [K]: "kimi-manual" } });
 h.credential[Z] = { value: "credential-key" }; h.environment[Z] = { value: "environment-key" };
 let result = await h.service.refresh({ providerIds: [Z], force: false });
 assert.equal(result.entries[0].keySource, "credentials"); assert.equal(h.calls[0].options.headers.authorization, "Bearer credential-key");
-assert.deepEqual(Object.keys(result).sort(), ["configured", "entries", "settings", "updatedAt"]);
+assert.deepEqual(Object.keys(result).sort(), ["availableProviders", "configured", "entries", "settings", "updatedAt"]);
 assert.equal(result.settings.keyModes[Z], "inherit"); assert.equal(result.settings.hasKeys[Z], true); assert.equal(result.configured[Z], true);
 assert(!JSON.stringify(result).includes("old-manual")); assert(!("keys" in result.settings)); assert(!("cookie" in result.settings.xiaomi));
 const count = h.calls.length;
@@ -182,3 +182,47 @@ const malformed = harness({ keys: { [Z]: "x" } }); malformed.respond(() => "not 
 malformed.respond(() => new Error("authorization=SECRET")); result = await malformed.service.refresh({ providerIds: [Z], force: true }); assert(!JSON.stringify(result).includes("SECRET")); assert.equal(result.entries[0].errorCode, "subusage/network");
 h.service.dispose(); assert.equal(h.service.cache.size, 0); assert.equal(h.service.inflight.size, 0); await assert.rejects(h.service.read(), e => e.code === "subusage/disposed");
 console.log("PASS Host service contracts/cache/patch/errors/normalizers (isolated memory fixtures)");
+
+// 手动映射仅修改显示设置；多端点持久化、开关保留、重复路由拒绝。
+{
+ const local = harness();
+ let state = await local.service.read({ providerIds: [], force: false });
+ assert.equal(state.settings.visibility.manualMatching, false);
+ assert.deepEqual(state.availableProviders, [Z]);
+ const beforeConfigured = state.configured;
+ const mappings = { [K]: ["custom-kimi", "custom-kimi-alt"] };
+ state = await local.service.save({ expectedRevision: state.settings.revision, visibility: { manualMatching: true, providerMappings: mappings } });
+ assert.deepEqual(state.settings.visibility.providerMappings, mappings);
+ assert.deepEqual(state.configured, beforeConfigured);
+ assert.equal(local.calls.length, 0, "显示绑定不调用订阅接口");
+ const restored = harness(JSON.parse(local.files.get("memory/config")));
+ let loaded = await restored.service.read({ providerIds: [], force: false });
+ assert.equal(loaded.settings.visibility.manualMatching, true);
+ assert.deepEqual(loaded.settings.visibility.providerMappings, mappings);
+ loaded = await restored.service.save({ expectedRevision: loaded.settings.revision, visibility: { manualMatching: false } });
+ assert.deepEqual(loaded.settings.visibility.providerMappings, mappings);
+ for (const providerMappings of [{ [K]: ["same", "same"] }, { [K]: ["same"], [Z]: ["same"] }, { unknown: ["route"] }, { [K]: [""] }]) {
+  await assert.rejects(restored.service.save({ expectedRevision: loaded.settings.revision, visibility: { providerMappings } }), error => error.code === "subusage/invalid-request");
+ }
+}
+
+// 显示映射的保存不作废在途查询；检测/凭据配置仍沿用原有变更保护。
+for (const visibility of [{ manualMatching: true, providerMappings: { [Z]: ["custom-zai", "custom-zai-alt"] } }, { hideWithoutApi: false }]) {
+ const local = harness(); local.credential[Z] = { value: "test-key" };
+ const initial = await local.service.read({ providerIds: [], force: false });
+ let release, started;
+ const ready = new Promise(resolve => { started = resolve; });
+ const pendingResponse = new Promise(resolve => { release = resolve; });
+ local.respond(() => { started(); return pendingResponse; });
+ const pending = local.service.refresh({ providerIds: [Z], force: true });
+ await ready;
+ await local.service.save({ expectedRevision: initial.settings.revision, visibility });
+ release(zBody);
+ const finished = await pending;
+ if (visibility.manualMatching) {
+  assert.equal(finished.entries[0].state, "ok", "保存显示映射不能作废在途额度");
+  assert.equal(finished.settings.visibility.manualMatching, true);
+  assert.deepEqual(finished.settings.visibility.providerMappings[Z], ["custom-zai", "custom-zai-alt"]);
+ } else assert.equal(finished.entries[0].errorCode, "subusage/config-changed", "其他配置变更保护保持不变");
+ local.service.dispose();
+}
