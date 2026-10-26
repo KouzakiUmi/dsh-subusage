@@ -721,3 +721,29 @@ for (const [target, routes] of [["kimi-coding", ["custom-kimi", "custom-kimi-alt
  assert.equal(requestLog.length, count, "关闭检测后不发请求");
  hook.unmount(); mapped.dispose();
 }
+
+// 药丸真实订阅回调会写入 failState="ok"，成功推送不能被误判为读取失败。
+{
+ const fresh = { ...entry("opendesign"), freshness: "fresh", coverage: "complete" };
+ let notify;
+ const readEntry = async () => fresh;
+ readEntry.subscribe = listener => { notify = listener; return () => { notify = null; }; };
+ readEntry.activate = () => () => {};
+ const hook = new Hooks();
+ const props = { providerId: "opendesign", label: "OpenDesign", readEntry, openDesignRouteKind: "plan", t, getLocale: () => "zh" };
+ hook.render(api.UsagePill, props); await flush();
+ notify(fresh);
+ let view = hook.render(api.UsagePill, props);
+ assert.ok(textOf(view).includes("使用套餐额度"), "成功订阅推送应保持套餐标注");
+ assert.ok(!textOf(view).includes("计费来源待确认"));
+ notify({ ...fresh, windows: [{ kind: "week", percent: 100, status: "rate-limited" }] });
+ view = hook.render(api.UsagePill, props);
+ assert.ok(textOf(view).includes("使用余额"), "订阅推送耗尽时切换余额标注");
+ assert.ok(textOf(view).includes("套餐："), "耗尽提示应明确属于套餐");
+ notify(fresh);
+ assert.ok(textOf(hook.render(api.UsagePill, props)).includes("使用套餐额度"), "额度恢复后恢复套餐标注");
+ notify({ ...fresh, state: "error", freshness: "stale", retainPrevious: true, error: "test network failure" });
+ assert.ok(textOf(hook.render(api.UsagePill, props)).includes("计费来源待确认"), "错误推送不沿用套餐计费判断");
+ hook.unmount();
+ assert.equal(notify, null);
+}
