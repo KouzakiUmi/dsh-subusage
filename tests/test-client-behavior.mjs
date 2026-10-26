@@ -747,3 +747,73 @@ for (const [target, routes] of [["kimi-coding", ["custom-kimi", "custom-kimi-alt
  hook.unmount();
  assert.equal(notify, null);
 }
+
+// 顶部MiMo过期快捷按钮必须以用量面板为目标，而不是当前凭据编辑器。
+for (const initialEditor of ["zai-coding-cn", "opendesign", "xiaomi-token-plan-cn"]) {
+ memory.set("dsh-subusage:last-provider", initialEditor);
+ const mimo = "xiaomi-token-plan-cn", startGate = deferred(), oldStatus = deferred();
+ const expired = entry(mimo, 30, { apiDetected: true, cookieExpiresAt: new FakeDate(clock - 1000).toISOString() });
+ const data = { ...result([expired]), settings: { ...publicSettings(), visibility: { providers: Object.fromEntries(api.PROVIDER_ORDER.map(id => [id, id === mimo])), hideWithoutApi: true } } };
+ let starts = 0, wrongStarts = 0, mimoStatuses = 0;
+ const loginStore = {
+  subscribe: () => () => {}, getSnapshot: () => data, readSettings: async () => data,
+  activate: () => () => {}, refresh: async () => data,
+  startMimoLogin: request => { starts++; assert.equal(request.expectedRevision, data.settings.revision); return startGate.promise; },
+  startOpenDesignLogin: async () => { wrongStarts++; throw new Error("wrong login provider"); },
+  getMimoLoginStatus: () => { mimoStatuses++; return oldStatus.promise; },
+  getOpenDesignLoginStatus: () => oldStatus.promise
+ };
+ const hook = new Hooks(), props = { usageStore: loginStore, t, getLocale: () => "zh" };
+ let view = hook.render(api.SubusageSection, props); await flush(); view = hook.render(api.SubusageSection, props);
+ const relogin = nodes(view).find(n => n.type === "button" && n.children.includes("重新登录"));
+ assert.ok(relogin, "用量面板应出现过期重新登录入口");
+ const pending = relogin.props.onClick();
+ view = hook.render(api.SubusageSection, props);
+ assert.equal(starts, 1, `编辑器停在${initialEditor}时仍启动MiMo`);
+ assert.equal(wrongStarts, 0);
+ assert.ok(textOf(view).includes("正在启动登录浏览器"));
+ assert.ok(nodes(view).some(n => n.props["aria-controls"] === `subusage-credentials-${mimo}` && n.props["aria-expanded"] === true), "展开MiMo进度而不是隐藏错误");
+ await relogin.props.onClick(); assert.equal(starts, 1, "启动中重复点击不得重复调用");
+ assert.equal(mimoStatuses, initialEditor === mimo ? 1 : 0, "新启动的登录不额外用恢复状态覆盖");
+ startGate.resolve({ jobId: "shortcut-job", state: "waiting", providerId: mimo }); await pending;
+ oldStatus.resolve({ jobId: null, state: "idle", providerId: initialEditor }); await flush();
+ view = hook.render(api.SubusageSection, props);
+ assert.ok(textOf(view).includes("请在浏览器中完成登录"), "迟到的旧idle不能覆盖新任务");
+ hook.unmount();
+}
+
+// 启动MiMo后切到另一登录提供商的编辑器，恢复状态不能夺走活动任务锁。
+{
+ memory.set("dsh-subusage:last-provider", "zai-coding-cn");
+ const mimo = "xiaomi-token-plan-cn", startGate = deferred(), odIdle = deferred();
+ const expired = entry(mimo, 30, { apiDetected: true, cookieExpiresAt: new FakeDate(clock - 1000).toISOString() });
+ const data = { ...result([expired]), settings: { ...publicSettings(), visibility: { providers: Object.fromEntries(api.PROVIDER_ORDER.map(id => [id, id === mimo])), hideWithoutApi: true } } };
+ let starts = 0, odStatuses = 0, odStarts = 0;
+ const store = api.createUsageStore((method) => {
+  if (method === "read" || method === "refresh") return data;
+  if (method === "startMimoLogin") { starts++; return startGate.promise; }
+  if (method === "getOpenDesignLoginStatus") { odStatuses++; return odIdle.promise; }
+  if (method === "getMimoLoginStatus") return { jobId: "active-job", state: "waiting" };
+  if (method === "startOpenDesignLogin") { odStarts++; return { jobId: "wrong-job", state: "waiting" }; }
+  throw new Error("Unexpected test method: " + method);
+ });
+ await store.readAll();
+ const hook = new Hooks(), props = { usageStore: store, t, getLocale: () => "zh" };
+ let view = hook.render(api.SubusageSection, props); await flush(); view = hook.render(api.SubusageSection, props);
+ const shortcut = () => nodes(view).find(n => n.type === "button" && n.children.includes("重新登录"));
+ const pending = shortcut().props.onClick();
+ view = hook.render(api.SubusageSection, props);
+ nodes(view).find(n => n.props["aria-controls"] === "subusage-credentials-opendesign").props.onClick();
+ view = hook.render(api.SubusageSection, props); await flush();
+ assert.equal(odStatuses, 0, "活动MiMo登录期间不恢复其他提供商状态");
+ startGate.resolve({ jobId: "active-job", state: "waiting" }); await pending;
+ odIdle.resolve({ jobId: null, state: "idle" }); await flush();
+ view = hook.render(api.SubusageSection, props);
+ assert.equal(shortcut().props.disabled, true, "切编辑器后顶部仍保留活动任务锁");
+ await shortcut().props.onClick();
+ assert.equal(starts, 1, "不重复请求MiMo启动");
+ const odLogin = nodes(view).find(n => n.type === "button" && n.children.includes("登录并自动导入"));
+ await odLogin.props.onClick();
+ assert.equal(odStarts, 0, "不并发启动OpenDesign登录");
+ hook.unmount(); store.dispose();
+}
