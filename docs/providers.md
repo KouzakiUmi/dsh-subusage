@@ -11,7 +11,7 @@
 
 ## 1. 清单与默认开关
 
-30 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 13 条、关闭 17 条**，以 `defaultSettings()` 和 `parseStored()` 的组归一化结果为准：注册元数据原始为 11 开 / 19 关，但火山方舟的 4 条路由共用默认开启的组开关，团队两条也随组开启，不能只按 `defaultEnabled` 统计有效值。Codex 仍默认关闭，避免与提供方自带药丸重复。设置页里这 30 条合并成 **27 张卡片**；历史已保存开关继续合并，不按新安装数量覆盖。
+30 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 11 条、关闭 19 条**，与注册元数据的 11 开 / 19 关一致：火山个人版两条默认开启，Team 两条由独立的 `visibility.arkTeam` 控制且默认关闭，不再随 `visibility.ark` 打开。Codex 仍默认关闭，避免与提供方自带药丸重复。设置页里这 30 条合并成 **27 张卡片**；历史已保存开关继续合并，未显式配置过 `arkTeam` 的旧配置按关闭迁移。
 
 新增厂商须同时改 `PROVIDERS`、`PROVIDER_META` / `PROVIDER_ORDER`、帮助文案、README 与默认值测试；未获明确需求的新订阅商一律 `defaultEnabled: false`，原有偏好通过存储合并保留。
 

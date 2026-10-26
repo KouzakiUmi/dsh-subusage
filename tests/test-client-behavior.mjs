@@ -39,7 +39,7 @@ const t = (key) => api.zh[key] || key;
 const publicSettings = (revision = "1") => ({ revision, zai: { type: 1, organization: "", project: "" }, xiaomi: { hasCookie: true }, hasKeys: {}, keyModes: {} });
 const entry = (providerId, percent = 25, extra = {}) => ({ providerId, state: "ok", coverage: "complete", freshness: "fresh", windows: [{ kind: "sub", percent, status: percent >= 100 ? "rate-limited" : "ok" }], extras: [], lastAttemptAt: new FakeDate(clock).toISOString(), lastSuccessAt: new FakeDate(clock).toISOString(), ...extra });
 // 真实机器上只有装了的 Ark 路由才存在。测试默认只放行 agent-plan，其余 Ark 路由视为「未安装」——
-// 否则「未知路由一律放行」会让合并后的整组 7 条全部冒出来，测试就和真实行为脱节了。
+// 否则「未知路由一律放行」会让订阅未知的 Ark 路由混入标签，测试就和真实行为脱节了。
 const ARK_NOT_INSTALLED = ["arkcli-coding-plan", "arkcli-agent-plan-team", "arkcli-coding-plan-team"];
 const result = (entries, revision = "1") => ({ entries, settings: publicSettings(revision), configured: Object.fromEntries(ARK_NOT_INSTALLED.map(id => [id, false])), updatedAt: new FakeDate(clock).toISOString() });
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
@@ -219,9 +219,8 @@ const sharedPill = api.createUsageStore(() => result([entry(ids[0])]));
 const sh = new Hooks(); sh.render(api.UsagePill, { ...pillProps, readEntry: sharedPill.reader(ids[0]) }); await flush();
 assert.equal(intervals.size, 1); sh.unmount(); assert.equal(intervals.size, 0); assert.equal(events.get("visibilitychange").size, 0); sharedPill.dispose();
 // 设置：7col短label、公共凭据不回填、dirty保存/取消、键盘与持久化、MiMo无Key/桥。
-// 同组其余 6 条 Ark 路由在这里显示为「没有可用的 AK/SK」（apiDetected:false）：Ark 整组可见性是
-// 账号级订阅语义（配了 AK/SK 就 7 条全显示），已由 test-client-render.mjs 专门覆盖；
-// 本文件把断言集中在非 Ark 的交互上，所以让它们保持收起。
+// 其余 3 条 Ark 路由在这里显示为「没有可用的 AK/SK」（apiDetected:false），让本文件的
+// 断言集中在非 Ark 交互；Ark 按订阅结果显示、个人版 / Team 独立开关由专门用例覆盖。
 const ARK_NO_CREDENTIAL = ARK_NOT_INSTALLED.map(id => entry(id, 0, { state: "no-key", apiDetected: false, windows: [] }));
 const uiGate = deferred(); let uiSnapshot = result([...ids.map((id) => entry(id)), ...ARK_NO_CREDENTIAL]); let savedPatch;
 const uiStore = { getSnapshot: () => uiSnapshot, subscribe: () => () => {}, readAll: async () => uiSnapshot, activate: () => () => {}, save: async (patch) => { savedPatch = patch; uiSnapshot = result([], "2"); return uiSnapshot; }, refresh: async () => uiGate.promise };
@@ -231,8 +230,8 @@ let tabs = nodes(tree).filter((n) => n.props.role === "tab");
 assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Grok", "MiniMax CN", "DeepSeek 账号", "DeepSeek API", "ARK Plan"]);
 assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
 assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
-// 设置页卡片数：26 家非 Ark provider + 1 张 Ark 合并卡片（组内 4 条路由） + 1 个「默认隐藏」开关 = 28。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 28); assert.ok(!textOf(tree).includes("保存设置"));
+// 设置页开关数：26 家非 Ark provider + Ark 个人版 / Team 两个开关 + 1 个「默认隐藏」= 29。
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 29); assert.ok(!textOf(tree).includes("保存设置"));
 let focused; tabs[0].props.onKeyDown({ key: "End", preventDefault() {}, currentTarget: { parentElement: { querySelectorAll: () => tabs.map((_, i) => ({ focus() { focused = i; } })) } } });
 assert.equal(focused, ids.length - 1); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids.at(-1));
 // End 键跳到最后一个 tab，其技术信息应显示该 provider 的继承变量名。
@@ -428,12 +427,15 @@ assert.equal(api.providerVisible({ visibility: preferences() }, ids[0], entry(id
 	const arkKnown = { configured: arkUnknown.configured, entries: [{ providerId: "arkcli-agent-plan", subscribed: true }, { providerId: "arkcli-coding-plan", subscribed: true }] };
 	assert.equal(api.providerVisible({ visibility: preferences() }, "arkcli-coding-plan", { ...entry("arkcli-coding-plan"), subscribed: true }, arkKnown), true, "已订阅的 Coding Plan 即使没路由也显示");
 	assert.equal(api.providerVisible({ visibility: preferences({}, false) }, "arkcli-coding-plan", entry("arkcli-coding-plan"), arkUnknown), true, "关掉默认隐藏后订阅未知也显示");
+	const teamOnly = { ...arkUnknown, settings: { visibility: { ark: false, arkTeam: true, providers: {} } } };
+	assert.equal(api.providerVisible(teamOnly.settings, "arkcli-agent-plan", entry("arkcli-agent-plan"), teamOnly), false, "Team 开启不会带出已关闭的个人版");
+	assert.equal(api.providerVisible(teamOnly.settings, "arkcli-agent-plan-team", entry("arkcli-agent-plan-team"), teamOnly), true, "个人版关闭时 Team 代表标签仍独立显示");
 }
 let controlSnapshot = withPrefs(result([...ids.map(id => entry(id, 20, { apiDetected: id !== ids[1], ...(id === ids[1] ? { state: "no-key" } : {}) })), ...ARK_NO_CREDENTIAL]), preferences({ [ids[3]]: false }));
 const controlPatches = [], controlRefreshes = [];
 const controlStore = { ...uiStore, getSnapshot: () => controlSnapshot, readAll: async () => controlSnapshot, refresh: async (ids) => { controlRefreshes.push(ids); return controlSnapshot; }, save: async patch => {
  controlPatches.push(patch); const old = controlSnapshot.settings.visibility, v = patch.visibility;
- controlSnapshot = withPrefs(result(controlSnapshot.entries, String(controlPatches.length + 1)), { hideWithoutApi: v.hideWithoutApi ?? old.hideWithoutApi, providers: { ...old.providers, ...v.providers }, ...(v.ark !== undefined || old.ark !== undefined ? { ark: v.ark ?? old.ark } : {}) });
+ controlSnapshot = withPrefs(result(controlSnapshot.entries, String(controlPatches.length + 1)), { hideWithoutApi: v.hideWithoutApi ?? old.hideWithoutApi, providers: { ...old.providers, ...v.providers }, ...(v.ark !== undefined || old.ark !== undefined ? { ark: v.ark ?? old.ark } : {}), ...(v.arkTeam !== undefined || old.arkTeam !== undefined ? { arkTeam: v.arkTeam ?? old.arkTeam } : {}) });
  return controlSnapshot;
 } };
 memory.set("dsh-subusage:last-provider", ids[0]);
@@ -443,16 +445,17 @@ const management = tree.children.at(-1);
 assert.equal(management.type, "details", "管理区为设置页末尾的折叠菜单");
 assert.equal(management.props.id, "subusage-provider-management"); assert.notEqual(management.props.open, true, "默认折叠");
 assert.equal(management.children[0].type, "summary"); assert.equal(management.children[0].children[0], "提供商管理");
-// 关闭/隐藏的提供商仍保留管理开关；Ark 的 4 条路由合并成一张卡片，所以是 28 个开关（30 条 provider − 4 + 1 张合并卡片 + 1 个「默认隐藏」）。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 28, "所有关闭/隐藏提供商保留管理开关（Ark 组已合并，双 DeepSeek 入口独立）");
+// 关闭/隐藏的提供商仍保留管理开关；Ark 合并卡片包含个人版 / Team 两个独立开关，所以总共 29 个（含「默认隐藏」）。
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 29, "所有关闭/隐藏提供商保留管理开关（Ark 个人版与 Team 独立）");
 assert.deepEqual(nodes(tree).filter(n => n.props.role === "tab").map(n => n.props.id), ids.filter(id => ![ids[1], ids[3]].includes(id)).map(id => `subusage-tab-${id}`));
 assert(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
-nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick({ preventDefault() {} }); tree = ch.render(api.SubusageSection, cp);
+nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 const kimiEditor = nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[1]}`);
-assert.equal(kimiEditor.props.open, true); assert(nodes(kimiEditor).some(n => n.props.role === "group"), "自动隐藏项可在本行编辑凭据");
+assert.equal(kimiEditor.props.hidden, false); assert(nodes(kimiEditor).some(n => n.props.role === "group"), "自动隐藏项可在本行编辑凭据");
 assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"] === "Z.ai Coding（中国）"), "展开隐藏厂商不会切换上方用量");
 assert(!nodes(nodes(tree).find(n => n.props.role === "tabpanel")).some(n => n.type === "fieldset" || n.type === "input"), "上方详情只展示用量");
-assert(!nodes(tree).some(n => n.type === "button" && n.children.includes("配置")), "移除跨区域配置跳转按钮");
+assert(nodes(tree).some(n => n.type === "button" && n.children.includes("收起") && n.props["aria-expanded"] === true), "当前配置入口明确显示展开状态");
+assert(!nodes(tree).some(n => n.type === "summary" && n.props["aria-label"] === "连接与凭据 Kimi"), "凭据区不再使用点击行为含混的嵌套 Summary");
 await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax CN").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.providers["minimax-cn"], false); assert.equal(controlPatches.at(-1).expectedRevision, "1");
 assert(!nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-minimax-cn"));
@@ -461,16 +464,29 @@ assert.equal(controlPatches.at(-1).visibility.hideWithoutApi, false); assert(nod
 await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax CN").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.providers["minimax-cn"], true); assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), ["minimax-cn"], "手工重新开启立即刷新");
 assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-minimax-cn"));
-// Ark 组开关走组级字段（visibility.ark），不在 providers 里：关闭不追加刷新，重新开启要立即刷新全部 4 条路由。
+// Ark 个人版开关只刷新个人版两条；Team 由独立开关控制，默认不随个人版开启。
 const arkSwitch = () => nodes(tree).find((n) => n.props["aria-label"] === "启用 火山方舟（Ark）");
+const arkTeamSwitch = () => nodes(tree).find((n) => n.props["aria-label"] === "启用 火山方舟 Team 检测");
 const arkRefreshCount = controlRefreshes.length;
 await arkSwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
-assert.equal(controlPatches.at(-1).visibility.ark, false); assert.equal(controlRefreshes.length, arkRefreshCount, "关闭组不追加刷新");
-assert(!nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-arkcli-agent-plan"), "关闭组后 Ark 标签收起");
+assert.equal(controlPatches.at(-1).visibility.ark, false); assert.equal(controlRefreshes.length, arkRefreshCount, "关闭个人版不追加刷新");
+assert(!nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-arkcli-agent-plan"), "关闭个人版后 Ark 个人版标签收起");
 await arkSwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.ark, true);
-assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), ["arkcli-agent-plan", "arkcli-coding-plan", "arkcli-agent-plan-team", "arkcli-coding-plan-team"], "开启 Ark 组立即刷新全部 Ark 路由");
-assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-arkcli-agent-plan"), "重新开启后 Ark 标签恢复");
+assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), ["arkcli-agent-plan", "arkcli-coding-plan"], "开启个人版只刷新两条个人版路由");
+assert.equal(arkTeamSwitch().props["aria-checked"], false, "个人版开启不得顺带开启 Team");
+assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-arkcli-agent-plan"), "重新开启后 Ark 个人版标签恢复");
+await arkTeamSwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert.equal(controlPatches.at(-1).visibility.arkTeam, true);
+assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), ["arkcli-agent-plan-team", "arkcli-coding-plan-team"], "Team 开关只刷新两条团队路由");
+assert.equal(arkSwitch().props["aria-checked"], true, "Team 开关不改变个人版状态");
+await arkSwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert.equal(arkSwitch().props["aria-checked"], false, "仅 Team 开启时个人版开关仍显示关闭");
+await arkSwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert.equal(controlPatches.at(-1).visibility.ark, true, "仅 Team 开启时能够重新开启个人版");
+assert.equal(arkTeamSwitch().props["aria-checked"], true, "重新开启个人版不改变 Team");
+await arkTeamSwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert.equal(controlPatches.at(-1).visibility.arkTeam, false);
 nodes(tree).find(n => n.type === "button" && n.children.includes("更换")).props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert(nodes(tree).filter(n => n.props.role === "switch").every(n => n.props.disabled), "凭据脏草稿期间只锁定即时开关");
 assert.equal(nodes(kimiEditor).find(n => n.type === "fieldset").props.disabled, false, "行内凭据不能被开关锁定误禁用");
@@ -479,20 +495,19 @@ const editedKey = nodes(tree).find(n => n.type === "input" && n.props.type === "
 nodes(tree).find(n => n.props.id === "subusage-tab-minimax-cn").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"] === "MiniMax（中国）"), "用量切换与编辑厂商独立");
 assert.equal(nodes(tree).find(n => n.type === "input" && n.props.type === "password").props.value, "fixture-inline-draft", "切换用量不丢失行内草稿");
-assert.equal(nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[1]}`).props.open, true);
-nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 MiniMax").props.onClick({ preventDefault() {} }); tree = ch.render(api.SubusageSection, cp);
-assert.equal(nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[1]}`).props.open, true, "切换其他编辑器必须先保存或取消草稿");
+assert(nodes(tree).some(n => n.props.id === `subusage-credentials-${ids[1]}`), "当前编辑器保持展开");
+nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 MiniMax").props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert(nodes(tree).some(n => n.props.id === `subusage-credentials-${ids[1]}`), "切换其他编辑器必须先保存或取消草稿");
 const beforeToggle = controlPatches.length; await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax").props.onClick(); assert.equal(controlPatches.length, beforeToggle);
 ch.unmount();
 controlSnapshot = withPrefs(result(controlSnapshot.entries), preferences(Object.fromEntries(ids.map(id => [id, false]))));
 const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSection, cp);
-// 设置页的卡片数：26 家非 Ark provider + 1 张 Ark 合并卡片（组内 4 条路由） + 1 个「默认隐藏」开关 = 28。
-// 注意不能写成 ids + defaultOff 再减——那两个列表只覆盖到 Ark 组的一部分成员。
-assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 28);
+// 空状态仍列出全部管理开关：26 家非 Ark + Ark 两个组开关 + 默认隐藏 = 29。
+assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 29);
 assert.equal(nodes(tree).find(n => n.props.id === "subusage-provider-management").props.open, true, "空状态展开配置入口");
 assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.role === "tabpanel"));
-nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick({ preventDefault() {} }); tree = emptyControls.render(api.SubusageSection, cp);
-assert.equal(nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[0]}`).props.open, true, "全部关闭仍能行内配置");
+nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick(); tree = emptyControls.render(api.SubusageSection, cp);
+assert(nodes(tree).some(n => n.props.id === `subusage-credentials-${ids[0]}`), "全部关闭仍能行内配置");
 assert(!nodes(tree).some(n => n.props.role === "tabpanel"), "关闭项不会被配置操作强制带回用量区"); emptyControls.unmount();
 // 共享 store：关闭时暂停轮询请求和药丸；隐藏开关立即影响现有订阅，不能让迟到旧响应回滚。
 let sharedControl = withPrefs(result(ids.map(id => entry(id, 20, { apiDetected: id !== ids[1], ...(id === ids[1] ? { state: "no-key" } : {}) }))));
@@ -538,9 +553,9 @@ assert.equal(nodes(tree).filter(n => n.type === "button" && n.children.includes(
 assert(nodes(tree).some(n => n.type === "button" && n.children.includes("刷新当前") && n.props.disabled), "另一枚刷新按钮禁用但不假装自己在刷");
 assert(nodes(tree).filter(n => n.type === "button" && (n.children.includes("正在刷新全部…") || n.children.includes("刷新当前"))).every(n => n.props.disabled), "两枚刷新按钮自身禁用");
 assert(nodes(tree).filter(n => n.props.role === "switch").every(n => !n.props.disabled), "刷新期间其它提供商开关仍可点");
-nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick({ preventDefault() {} });
+nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick();
 tree = fh.render(api.SubusageSection, fp);
-assert.equal(nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[1]}`).props.open, true, "刷新期间仍可展开其它厂商凭据");
+assert(nodes(tree).some(n => n.props.id === `subusage-credentials-${ids[1]}`), "刷新期间仍可展开其它厂商凭据");
 refreshGate.resolve(freezeSnapshot); await freezeRefresh;
 tree = fh.render(api.SubusageSection, fp);
 assert(nodes(tree).some(n => n.type === "button" && n.children.includes("刷新全部") && !n.props.disabled), "刷新结束后解除禁用");
@@ -625,7 +640,7 @@ for (const id of ["zai-coding", "synthetic", "nanogpt"]) assert.equal(api.provid
 // Ark 账号级订阅不按推理路由收起：未安装 arkcli 路由时单家刷新仍要发 RPC（刷新过滤器必须与
 // providerVisible 的 volc 豁免同口径），而启用但未安装路由的普通厂商照旧被过滤。
 const arkFilterCalls = [];
-const allEnabledSettings = { revision: "ark-r1", keyModes: {}, hasKeys: {}, xiaomi: {}, volc: {}, visibility: { hideWithoutApi: true, ark: true, providers: Object.fromEntries(api.PROVIDER_ORDER.map(id => [id, true])) } };
+const allEnabledSettings = { revision: "ark-r1", keyModes: {}, hasKeys: {}, xiaomi: {}, volc: {}, visibility: { hideWithoutApi: true, ark: true, arkTeam: true, providers: Object.fromEntries(api.PROVIDER_ORDER.map(id => [id, true])) } };
 const noRoutes = Object.fromEntries(api.PROVIDER_ORDER.map(id => [id, false]));
 const arkFilterStore = api.createUsageStore((method, query) => {
 	arkFilterCalls.push({ method, id: query?.providerIds?.[0] });
@@ -641,7 +656,9 @@ assert.ok(!arkFilterCalls.some(c => c.method === "refresh" && c.id === "kimi-cod
 arkFilterStore.dispose();
 // 客户端 save 校验器必须接受 Host 合法的火山组开关补丁（双端 schema 对齐），非法类型仍拒绝。
 assert.doesNotThrow(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { ark: false } }), "火山组开关补丁必须被客户端接受");
-assert.doesNotThrow(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { hideWithoutApi: false, ark: true } }), "混合可见性补丁必须被客户端接受");
+assert.doesNotThrow(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { arkTeam: true } }), "火山 Team 独立开关补丁必须被客户端接受");
+assert.doesNotThrow(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { hideWithoutApi: false, ark: true, arkTeam: false } }), "混合可见性补丁必须被客户端接受");
+assert.throws(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { arkTeam: "yes" } }), "arkTeam 非布尔必须拒绝");
 assert.throws(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { ark: "yes" } }), "ark 非布尔必须拒绝");
 // Host 失败原因按 errorCode 本地化：英文界面不再直接显示中文 Host message；无 code / 未知 code 回退原文。
 const enT = (k) => api.en[k] || k, zhT = (k) => api.zh[k] || k;

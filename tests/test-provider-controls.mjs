@@ -7,17 +7,18 @@ const files = new Map([["memory/config", JSON.stringify({ keys: { [M]: "fixture-
 let calls = 0, failure = false, pending;
 const body = { base_resp: { status_code: 0 }, model_remains: [{ model_name: "general", current_interval_remaining_percent: 80, current_weekly_remaining_percent: 60 }] };
 const io = { readFileSync(path) { if (!files.has(path)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); return files.get(path); }, mkdirSync() {}, writeFileSync(path, value) { if (failure) throw new Error("write failed"); files.set(path, value); }, chmodSync() {}, renameSync(from, to) { files.set(to, files.get(from)); files.delete(from); } };
-const options = { io, configPath: "memory/config", resolveCredentials: async () => undefined, resolveEnvironment: () => undefined, fetch: async () => { calls++; if (pending) await pending; return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(body) }; } };
+const options = { io, configPath: "memory/config", resolveCredentials: async () => undefined, resolveCredentialByName: async () => undefined, resolveEnvironment: () => undefined, resolveEnvironmentByName: () => undefined, fetch: async () => { calls++; if (pending) await pending; return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(body) }; } };
 const ctx = { effect() {}, llm: { listProviders: () => [{ id: Z }] } };
 let service = new SubUsageService(ctx, options);
 let result = await service.read();
 assert.equal(result.settings.visibility.hideWithoutApi, true);
 const DEFAULT_OFF = ["zai-coding", "synthetic", "nanogpt", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "opendesign", "openai-codex", "github-copilot"];
-// 火山方舟的逐条开关**不是**独立默认值：组开关是唯一真源，成员一律跟随（默认组开启）。
-// 组内每条各存一份的旧形态只在迁移时当输入用，读回后就被归一化掉。
-const ARK_ROUTES = ["arkcli-agent-plan", "arkcli-coding-plan", "arkcli-agent-plan-team", "arkcli-coding-plan-team"];
-assert.equal(result.settings.visibility.ark, true, "Ark 组默认开启");
-assert(Object.entries(result.settings.visibility.providers).every(([id, on]) => ARK_ROUTES.includes(id) ? on === result.settings.visibility.ark : DEFAULT_OFF.includes(id) ? !on : on), "旧厂商保持默认值，新增厂商默认关闭；Ark 逐条值一律跟随组开关");
+const ARK_PERSONAL = ["arkcli-agent-plan", "arkcli-coding-plan"];
+const ARK_TEAM = ["arkcli-agent-plan-team", "arkcli-coding-plan-team"];
+const ARK_ROUTES = [...ARK_PERSONAL, ...ARK_TEAM];
+assert.equal(result.settings.visibility.ark, true, "Ark 个人版组默认开启");
+assert.equal(result.settings.visibility.arkTeam, false, "Ark Team 默认独立关闭");
+assert(Object.entries(result.settings.visibility.providers).every(([id, on]) => ARK_PERSONAL.includes(id) ? on === result.settings.visibility.ark : ARK_TEAM.includes(id) ? on === result.settings.visibility.arkTeam : DEFAULT_OFF.includes(id) ? !on : on), "旧厂商保持默认值；Ark 逐条值分别跟随个人版 / Team 开关");
 assert.equal(result.configured[Z], true); assert.equal(result.entries.find(e => e.providerId === Z).apiDetected, false, "有路由不代表有 Key");
 assert.equal(result.configured[M], false); assert.equal(result.entries.find(e => e.providerId === M).apiDetected, true, "有手动 Key 即可检测，不依赖路由注册");
 assert.equal(calls, 1); assert(!JSON.stringify(result).includes("fixture-key"));
@@ -27,6 +28,8 @@ for (const patch of [
  { visibility: { hideWithoutApi: true } },
  { expectedRevision: "r", visibility: {} },
  { expectedRevision: "r", visibility: { hideWithoutApi: "true" } },
+ { expectedRevision: "r", visibility: { ark: "yes" } },
+ { expectedRevision: "r", visibility: { arkTeam: "yes" } },
  { expectedRevision: "r", visibility: { providers: { unknown: false } } },
  { expectedRevision: "r", visibility: { providers: { [M]: 0 } } },
  { expectedRevision: "r", visibility: { providers: [] } },
@@ -34,6 +37,22 @@ for (const patch of [
  { expectedRevision: "r", visibility: { extra: true } },
  { expectedRevision: "r", visibility: { providers: { [M]: false } }, providerId: M, keyUpdate: { action: "clear" } }
 ]) assert.throws(() => save.parse(patch));
+// 个人版与 Team 独立：任一组的开关和禁用状态都不得改到另一组。
+result = await service.save({ expectedRevision: result.settings.revision, visibility: { arkTeam: true } });
+assert.equal(result.settings.visibility.ark, true);
+assert.equal(result.settings.visibility.arkTeam, true);
+assert(ARK_TEAM.every(id => result.settings.visibility.providers[id] === true));
+result = await service.save({ expectedRevision: result.settings.revision, visibility: { ark: false } });
+assert.equal(result.settings.visibility.arkTeam, true, "关闭个人版不得关闭 Team");
+let arkStates = await service.refresh({ providerIds: [ARK_PERSONAL[0], ARK_TEAM[0]], force: true });
+assert.equal(arkStates.entries.find(e => e.providerId === ARK_PERSONAL[0]).state, "disabled", JSON.stringify(arkStates.entries));
+assert.notEqual(arkStates.entries.find(e => e.providerId === ARK_TEAM[0]).state, "disabled", "个人版关闭时 Team 仍可独立检测");
+result = await service.save({ expectedRevision: result.settings.revision, visibility: { ark: true, arkTeam: false } });
+assert(ARK_PERSONAL.every(id => result.settings.visibility.providers[id] === true));
+assert(ARK_TEAM.every(id => result.settings.visibility.providers[id] === false));
+arkStates = await service.refresh({ providerIds: [ARK_PERSONAL[0], ARK_TEAM[0]], force: true });
+assert.notEqual(arkStates.entries.find(e => e.providerId === ARK_PERSONAL[0]).state, "disabled");
+assert.equal(arkStates.entries.find(e => e.providerId === ARK_TEAM[0]).state, "disabled", "Team 关闭后不再检测，个人版不受影响");
 const initialRevision = result.settings.revision;
 result = await service.save({ expectedRevision: initialRevision, visibility: { hideWithoutApi: false } });
 assert.equal(result.settings.visibility.hideWithoutApi, false);

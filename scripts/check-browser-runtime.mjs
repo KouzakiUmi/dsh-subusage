@@ -52,11 +52,12 @@ try {
     assert.equal(info.tabsVisible, true, '窄屏仍使用按钮导航');
     assert(info.tabWidths.every(width => width > 0), '所有标签均有可点击区域');
     assert.equal(info.selectCount, 0, '整个设置页不使用下拉列表');
-    // 30 条 provider 里 Ark 的 4 条路由合并成一张卡片，所以是 (30 − 4) 张卡片 + 1 个默认隐藏开关 = 28。
-    assert.equal(info.switches.length, 28, '提供商卡片（Ark 组已合并）与默认隐藏开关');
+    // 26 家非 Ark + Ark 个人版 / Team 两个开关 + 1 个默认隐藏开关 = 29。
+    assert.equal(info.switches.length, 29, '提供商开关、Ark Team 独立开关与默认隐藏开关');
     assert(info.switches.every(item => item.label), '开关有无障碍名称');
-    // 预览桩下关闭的卡片数 = 默认关闭 17 条 − 桩里显式打开的 MiniMax 国际版 1 条 = 16（Ark 组默认开启，不在其中）。
-    assert.equal(info.switches.filter(item => item.state === 'false').length, 16, '预览桩下关闭的 16 张卡片');
+    // 默认关闭 19 条 − 桩里显式打开的 MiniMax 国际版 1 条 = 18 条路由；
+    // 其中两条 Team 路由共用一个开关，所以界面有 17 个关闭状态开关。
+    assert.equal(info.switches.filter(item => item.state === 'false').length, 17, '预览桩下关闭的 17 个检测开关');
     await page.screenshot({ path: file.replace(/\.html$/, '.png'), fullPage: true });
     await context.close();
     console.log(`PASS ${theme}/${width} 提供商开关、可换行按钮、无下拉、无溢出`);

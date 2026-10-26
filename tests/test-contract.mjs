@@ -75,13 +75,14 @@ assert.throws(() => save.parameters[0].codec.schema.parse({ providerId: 'xai-oau
 // 这样用户拿到的是可读原因，而不是网关的 "boundary validation" 通用报错。
 assert.equal(save.parameters[0].codec.schema.parse({ providerId: 'not-supported' }).providerId, 'not-supported', '未知 id 的形状合法，交由 persist 拒绝');
 assert.throws(() => save.parameters[0].codec.schema.parse({ providerId: '' }), '空 providerId 仍拒绝');
-// 火山组开关补丁（只含 visibility.ark）两端 parser 必须都接受：客户端白名单曾漏掉 ark，
-// 形状契约测试只比对 typeSymbol 字符串、覆盖不到解析语义，这里显式双端守护。
+// 火山个人版 / Team 组开关补丁两端 parser 必须保持一致。
 for (const contract of [host.subUsageRemote, mounted]) {
 	const codec = contract.descriptors.find(d => d.method === 'save').parameters[0].codec.schema;
 	assert.equal(codec.parse({ expectedRevision: 'r1', visibility: { ark: false } }).visibility.ark, false, '纯 ark 组开关补丁合法');
-	assert.equal(codec.parse({ expectedRevision: 'r1', visibility: { hideWithoutApi: false, ark: true } }).visibility.ark, true, '混合可见性补丁合法');
+	assert.equal(codec.parse({ expectedRevision: 'r1', visibility: { arkTeam: true } }).visibility.arkTeam, true, '纯 arkTeam 独立开关补丁合法');
+	assert.equal(codec.parse({ expectedRevision: 'r1', visibility: { hideWithoutApi: false, ark: true, arkTeam: false } }).visibility.ark, true, '混合可见性补丁合法');
 	assert.throws(() => codec.parse({ expectedRevision: 'r1', visibility: { ark: 'yes' } }), 'ark 非布尔必须拒绝');
+	assert.throws(() => codec.parse({ expectedRevision: 'r1', visibility: { arkTeam: 'yes' } }), 'arkTeam 非布尔必须拒绝');
 }
 // Client 规范化后必须能被 Host 的最终 Cookie Header 校验接受。
 const clientSource = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');

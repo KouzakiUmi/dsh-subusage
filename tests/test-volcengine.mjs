@@ -115,10 +115,10 @@ function harness() {
 	return { service, files, calls, credentials, environment, setRespond(fn) { respond = fn; } };
 }
 const json = (value, status = 200) => ({ ok: status < 400, status, headers: { get: () => null }, text: async () => JSON.stringify(value) });
-// 三个 Ark 路由都是新增厂商，按约定 defaultEnabled:false：断言用量前必须先显式开启。
+// Ark 个人版 / Team 分别通过组开关显式启用，再验证对应路由的用量。
 async function enable(h, ids) {
 	const result = await h.service.read();
-	return h.service.save({ expectedRevision: result.settings.revision, visibility: { providers: Object.fromEntries(ids.map(id => [id, true])) } });
+	return h.service.save({ expectedRevision: result.settings.revision, visibility: { providers: Object.fromEntries(ids.map(id => [id, true])), ...(ids.some(id => id.endsWith("-team")) ? { arkTeam: true } : {}), ...(ids.some(id => !id.endsWith("-team")) ? { ark: true } : {}) } });
 }
 const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsage: [{ Level: "session", Percent: 12.5, ResetTimestamp: 1789000000 }] } };
 
@@ -440,14 +440,13 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 	console.log("PASS Host：AFP 两条额度线的分组标注活到 wire");
 }
 
-// ── [13] Ark 组开关是唯一真源：逐条残留不得让 Coding Plan 查不到 ──────────
+// ── [13] Ark 个人版 / Team 分组开关：逐条残留不得造成两端分叉 ──────────
 {
 	const h = harness();
 	h.credentials.set("VOLC_ACCESSKEY", { value: AK });
 	h.credentials.set("VOLC_SECRETKEY", { value: SK });
-	// 存储按 0.10.3 之前的「逐条开关」形态写入：组开关开着，但 Coding Plan 那条是 false。
-	// 迁移会用「任一条开着」把组开关合并成 true，却把逐条值原样留下——两端口径就此分叉：
-	// 界面按组开关显示这条路由，Host 却按逐条值回 disabled，用户拿到的是一张「订阅检测已关闭」的空卡片。
+	// 存储按旧的「逐条开关」形态写入：个人版组开关开着，但 Coding Plan 那条是 false。
+	// 读回后个人版成员统一跟随 visibility.ark；新增 arkTeam 缺省关闭，不继承旧总开关。
 	h.files.set("memory/config", JSON.stringify({ visibility: { ark: true, providers: { [CODING]: false, [AGENT]: true } } }));
 	// 桩用 2026-10-10 实测到的真实 GetCodingPlanUsage 响应形态：除 Level/Percent/ResetTimestamp 外
 	// 还带 Cap / RewardTotalPercent / HasReward，且 session 窗口的 ResetTimestamp 是 -1 哨兵。
@@ -468,12 +467,16 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 	// 归一化：公开设置里的逐条值必须跟随组开关（注入的 CODING=false 属于迁移残留，不该留在口径里）。
 	assert.equal(refreshed.settings.visibility.providers[CODING], true, "读回后逐条值跟随组开关");
 	assert.equal(refreshed.settings.visibility.providers[AGENT], true);
-	// 反向也要成立：关掉组开关后整组都真的跳过，而不是只跳过显式关过的那条。
+	// 反向也要成立：关掉个人版组开关后两条个人版都跳过，Team 仍由自己的开关决定。
 	await h.service.save({ expectedRevision: refreshed.settings.revision, visibility: { ark: false } });
 	const off = (await h.service.refresh({ providerIds: [CODING, AGENT], force: true })).entries;
-	assert.equal(JSON.stringify(off.map(e => e.state)), JSON.stringify(["disabled", "disabled"]), "组开关关掉后整组跳过");
+	assert.equal(JSON.stringify(off.map(e => e.state)), JSON.stringify(["disabled", "disabled"]), "个人版组开关关掉后两条个人版都跳过");
+	const stored = await h.service.read({ providerIds: [], force: false });
+	assert.equal(stored.settings.visibility.arkTeam, false, "旧配置没有 arkTeam 时默认关闭 Team");
+	assert.equal(stored.settings.visibility.providers["arkcli-agent-plan-team"], false);
+	assert.equal(stored.settings.visibility.providers["arkcli-coding-plan-team"], false);
 	h.service.dispose();
-	console.log("PASS Host：Ark 组开关是唯一真源，逐条残留不会让 Coding Plan 查不到");
+	console.log("PASS Host：Ark 个人版 / Team 分组开关归一化，旧配置默认不开启 Team");
 }
 
 console.log("\n火山方舟适配测试全部通过 ✅");

@@ -26,7 +26,7 @@ const react = {
   useEffect: () => {}
 };
 const code = readFileSync(fileURLToPath(new URL("../lib/client.js", import.meta.url)), "utf8");
-vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { SubusageSection, UsageWindowRow, CommandCodePoolSummary, UsagePill, PROVIDER_ORDER, PROVIDER_META, zh, en }; exports.apply = apply;"), {
+vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { SubusageSection, UsageWindowRow, CommandCodePoolSummary, UsagePill, draftFor, PROVIDER_ORDER, PROVIDER_META, zh, en }; exports.apply = apply;"), {
   window: { __ModuleLoader__: { load: (value) => { spec = value; } } }, console
 });
 const plugin = spec.factory((name) => {
@@ -149,13 +149,13 @@ const flattenNodes = (node) => Array.isArray(node) ? node.flatMap(flattenNodes) 
 const settings = { revision: "public-1", zai: { type: 1 }, hasKeys: { "zai-coding-cn": true }, keyModes: {}, xiaomi: { hasCookie: true } };
 const usageStore = { subscribe: () => () => {}, getSnapshot: () => ({ settings, configured: {}, entries: [] }) };
 for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", "xai-oauth", "opendesign"]) {
-  stateValues = [provider]; stateIndex = 0;
+  stateValues = [provider, plugin.__test.draftFor(settings, provider), false, false, false, null, null, { jobId: null, state: "idle" }, true, provider]; stateIndex = 0;
   const section = plugin.__test.SubusageSection({ usageStore, t: (key) => key, getLocale: () => "zh" });
   const all = flattenNodes(section), selects = all.filter((n) => n.type === "select");
   assert.equal(selects.length, 0, "设置页不使用任何下拉列表");
-  // 火山方舟的 4 条路由在设置页合并成**一张**卡片（共用一个组开关），
-  // 所以是 30 − 4 + 1 = 27 张 provider 卡片 + 1 个「没有检测到 API 的默认隐藏」开关 = 28。
-  assert.equal(all.filter(n => n.props?.role === "switch").length, 28, "提供商卡片与默认隐藏开关均可见（Ark 组已合并，新增独立 DeepSeek 账号入口）");
+  // 火山方舟的 4 条路由在设置页合并成一张卡片，但个人版 / Team 各有一个开关：
+  // 26 家非 Ark + Ark 两个开关 + 1 个「默认隐藏」= 29。
+  assert.equal(all.filter(n => n.props?.role === "switch").length, 29, "提供商开关、Ark Team 独立开关与默认隐藏开关均可见");
   if (provider === "xiaomi-token-plan-cn") {
     assert.ok(visibleText(section).includes("登录并自动导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));
@@ -201,7 +201,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 {
   const order = plugin.__test.PROVIDER_ORDER;
   const providers = Object.fromEntries(order.map(id => [id, true]));
-  const settings = { revision: "r", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: true }, visibility: { hideWithoutApi: false, providers } };
+  const settings = { revision: "r", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: true }, visibility: { hideWithoutApi: false, arkTeam: true, providers } };
   const broken = order.at(-1);
   const entries = order.map(id => ({ providerId: id, state: id === broken ? "error" : "ok", windows: [], extras: [], coverage: "complete", freshness: "fresh", lastAttemptAt: "2026-10-09T00:00:00.000Z" }));
   stateValues = []; stateIndex = 0;
@@ -238,7 +238,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   assert.ok(visibleText(initial).includes("刷新全部"), "刷新按钮在未初始化时保持可用");
   // b. settings 已加载（哪怕 entries 为空）：标签栏照常出现，gate 不误伤正常加载后的界面。
   const providers = Object.fromEntries(order.map(id => [id, true]));
-  const loaded = render({ updatedAt: 1, settings: { revision: "r", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: false }, visibility: { hideWithoutApi: false, providers } }, configured: {}, entries: [] });
+  const loaded = render({ updatedAt: 1, settings: { revision: "r", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: false }, visibility: { hideWithoutApi: false, arkTeam: true, providers } }, configured: {}, entries: [] });
   assert.equal(flattenNodes(loaded).filter(n => n.props?.role === "tab").length, order.length, "settings 加载后全部提供商标签照常出现");
 }
 // 按「本机实际装了什么路由」判定默认可见性 + 管理列表把已启用的排到前面。
@@ -253,7 +253,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   const render = (over) => { stateValues = []; stateIndex = 0; return plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => ({ settings, configured, entries, ...over }) }, t: (key) => key, getLocale: () => "zh" }); };
   const tabIds = (node) => flattenNodes(node).filter(n => n.props?.role === "tab").map(n => n.props.id.replace("subusage-tab-", ""));
 
-  const allOn = { ...settings, visibility: { ...settings.visibility, providers: Object.fromEntries(order.map(id => [id, true])) } };
+  const allOn = { ...settings, visibility: { ...settings.visibility, arkTeam: true, providers: Object.fromEntries(order.map(id => [id, true])) } };
   const tabs = tabIds(render({ settings: allOn }));
   // 订阅结论还没回来时，方舟只留管理区那张代表卡，避免四个「待检测」灰标签。
   assert.ok(tabs.includes("arkcli-agent-plan"), "订阅未知时保留代表路由");
@@ -278,7 +278,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   assert.ok(!unknownRoutes.includes("arkcli-coding-plan"), "路由表未知且订阅未知时不排出其余方舟标签");
 
   // 管理列表：已启用的在前，关闭项沉到末尾，组内各自保持既有顺序。
-  const listed = flattenNodes(render()).filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("启用 ")).map(n => String(n.props["aria-label"]).slice("启用 ".length));
+  const listed = flattenNodes(render()).filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("启用 ") && !String(n.props["aria-label"]).includes("Team 检测")).map(n => String(n.props["aria-label"]).slice("启用 ".length));
   // Ark 剩下的 4 条路由合并成一张卡片，所以比 PROVIDER_ORDER 少 3 条。
   assert.equal(listed.length, order.length - 3, "管理列表列出全部提供商（Ark 组合并成一张卡片）");
   assert.equal(listed.at(-2), meta["zai-coding-cn"].short, "关闭的 Z.ai 沉到末尾组");
@@ -307,8 +307,8 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 	assert.equal(flattenNodes(pillTree).filter(n => n.type === plugin.__test.UsageWindowRow).length, afpWindows.length, "四个窗口各渲染一行");
 
 	// 设置页与弹层共用同一个列表组件：分组不能只在其中一处出现。
-	// Ark 现在**不按路由收起**（额度是账号级订阅，见 providerVisible），所以要让面板落到 Agent Plan 上，
-	// 得让同组其余 6 条明确「没有可用的 AK/SK」（apiDetected:false）——组开关本身管不了这个。
+	// Ark 不按推理路由收起（额度是账号级订阅）。要让面板落到 Agent Plan，
+	// 让其余 3 条明确「没有可用的 AK/SK」（apiDetected:false），不依赖组开关。
 	const afpMeta = plugin.__test.PROVIDER_META;
 	const otherArk = plugin.__test.PROVIDER_ORDER.filter(id => id !== "arkcli-agent-plan" && afpMeta[id]?.volc);
 	const afpSettings = { revision: "r", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: true },
