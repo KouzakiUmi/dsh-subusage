@@ -23,6 +23,8 @@ tag 必须等于 `v` 加包版本。版本 Release 使用 `make_latest: legacy`�
 
 ## npm
 
+0.18.2 客户端 Key 同步与多 Key 监控（解析优先路由实际 `apiKeyEnv`；每个 provider 最多 8 个 `keyRefs` 额外引用名；清除手动 Key 后自动回到 `inherit`）。已于 2026-10-30 经 `v0.18.2` 标签 → `release.yml` 发布：工作流 success（测试、清单/语法、打包、Release、npm 发布全绿），registry 的 `versions["0.18.2"]` 与 `dist-tags.latest` 均为 0.18.2；`v0.18.2` Release 资产与 npm tarball SHA256 一致（`sha256:17186836ac2a610933b55a280bd645146e63a7951d1694a6fa3f33ac049f4858`，180706 字节）。未安装到 `desktop` Profile、未重启 DSH。
+
 0.16.2 OpenCode Go 的 GO 专属凭据引用（`OPENCODE_GO_API_KEY` 优先、`OPENCODE_API_KEY` 回退；修掉「模型能调用、额度报无凭据」）。发布完成仍以 registry 与对应 Actions / Release 结果为准，不自动安装或重启本机 DSH。
 
 0.16.2 已于 2026-10-25 发布并核验：`v0.16.2` tag → `release.yml` 发布 npm；首轮照旧在 60 秒可见性窗口内报 `Publication verification failed for dsh-subusage@0.16.2; check registry before retrying`（6/6 等待后失败），直接查询 registry 已读到 `versions["0.16.2"]` 与 `dist-tags.latest` 均为 0.16.2（`published 2026-10-25T03:17:43Z`，即验证窗口关闭后 5 秒），按「依据只能是 registry」以 `workflow_dispatch`（`version_tag=v0.16.2`）重跑转绿，未重复发布；同一提交的 CI（main）也通过并发布 `build-dc2fc96dfc3a` 资产。`v0.16.2` Release 资产、`build-dc2fc96dfc3a` 资产与 npm tarball 三者 SHA256 一致（`sha256:41f8d4c48925b20589aaad54f2841e0f900db7ae41370eb904804cf736f7a141`，171530 字节）；`build-dc2fc96dfc3a` 为 latest。
