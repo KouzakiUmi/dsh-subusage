@@ -11,7 +11,8 @@ function harness(initial, extra = {}) {
  const io = { readFileSync(path) { if (!files.has(path)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); return files.get(path); }, mkdirSync(path, options) { assert.equal(path, "memory"); assert.deepEqual(options, { recursive: true, mode: 0o700 }); }, writeFileSync(path, value, options) { assert.deepEqual(options, { encoding: "utf8", mode: 0o600 }); files.set(path, value); }, chmodSync(path, mode) { assert.equal(path, "memory/config.tmp"); assert.equal(mode, 0o600); assert(files.has(path)); files.set("permissions-checked", true); }, renameSync(from, to) { assert.equal(files.get("permissions-checked"), true); files.delete("permissions-checked"); files.set(to, files.get(from)); files.delete(from); } };
  const credential = {}; const environment = {};
  const ctx = { get() {}, llm: { listProviders: () => [{ id: Z }] }, effect() {} };
- const service = new SubUsageService(ctx, { io, configPath: "memory/config", now: () => now, resolveCredentials: async id => credential[id], resolveEnvironment: id => environment[id], fetch: async (url, options) => { calls.push({ url, options }); const value = await response(url, options); if (value instanceof Error) throw value; if (value?.http) return { ok: false, status: value.http, headers: { get: () => value.retryAfter ?? null } }; return { ok: true, status: 200, headers: { get: () => null }, text: async () => typeof value === "string" ? value : JSON.stringify(value) }; }, ...extra });
+ // 解析器按引用名取数时，测试数据可以按「引用名」或「provider id」注册；id 键保持旧用例语义。
+ const service = new SubUsageService(ctx, { io, configPath: "memory/config", now: () => now, resolveCredentials: async (id, refName) => credential[refName] ?? credential[id], resolveEnvironment: (id, refName) => environment[refName] ?? environment[id], fetch: async (url, options) => { calls.push({ url, options }); const value = await response(url, options); if (value instanceof Error) throw value; if (value?.http) return { ok: false, status: value.http, headers: { get: () => value.retryAfter ?? null } }; return { ok: true, status: 200, headers: { get: () => null }, text: async () => typeof value === "string" ? value : JSON.stringify(value) }; }, ...extra });
  return { service, calls, files, credential, environment, tick: ms => now += ms, respond: fn => response = fn };
 }
 const descriptors = subUsageRemote.descriptors;
@@ -59,10 +60,29 @@ assert.equal(result.entries[0].errorCode, "subusage/response");
 assert.notEqual(result.entries[0].errorCode, "subusage/auth", "3xx 不得误诊为鉴权失败");
 h.tick(120001); h.respond(() => ({ http: 401 }));
 result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equal(result.entries[0].errorCode, "subusage/auth");
+// 清除手动 Key 后必须自动回到继承：凭据服务里还有值就继续用它，而不是 no-key。
 await h.service.save({ providerId: Z, keyUpdate: { action: "clear" } });
-result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equal(result.entries[0].state, "no-key"); assert.equal(result.entries[0].windows, undefined);
+result = await h.service.refresh({ providerIds: [Z], force: true });
+assert.equal(result.settings.keyModes[Z], "inherit"); assert.equal(result.entries[0].keySource, "credentials"); assert.equal(result.entries[0].errorCode, "subusage/auth");
 await h.service.save({ providerId: Z, keyMode: "inherit" }); delete h.credential[Z];
 h.respond(() => zBody); result = await h.service.refresh({ providerIds: [Z], force: true }); assert.equal(result.entries[0].keySource, "env");
+// 客户端 Models 页保存自定义 Key 时写进路由声明的 apiKeyEnv，它可能与内置 envName 不同
+// （本机 Kimi 路由就是 KIMI_API_KEY vs KIMI_CODING_API_KEY）。解析必须先认路由实际的
+// 引用名，否则客户端新 Key 永远读不到，只会继续拿环境变量里的旧值。
+const routed = harness();
+routed.service.ctx.llm.listConfigurableProviders = () => [{ provider: K, settingsNs: "llm-pi-ai", settingsPath: ["providers", K] }];
+routed.service.settingsService = { describe: ({ redactSecrets }) => { assert.equal(redactSecrets, true, "读取路由配置必须脱敏"); return [{ ns: "llm-pi-ai", value: { providers: { [K]: { apiKeyEnv: "KIMI_API_KEY" } } } }]; } };
+routed.credential.KIMI_API_KEY = { value: "client-new" };
+routed.environment.KIMI_CODING_API_KEY = { value: "env-old" };
+routed.respond(() => ({ http: 401 }));
+const routedResult = await routed.service.refresh({ providerIds: [K], force: true });
+assert.equal(routedResult.entries[0].keySource, "credentials");
+assert.equal(routed.calls[0].options.headers.authorization, "Bearer client-new", "客户端新 Key 必须优先于内置名的旧环境变量");
+// 旧配置里 manual 模式却没有手动 Key（清 keys 未改模式）：不能整体短路，仍要回落继承。
+const staleManual = harness({ keyModes: { [Z]: "manual" }, keys: {} });
+staleManual.environment[Z] = { value: "env-fallback" };
+result = await staleManual.service.refresh({ providerIds: [Z], force: true });
+assert.equal(result.entries[0].keySource, "env");
 const isolated = harness(); isolated.service.credentials = async id => { if (id === Z) throw new Error("DO NOT LEAK"); return undefined; };
 result = await isolated.service.read(); assert.equal(result.entries.length, 30); assert.equal(result.entries[0].errorCode, "subusage/credentials"); assert(!JSON.stringify(result).includes("DO NOT LEAK")); assert.equal(isolated.calls.length, 0);
 // identity 解析（凭据服务/登录文件读取）与 HTTP 一样可能永久挂起：默认 10s（对齐 fetchJson 的

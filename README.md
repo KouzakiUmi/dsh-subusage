@@ -18,7 +18,7 @@
 
 </div>
 
-> **0.18.1**：修复 MiMo Cookie 失效提示中的「重新登录」按钮；快捷入口直接启动 MiMo 登录并展开进度，切换凭据编辑器不再影响登录目标。[查看更新记录](docs/changelog.md)。
+> **0.18.2**：跟随 DSH 客户端自定义 API Key（路由实际 `apiKeyEnv`）；支持每个提供商额外监控最多 8 个凭据引用名，药丸始终显示路由实际调用的 Key；删除手动 Key 后自动回到继承来源。[查看更新记录](docs/changelog.md)。
 
 ## 快速开始
 
@@ -306,7 +306,8 @@ dsh plugin --profile <profile> remove dsh-subusage
 - **默认开关策略**：新安装默认开启 11 条、默认关闭 19 条（**Codex 默认关闭**——它的提供方插件自带用量药丸；GitHub Copilot 与火山 Team 检测也默认关闭）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
 - **火山方舟共用凭据、分组检测**：4 条路由共用同一组 IAM AK/SK，所以设置页只呈现**一张卡片**。其中「个人版」开关控制 Agent Plan / Coding Plan，独立的「Team 检测」开关控制两条团队版路由且默认关闭；两组互不影响。这些 provider id 并没有合并——药丸仍按 id 匹配路由。旧插件 `@volcengine/ark-plan-api` 的两个国内路由（`ark-coding-plan-cn` / `ark-agent-plan-cn`）**已移除**：它们与 arkcli 的路由查同一份订阅，并列显示只会让人以为买了两个套餐；装了旧插件的用户，药丸仍按那两个 id 显示同一份数据（入口归并到 arkcli 路由）。
 - **火山方舟不按路由收起**：它的额度走**账号级管控面**，一组 AK/SK 就能查到名下所有套餐（`GetCodingPlanUsage` 与 `GetAFPUsage` 是同一套协议、同一组凭据）。推理路由装没装只影响模型能不能用，**不影响额度能不能查**——所以只持有 Coding Plan、却没在 DSH 里配 coding-plan 路由时，那条额度照样会显示（前提是配了 AK/SK）。
-- **凭据来源优先级**（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；切到自定义（`manual`）模式时只使用保存的手动 Key。界面会区分这三种来源。
+- **凭据来源优先级**（`inherit` 模式）：**DSH 路由实际声明的 `apiKeyEnv` → 该提供商额外配置的监控引用名 → 内置环境变量名 → 启动环境 → 旧手动配置兜底**。客户端 Models 页保存的自定义 Key 写进路由的 `apiKeyEnv`，药丸与用量跟随它。切到自定义（`manual`）模式时优先使用保存的手动 Key；删除手动 Key 后自动回到继承。界面会区分这些来源。
+- **多 Key 监控**：每个提供商可在「连接与凭据」里额外添加最多 8 个凭据引用名（环境变量名，如 `KIMI_SECOND_KEY`），各自独立读取额度并展示；只保存引用名，不保存 Key 值。药丸与用量面板始终显示当前路由实际使用的那个 Key——切换 Key 仍由 DSH 模型设置决定。
 - **不接受本地 Key 的提供商**：`commandcode`（凭据链属提供方插件）、`xai-oauth`、`openai-codex`（只读各自 CLI 的登录文件）、`github-copilot`（只读 Copilot 提供方存入凭据库的 OAuth 记录），以及 MiMo（Cookie 会话）。
 - **保存与验证分离**：凭据先确认持久化，再独立做在线验证；检测关闭的提供商只保存凭据、不发起验证，验证失败不代表保存失败。
 - **出错时在卡片上修**：MiMo 未登录 / Cookie 被拒 → 「登录并自动导入」；Cookie 临近到期或已过期 → 「重新登录」；其他家缺凭据 → 「配置凭据」（展开该厂商编辑器并滚动过去）。正常状态不显示行动条。
@@ -379,7 +380,7 @@ arkcli-agent-plan-team   ARKCLI_AGENT_PLAN_TEAM_API_KEY
 arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 ```
 
-解析顺序（`inherit` 模式）：**凭据服务 → 启动环境 → 旧手动配置兜底**；自定义（`manual`）模式只使用保存的手动 Key。Cookie 与登录文件型凭据不走这条链，见 [MiMo 登录与 Cookie](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#mimo-登录与-cookie) 与 [Codex ChatGPT 订阅凭据](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#codex-chatgpt-订阅凭据)。修改启动环境后是否需要重启取决于目标部署，不能把「我已经改了环境变量」当作运行进程已经读到。
+解析顺序（`inherit` 模式）：**路由实际 `apiKeyEnv` → 额外监控引用名 → 内置环境变量名 → 启动环境 → 旧手动配置兜底**；自定义（`manual`）模式优先使用保存的手动 Key，删除后自动回到继承。Cookie 与登录文件型凭据不走这条链，见 [MiMo 登录与 Cookie](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#mimo-登录与-cookie) 与 [Codex ChatGPT 订阅凭据](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#codex-chatgpt-订阅凭据)。修改启动环境后是否需要重启取决于目标部署，不能把「我已经改了环境变量」当作运行进程已经读到。
 
 </details>
 

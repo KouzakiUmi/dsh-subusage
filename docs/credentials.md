@@ -22,11 +22,19 @@
 
 同一份凭据可以有多个来源，插件按这个顺序取**第一个命中的**：
 
-1. **凭据服务**（DSH 的凭据存储）
-2. **启动环境变量**（DSH 进程启动时的环境快照，**改了要重启 DSH**）
-3. **界面手动填写**（设置 → 订阅用量 → 对应卡片 → 连接与凭据）
+1. **DSH 路由实际声明的 `apiKeyEnv`**（客户端 Models 页保存自定义 API Key 时写入的引用名；药丸与用量跟随它）
+2. **额外监控的引用名**（设置 → 订阅用量 → 连接与凭据 → 「额外监控的 Key」里手动添加的名字，按添加顺序）
+3. **内置环境变量名**（下表里各家的默认名与回退名）
+4. **启动环境变量**（DSH 进程启动时的环境快照，**改了要重启 DSH**）
+5. **界面手动填写**（设置 → 订阅用量 → 对应卡片 → 连接与凭据）
 
-所以只要 1 或 2 里有一份能用的，界面里就不用再填。
+每个引用名内部先查凭据服务、再查启动环境。只要前面几项里有一份能用的，界面里就不用再填。
+
+### 多 Key 监控
+
+同一家可以同时监控多把 Key：在「连接与凭据」里填写**凭据引用名**（环境变量名，如 `KIMI_SECOND_KEY`），最多 8 个。每个引用名独立读取额度并在该条目下列出，**只保存名字、不保存 Key 值**；Key 值仍放在 DSH 凭据库或环境变量里。
+
+药丸与用量面板**始终显示当前路由实际使用的那个 Key**（解析顺序第 1 项），额外 Key 只用于查看额度，不会顶掉它。如果额外 Key 报「未检测到引用 … 的 Key」，说明凭据库/环境变量里没有这个引用名，或名字拼写不一致。
 
 ---
 
@@ -150,7 +158,7 @@ Cookie 必须**同时包含** `api-platform_serviceToken` 与 `userId`，否则�
 | DeepSeek 账号 | **无环境变量，也不填 Key** | 在 DSH **设置 → 账号与余额**登录。本插件只读本机 `deepseekAccount` 服务返回的充值余额，不读取 / 导出 / 保存 OAuth token，也不读 `DEEPSEEK_API_KEY` |
 | Z.ai（中国） | `ZAI_CODING_CN_API_KEY` | 智谱开放平台 → API Keys；团队档另需组织 / 项目 ID |
 | Z.ai（国际） | `ZAI_CODING_API_KEY` | Z.ai 平台 → API Keys |
-| Kimi | `KIMI_CODING_API_KEY` | Kimi 开放平台 → API Keys |
+| Kimi | `KIMI_CODING_API_KEY`；路由 `apiKeyEnv` 常写成 `KIMI_API_KEY` | Kimi 开放平台 → API Keys。插件优先跟随该路由实际声明的 `apiKeyEnv`，两个名字哪个在凭据库/环境里有值都能用；实在对不上可用「额外监控的 Key」指定 |
 | OpenCode Go | `OPENCODE_GO_API_KEY`，回退 `OPENCODE_API_KEY` | OpenCode Go 控制台。两个引用名都认（见下方说明） |
 | MiniMax（中国 / 国际） | `MINIMAX_CN_API_KEY` / `MINIMAX_API_KEY` | MiniMax 开放平台 |
 | Codex（ChatGPT 订阅） | 无环境变量 | 优先只读 dsh-codex-subscription 活动账号 / 双旧 OAuth 引用（0.13.0 起），无该来源再读 CLI `auth.json`；不迁移或自行续约，详见 [来源优先级](providers.md#codex-chatgpt-订阅凭据) |
@@ -182,7 +190,7 @@ OpenCode Go 的订阅 Key 有两种引用名写法，插件**两个都认**：
 
 解析顺序是「名字优先、来源其次」：先看 `OPENCODE_GO_API_KEY` 的凭据服务、再看它的启动环境，两边都没有才看 `OPENCODE_API_KEY`——不会拿通用名里那把 Zen 余额 Key 去查 Go 订阅额度。
 
-所以**模型能正常调用、额度却报「无凭据」**时，先核对 DSH 里该路由的 `apiKeyEnv` 与凭据库 / 环境变量里实际保存的名字是否逐字一致；名字对不上就换成一致的那个，或在设置页选「手动 Key」直接填。
+所以**模型能正常调用、额度却报「无凭据」**时，插件已经优先跟随 DSH 路由的 `apiKeyEnv`；若仍报错，核对凭据库 / 环境变量里该引用名是否有值，或在「额外监控的 Key」里直接添加真正保存 Key 的名字，也可以选「手动 Key」直接填。
 
 ---
 

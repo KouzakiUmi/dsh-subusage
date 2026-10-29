@@ -293,6 +293,11 @@ assert.equal(buttonSaves, 0, "清除只进入dirty，不立即落盘"); assert.o
 const clearedDraft = api.settingsPatch(ids[0], { ...api.draftFor(publicSettings(), ids[0]), keyMode: "manual", keyAction: "clear" }, "1");
 assert.equal(clearedDraft.keyMode, "manual"); assert.equal(clearedDraft.keyUpdate.action, "clear");
 await button("保存设置").props.onClick(); assert.equal(buttonPatch.keyMode, "manual"); assert.equal(buttonPatch.keyUpdate.action, "clear");
+// 多 Key 监控：草稿与保存补丁只携带引用名数组；由提供方插件管理凭据的 provider 不接受该字段。
+const keyRefDraft = api.draftFor({ keyRefs: { [ids[0]]: ["EXTRA_KEY"] } }, ids[0]);
+assert.deepEqual(JSON.parse(JSON.stringify(keyRefDraft.keyRefs)), ["EXTRA_KEY"]);
+assert.deepEqual(JSON.parse(JSON.stringify(api.settingsPatch(ids[0], { ...keyRefDraft, keyRefs: ["EXTRA_KEY", "EXTRA_KEY_2"] }, "1").keyRefs)), ["EXTRA_KEY", "EXTRA_KEY_2"]);
+assert.equal(api.settingsPatch("commandcode", { ...api.draftFor(publicSettings(), "commandcode"), keyRefs: ["EXTRA_KEY"] }, "1").keyRefs, undefined, "提供方管理的凭据不提交自定义引用名");
 bh.unmount();
 // 自动成功只合并一次，更新公开revision/sequence，旧额度不能复活旧账号。
 const staleLoginQuota = deferred(); let loginStatus = { jobId: "login-A", state: "waiting" }; const loginCalls = [];

@@ -62,6 +62,8 @@ now += 61000; response = () => new Error("dummy-manual");
 result = await refresh(["minimax-cn"]); assert.equal(result.entries[0].freshness, "stale"); assert.equal(result.entries[0].retainPrevious, true); assert(!JSON.stringify(result).includes("dummy-manual"));
 now += 61000; response = () => ({ base_resp: { status_code: 1004, status_msg: "dummy-manual" } });
 result = await refresh(["minimax-cn"], true); assert.equal(result.entries[0].errorCode, "subusage/auth"); assert.equal(result.entries[0].windows, undefined);
-await service.save({ providerId: "minimax-cn", keyUpdate: { action: "clear" } }); result = await refresh(["minimax-cn"]); assert.equal(result.entries[0].state, "no-key");
+// 清除手动 Key 后回到继承：environment 里的 Key 仍可用（本次响应 1004 → auth 失败），不是 no-key。
+await service.save({ providerId: "minimax-cn", keyUpdate: { action: "clear" } }); result = await refresh(["minimax-cn"]);
+assert.equal(result.settings.keyModes["minimax-cn"], "inherit"); assert.equal(result.entries[0].keySource, "env"); assert.equal(result.entries[0].errorCode, "subusage/auth");
 service.dispose();
 console.log("PASS MiniMax normalization, region isolation, credentials, cache and RPC");
