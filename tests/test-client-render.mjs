@@ -172,8 +172,8 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   const all = flattenNodes(section), selects = all.filter((n) => n.type === "select");
   assert.equal(selects.length, 0, "设置页不使用任何下拉列表");
   // 火山方舟的 4 条路由在设置页合并成一张卡片，但个人版 / Team 各有一个开关：
-  // 原有 29 个开关 + 手动匹配开关。
-  assert.equal(all.filter(n => n.props?.role === "switch").length, 30, "提供商开关、Ark Team 独立开关与默认隐藏开关均可见");
+  // 原有 32 个开关 + 手动匹配开关。
+  assert.equal(all.filter(n => n.props?.role === "switch").length, 33, "提供商开关、Ark Team 独立开关与默认隐藏开关均可见");
   if (provider === "xiaomi-token-plan-cn") {
     assert.ok(visibleText(section).includes("登录并自动导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));

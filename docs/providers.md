@@ -11,7 +11,7 @@
 
 ## 1. 清单与默认开关
 
-30 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 11 条、关闭 19 条**，与注册元数据的 11 开 / 19 关一致：火山个人版两条默认开启，Team 两条由独立的 `visibility.arkTeam` 控制且默认关闭，不再随 `visibility.ark` 打开。Codex 仍默认关闭，避免与提供方自带药丸重复。设置页里这 30 条合并成 **27 张卡片**；历史已保存开关继续合并，未显式配置过 `arkTeam` 的旧配置按关闭迁移。
+33 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 11 条、关闭 22 条**，与注册元数据的 11 开 / 22 关一致：火山个人版两条默认开启，Team 两条由独立的 `visibility.arkTeam` 控制且默认关闭，不再随 `visibility.ark` 打开。Codex 仍默认关闭，避免与提供方自带药丸重复。设置页里这 33 条合并成 **30 张卡片**；历史已保存开关继续合并，未显式配置过 `arkTeam` 的旧配置按关闭迁移。
 
 新增厂商须同时改 `PROVIDERS`、`PROVIDER_META` / `PROVIDER_ORDER`、帮助文案、README 与默认值测试；未获明确需求的新订阅商一律 `defaultEnabled: false`，原有偏好通过存储合并保留。
 
@@ -48,6 +48,9 @@
 | Ollama Cloud | session / 周 / 月 | `limits.*.usage` 是 **0–1 小数**；缺层跳过该窗口而不判失败 |
 | ZenMux | 5 小时 / 周滚动窗口 | `usage_percentage` 是 **0–1 小数**，另附 flows 明细与 `resets_at`；有 Management Key 时显示 PAYG 余额。两个端点各拿各的——余额被拒不影响配额；**订阅端点失败时保留余额但标部分数据并写明「套餐状态暂不可确认」，不据此宣称未订阅** |
 | LiteLLM | 独立 Key / User / Team 预算周期 | 各层已用 / 预算、百分比和可用重置；**没有预算上限时不编造百分比**，只如实显示已用金额 |
+| APIGOTO（`apigoto`） | 订阅窗口，档位由 `subscription.window_sec` 换算（不从套餐名反推） | 已用 / 上限按 `used`/`limit` 算（接口不给百分比），单位如实透传（实测 `rpm_credits`）；余额取套餐内 `remaining`（单位随 `unit`）。**`expires_at` 是套餐到期日，不写进 `resetsAt`**；充值钱包 `balance_usd` 为 0 时不产生余额行，大于 0 时另起一行说明 |
+| UnoRouter（`unorouter`） | 无窗口（Key 级余额） | `total_available ÷ 500000` 得美元（官方口径 500000 单位 = 1 USD）；缺 `total_available` 时用 `granted − used` 兜底。**`unlimited_quota` 时只报累计消费并说明，不把负值显示成欠费**。失败仍是 HTTP 200 + `success:false`，须按认证错误处理。`unorouter-sonnet` 共用同一份额度并由 Client 归并 |
+| 七牛云（`qnaigc`） | 无窗口；只有**费用** | `GET /v3/stat/usage/apikey/cost?type=month` 给人民币元**消耗**，产出 `spend` 而非 `balance`，并注明口径（原始标准价、不含资源包优惠）。账户余额与资源包剩余只在控制台，无开放接口——不推断、不编造余额 |
 | OpenDesign（`opendesign`） | Design Plan 5 小时 / 7 天窗（按套餐下发；plan model credits 无窗、按账期） | 已用 / 上限（credits 整数）与重置时间、档位（Go / Plus / Pro / Max）。窗口接口不下发百分比，由 `usedCredits / limitCredits` 算；个人工作区另读 `/api/v1/billing/summary`：钱包合计（订阅 + 充值）显示为**总额度**、订阅额度（换算成美元）显示为**套餐余额**——两者是**两个池**，旧文案「月额度剩余 / 余额」会被读成同份额度的两个比较值（0.15.0 起改名，见 [界面文案](#opendesign-额度文案)）。两个端点对普通取数故障独立降级；认证/凭据错误不参与降级，应明确提示登录失效或凭据被拒，且不沿用旧额度缓存。零余额照常显示且不影响 Design Plan 窗口；不按模型倍率或套餐价格推算钱包上限。**5 小时窗不是每个套餐都有**，只有 7 天窗不构成缺数据 |
 
 非公开控制台接口可能变更；缺失或非法百分比不会当作零用量。部分数据、未知额度和暂时失败有明确状态，不能据此保证推理接口一定可用。
@@ -232,7 +235,7 @@ Command Code 的凭据由提供方插件 `@mars-sea/dsh-commandcode-provider` �
 
 | 用途 | 域名 |
 |---|---|
-| 各订阅 / 余额接口 | `api.deepseek.com`、`open.bigmodel.cn`、`api.z.ai`、`api.kimi.com`、`opencode.ai`、`api.siliconflow.cn`、`openrouter.ai`、`api.synthetic.new`、`nano-gpt.com`、`api.novita.ai`、`api.hyperbolic.ai`、`api.deepinfra.com`、`api.chutes.ai`、`ollama.com`、`ai-gateway.vercel.sh`、`zenmux.ai`、`api.minimax.io`、`api.minimaxi.com` |
+| 各订阅 / 余额接口 | `api.apigoto.com`、`api.unorouter.com`、`api.qnaigc.com`、`api.deepseek.com`、`open.bigmodel.cn`、`api.z.ai`、`api.kimi.com`、`opencode.ai`、`api.siliconflow.cn`、`openrouter.ai`、`api.synthetic.new`、`nano-gpt.com`、`api.novita.ai`、`api.hyperbolic.ai`、`api.deepinfra.com`、`api.chutes.ai`、`ollama.com`、`ai-gateway.vercel.sh`、`zenmux.ai`、`api.minimax.io`、`api.minimaxi.com` |
 | 会话 / 登录文件型 | `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`（Command Code 计费）、`cli-chat-proxy.grok.com`（SuperGrok 计费代理）、`grok.com`（credits 格式失败时的 GetGrokCreditsConfig gRPC-web）、`chatgpt.com/backend-api`（Codex 订阅用量）、`api.github.com`（GitHub Copilot 私有额度接口；企业版按记录里的 `enterpriseUrl` 换 `api.<域名>`，主机名只取普通域名）、`amr-api.open-design.ai`（OpenDesign 控制台额度：先读 `/v1/workspaces/current` 取 workspaceId，再读该工作区的 coding-plan-usage） |
 | 火山方舟管控面 | `open.volcengineapi.com` |
 | 自建网关 | 用户自填的 LiteLLM proxy 地址（只去掉 `/v1` 这类版本段，其余路径原样保留） |

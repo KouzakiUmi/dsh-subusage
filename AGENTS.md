@@ -19,6 +19,16 @@
 - 不改变检测开关、凭据、查询端点、额度缓存含义或工具报告的订阅 ID。实际选中模型的药丸 reader 以独立上下文跳过订阅原始路由 ID 的存在性过滤，刷新和轮询保持该上下文；设置页的原有过滤不变，药丸仍遵守检测开关、缺凭据隐藏和订阅状态判断。
 - 火山 `volcengine-agent-plan` / `volcengine-coding-plan` 对应现有 Ark Agent / Coding 订阅；OpenDesign `opendesign-corouter-plan` / `opendesign-corouter-paid` 共用 OpenDesign 订阅。新增别名须核对提供方实际注册 ID。
 
+## 中转聚合商的额度口径
+
+- `apigoto` / `unorouter` / `qnaigc` 只读官方额度接口，与推理共用或同源的 Key；不注册路由、不写上游。
+- 三家的**额度语义不同**，不得互相套用显示方式：`apigoto` 是订阅窗口 + 套餐内剩余金额；`unorouter` 是 Key 余额或累计消费；`qnaigc` 只有**费用**（人民币元），没有余额接口。
+- 花费一律用 `spend`，不要放进 `balance`：余额行的告警阈值与「还剩多少」文案会把花费读成可用额度。
+- 时间字段按语义区分：`apigoto` 的 `subscription.expires_at` 是套餐到期日，不是窗口重置时间，不写进 `resetsAt`。
+- 上游「无限额度」是真实状态而非欠费：`unorouter` 的 `unlimited_quota` 与负的 `total_available` 只报累计消费，不产余额行。
+- `unorouter-sonnet` 与 `unorouter` 共用同一把 Key、同一份额度，Client 用 `ROUTE_PROVIDER_ALIAS` 归并；新增同类第二路由须同样归并，避免显示成两份套餐。
+- 单位换算只在各自 `normalize` 内显式完成（`unorouter` 按 500000 单位 = 1 USD），不引入通用折算。
+
 ## 凭据解析与多 Key 监控
 
 - `inherit` 模式的解析顺序：**路由实际 `apiKeyEnv`（`llm.listConfigurableProviders()` + settings 里的路由 profile）→ `keyRefs[id]` 额外引用名 → 内置 `envName` / `envAliases` → 手动 Key 兜底**；每个引用名内部先凭据服务、后启动环境。`manual` 模式仅在手上有 Key（或完整 AK/SK）时生效，缺失时继续走继承链。

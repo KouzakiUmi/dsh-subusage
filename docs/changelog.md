@@ -2,6 +2,16 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.19.0：三家中转聚合商（APIGOTO / UnoRouter / 七牛云）
+
+- 新增 3 条 provider id，均默认关闭、不进新安装的默认开启序列；至此登记 33 条，默认 11 开 / 22 关。
+- `apigoto`：`GET /v1/usage`（与推理同一把 Key 的 Bearer）。窗口档位由响应的 `window_sec` 换算，不从套餐名反推；百分比由 `used`/`limit` 算出（接口不给百分比）。**`subscription.expires_at` 是套餐到期时间，不是窗口重置时间**，只作为套餐信息文字带出，不产 `resetsAt`。余额取套餐内 `remaining`（单位随 `unit`），充值钱包 `balance_usd` 为 0 时不产生任何余额告警行，有余额时另起一行说明。
+- `unorouter`：`GET /api/usage/token/`，必须用 **API Key 自身**认证（账户余额接口要另一种访问令牌，本插件不保存也不索取）。累计量按官方口径 500000 单位 = 1 USD 换算。`unlimited_quota: true` 时只报累计消费并说明无限额度，**不把负的 `total_available` 显示成欠费**。new-api 的失败仍是 HTTP 200 + `success: false`，此时映射为认证错误而不是数字。`unorouter-sonnet` 路由共用同一把 Key 与同一份额度，Client 用 `ROUTE_PROVIDER_ALIAS` 归并到 `unorouter`。
+- `qnaigc`（七牛云）：官方只有**费用**接口 `GET /v3/stat/usage/apikey/cost?type=month`，单位人民币元，余额与资源包剩余只在控制台。因此产出 `spend` 而不是 `balance`，并在 `note` 里写明口径（本月消耗、原始标准价不含资源包优惠）——把花费当余额显示会直接误导。
+- 三家都按「凭据服务 → 启动环境」的既有继承链取 Key，支持手动 Key 与额外引用名；响应不回显 Key。
+- 回归：新增 `tests/test-relay-aggregators.mjs`（含三家归一化、Host 端到端端点与鉴权、`success=false` 映射、Client 注册与归并、花费文案）；既有测试的 provider 计数与默认关闭清单同步更新。
+- **本轮仅用真实 Key 直连验证了接口契约与响应形状，未作 GUI 实机验收**；也未对七牛云之外的站点做套餐耗尽路径的真实观测。
+
 ## 0.18.2：客户端自定义 Key 同步与多 Key 监控
 
 - 凭据解析优先使用 DSH 路由实际声明的 `apiKeyEnv`（客户端 Models 页保存自定义 Key 写入的引用名），修复客户端覆盖环境变量后插件仍读旧环境值、药丸与额度不跟随的问题。

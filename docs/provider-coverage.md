@@ -4,7 +4,7 @@
 
 > 本文件是决策记录，不是接入指引。当前行为、凭据与窗口语义见 [README](../README.md)。
 
-## 已支持（30 条 provider id，含独立 DeepSeek 账号、OpenDesign 与 GitHub Copilot）
+## 已支持（33 条 provider id，含独立 DeepSeek 账号、OpenDesign、GitHub Copilot 与三家中转聚合商）
 
 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|
@@ -30,10 +30,13 @@
 | `zenmux` | 5h 配额 + PAYG 余额 | **Management API Key** | 关 |
 | `litellm` | 预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
 | `opendesign` | Design Plan 窗口 + 个人钱包/订阅额度剩余 | 控制台会话 Cookie；与模型 Key 不通用 | 关 |
+| `apigoto` | 订阅窗口（`window_sec` 定档）+ 套餐内剩余金额 | Bearer，与推理同 Key（`GET /v1/usage`） | 关 |
+| `unorouter` | Key 余额或累计消费 | Bearer，**用该 Key 自身**读（`GET /api/usage/token/`） | 关 |
+| `qnaigc`（七牛云） | **本月消耗（人民币元）**，非余额 | Bearer，与推理同 Key（`GET /v3/stat/usage/apikey/cost`） | 关 |
 
-> 另有 **4 条联动项**（`antigravity`、`trae`、`trae-global`、`trae-enterprise`），不计入上面的 30 条：它不是本插件登记的 provider id（没有凭据、检测开关与设置卡片），只在本机运行 [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) 时，把该插件 `agyQuota` 服务的套餐额度并入 `quota()` 视图与 `subusage_quota` 报告；插件不在场时条目不出现。`trae*` 三块面板同理，来自 `dsh-connect-trae` 挂在本机 web 服务器上的只读用量路由（`/plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>`）。取舍：读兄弟插件**已经算好**的结果，而不是自己实现官方取数，避免第二份凭据读取路径与两套缓存；代价是依赖对方的输出契约（其版本变化时本插件报错而不是编数字）。
+> 另有 **4 条联动项**（`antigravity`、`trae`、`trae-global`、`trae-enterprise`），不计入上面的 33 条：它不是本插件登记的 provider id（没有凭据、检测开关与设置卡片），只在本机运行 [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) 时，把该插件 `agyQuota` 服务的套餐额度并入 `quota()` 视图与 `subusage_quota` 报告；插件不在场时条目不出现。`trae*` 三块面板同理，来自 `dsh-connect-trae` 挂在本机 web 服务器上的只读用量路由（`/plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>`）。取舍：读兄弟插件**已经算好**的结果，而不是自己实现官方取数，避免第二份凭据读取路径与两套缓存；代价是依赖对方的输出契约（其版本变化时本插件报错而不是编数字）。
 
-> 火山方舟以官方 CLI（`arkcli helper configure`）写入的 `arkcli-*` 为准：个人版 2 条 + 团队版 2 条，共 **4 条**，共用一组 IAM AK/SK。旧插件 `@volcengine/ark-plan-api` 的两个国内 id（`ark-agent-plan-cn` / `ark-coding-plan-cn`）已从 Host 移除，但 Client 入口（`ROUTE_PROVIDER_ALIAS`）会把它们**归并**到对应的 arkcli 路由——装了旧插件的用户选中那些模型时，药丸仍显示同一份订阅数据，不需要改装。BytePlus 站点（`ark-coding-plan-byteplus`）本机无账号可验证，已整条移除：Host 不识别、Client 也不归并。企业版 / 团队版需要查看席位的权限；个人版与 Team 分别有组开关，个人版默认开启，Team 默认关闭，两者互不影响。新安装有效默认为 11 开 / 19 关；详情以 README 的当前清单为准。
+> 火山方舟以官方 CLI（`arkcli helper configure`）写入的 `arkcli-*` 为准：个人版 2 条 + 团队版 2 条，共 **4 条**，共用一组 IAM AK/SK。旧插件 `@volcengine/ark-plan-api` 的两个国内 id（`ark-agent-plan-cn` / `ark-coding-plan-cn`）已从 Host 移除，但 Client 入口（`ROUTE_PROVIDER_ALIAS`）会把它们**归并**到对应的 arkcli 路由——装了旧插件的用户选中那些模型时，药丸仍显示同一份订阅数据，不需要改装。BytePlus 站点（`ark-coding-plan-byteplus`）本机无账号可验证，已整条移除：Host 不识别、Client 也不归并。企业版 / 团队版需要查看席位的权限；个人版与 Team 分别有组开关，个人版默认开启，Team 默认关闭，两者互不影响。新安装有效默认为 11 开 / 22 关；详情以 README 的当前清单为准。
 
 
 ## 评估后不接入
@@ -46,6 +49,7 @@
 | **Together AI** | 未找到公开额度/计费 API | 只有控制台页面；文档只提"programmatic monitoring"但无端点 |
 | **Cerebras** | 未找到额度 API | 用量与计费都在 Cloud Console |
 | **讯飞星火 / 国家超算 SCNet / 腾讯 CodeBuddy / 无问芯穹 / 美团 LongCat / 京东云** | 官方文档明确只有控制台 | 无接口可接，不是实现成本问题 |
+| **讯飞星火（MaaS，2026-10-30 复核）** | Key 有效（`/v1/models` 200），但 `/v1/usage`、`/v1/balance`、`/v1/user/info`、`/v1/stat/usage`、`/v1/dashboard/billing/*`、`/api/usage/token/` 及换 host 全部 404 `no Route matched with those values` | 复核结论与上一条一致：只有控制台，仍不接入 |
 | **潞晨云** | 公有云 **2026-09-21 已停服** | 服务不存在 |
 
 ## 已由用户决策跳过
