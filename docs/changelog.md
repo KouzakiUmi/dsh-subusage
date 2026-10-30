@@ -11,6 +11,7 @@
 - 三家都按「凭据服务 → 启动环境」的既有继承链取 Key，支持手动 Key 与额外引用名；响应不回显 Key。
 - 回归：新增 `tests/test-relay-aggregators.mjs`（含三家归一化、Host 端到端端点与鉴权、`success=false` 映射、Client 注册与归并、花费文案）；既有测试的 provider 计数与默认关闭清单同步更新。
 - **本轮仅用真实 Key 直连验证了接口契约与响应形状，未作 GUI 实机验收**；也未对七牛云之外的站点做套餐耗尽路径的真实观测。
+- 已于 2026-10-30 经 `v0.19.0` 标签发布：Release 与主分支 CI 均 success，registry `latest` 为 0.19.0，Release 资产与 npm tarball SHA256 一致（184681 字节）。未安装到 `desktop` Profile、未重启 DSH。
 
 ## 0.18.2：客户端自定义 Key 同步与多 Key 监控
 
