@@ -12,7 +12,7 @@ const ctx = { effect() {}, llm: { listProviders: () => [{ id: Z }] } };
 let service = new SubUsageService(ctx, options);
 let result = await service.read();
 assert.equal(result.settings.visibility.hideWithoutApi, true);
-const DEFAULT_OFF = ["zai-coding", "synthetic", "nanogpt", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "opendesign", "openai-codex", "github-copilot", "apigoto", "unorouter", "qnaigc"];
+const DEFAULT_OFF = ["zai-coding", "synthetic", "nanogpt", "siliconflow", "openrouter", "novita", "hyperbolic", "deepinfra", "chutes", "ollama-cloud", "vercel-ai-gateway", "minimax", "zenmux", "litellm", "opendesign", "openai-codex", "github-copilot", "apigoto"];
 const ARK_PERSONAL = ["arkcli-agent-plan", "arkcli-coding-plan"];
 const ARK_TEAM = ["arkcli-agent-plan-team", "arkcli-coding-plan-team"];
 const ARK_ROUTES = [...ARK_PERSONAL, ...ARK_TEAM];

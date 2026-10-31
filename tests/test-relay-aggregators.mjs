@@ -1,18 +1,19 @@
-// 中转聚合商三家：APIGOTO / 七牛云（qnaigc）/ UnoRouter。
-// 契约全部来自 2026-10-30 用真实 Key 实测的响应，这里用同形状的虚构响应复现，
+// 中转聚合商：APIGOTO（订阅窗口 + 套餐内余额 + 套餐到期）。
+// 契约来自 2026-10-30 用真实 Key 实测的响应，这里用同形状的虚构响应复现，
 // 不访问真实接口、不写入真实 Key。
 //
-// 三家最容易搞错的两件事，正是本文件重点：
-//   1. 七牛云只有**花费**接口（人民币元），没有余额接口 —— 花费不能当余额显示；
-//   2. UnoRouter 的 unlimited_quota 与负的 total_available 不是「欠费」——
-//      无限额度 Key 没有余额可言，只报累计消费。
+// 本文件重点钉住最容易搞错的几件事：
+//   1. `subscription.expires_at` 是**套餐到期日**，不是窗口重置时间，不能写进 resetsAt；
+//   2. 套餐内 `remaining` 与充值钱包 `balance_usd` 是两个池，钱包为 0 不能盖掉套餐余额；
+//   3. 窗口档位由 `window_sec` 秒数换算，不从套餐名反推；
+//   4. 到期倒计时与「积分为 0 不占行」这类显示取舍。
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { loadHostModule } from "./helpers.mjs";
 
-const { SubUsageService, normalizeApigoto, normalizeQnaigc, normalizeUnorouter } = await loadHostModule();
+const { SubUsageService, PROVIDERS, normalizeApigoto } = await loadHostModule();
 
 // 实测响应（2026-10-30），只把 Key 与账号名替换掉。
 const APIGOTO_BODY = {
@@ -34,29 +35,12 @@ const APIGOTO_BODY = {
 	balance: "0.00000000",
 	balance_usd: "0.00000000"
 };
-const QNAIGC_BODY = {
-	status: true,
-	data: { timezone: "Asia/Shanghai", api_keys: [{ api_key: "sk-33***05db7", name: "default", total_fee: 0.07, models: [] }] }
-};
-const UNOROUTER_BODY = {
-	success: true,
-	message: "",
-	data: {
-		object: "token_usage",
-		name: "DSH",
-		total_granted: 7228917,
-		total_used: 13215921,
-		total_available: -5987004,
-		unlimited_quota: true,
-		model_limits: {},
-		model_limits_enabled: false,
-		expires_at: 0
-	}
-};
+// 让「还有几天」的断言不依赖运行时刻：取一个早于到期日的固定时间。
+const AT = Date.parse("2026-10-30T00:00:00Z");
 
-// ── [1] APIGOTO 归一化 ───────────────────────────────────────────────────
+// ── [1] 归一化 ───────────────────────────────────────────────────────────
 {
-	const out = normalizeApigoto(APIGOTO_BODY);
+	const out = normalizeApigoto(APIGOTO_BODY, AT);
 	assert.equal(out.coverage, "complete");
 	assert.equal(out.windows.length, 1, "窗口只有一个");
 	const [w] = out.windows;
@@ -69,9 +53,23 @@ const UNOROUTER_BODY = {
 	assert.equal(w.detail.used, 20466109);
 	assert.equal(w.detail.limit, 50000000);
 
+	// 徽标只放套餐名；到期日与剩余天数另起说明行，不塞进徽标。
 	const plan = out.extras.find(x => x.kind === "plan");
-	assert.ok(plan.value.includes("RouterCode PLUS-1027"), "套餐名在 plan 里");
-	assert.ok(plan.value.includes("2026-11-29"), "套餐到期日作为文字带出，而不是伪装成 resetsAt");
+	assert.equal(plan.value, "RouterCode PLUS-1027", "plan 徽标只放套餐名");
+	assert.ok(!plan.value.includes("到期"), "到期日不在 plan 徽标里");
+	const expiry = out.extras.find(x => x.kind === "note" && x.value.includes("套餐到期"));
+	assert.equal(expiry.value, "套餐到期 2026-11-29（还有 31 天）", "到期日带剩余天数");
+	assert.equal(out.extras.filter(x => x.kind === "note" && x.value.includes("套餐到期")).length, 1, "到期只占一行");
+
+	// 策略名与套餐名不同时单独说明；相同时不重复占行。
+	assert.ok(out.extras.some(x => x.kind === "note" && x.value === "策略 APIGOTO PLUS-1027"), "策略名与套餐名不同则说明");
+	const samePolicy = normalizeApigoto({ ...APIGOTO_BODY, subscription: { ...APIGOTO_BODY.subscription, policy_name: "RouterCode PLUS-1027" } }, AT);
+	assert.ok(!samePolicy.extras.some(x => x.value.startsWith("策略")), "策略名与套餐名相同则不重复");
+
+	// 计费模式翻成人话；积分为 0 不占行。
+	assert.ok(out.extras.some(x => x.value === "计费模式：订阅制"), "mode 翻成中文");
+	assert.ok(!out.extras.some(x => x.value.startsWith("积分")), "积分为 0 时不占行");
+	assert.ok(normalizeApigoto({ ...APIGOTO_BODY, points: 120 }, AT).extras.some(x => x.value === "积分 120"), "积分非 0 时显示");
 
 	// 关键：套餐内 remaining 是主余额；充值钱包 balance_usd 为 0 不能盖掉它、
 	// 也不能变成红色「余额耗尽」告警。
@@ -80,65 +78,31 @@ const UNOROUTER_BODY = {
 	assert.ok(!out.extras.some(x => x.kind === "note" && x.value.includes("钱包")), "钱包为 0 时不额外占一行");
 
 	// 钱包确实有余额时才提一句。
-	const withWallet = normalizeApigoto({ ...APIGOTO_BODY, balance_usd: "2.50000000" });
-	assert.ok(withWallet.extras.some(x => x.kind === "note" && x.value.includes("2.5 USD")), "钱包有余额时说明");
+	const withWallet = normalizeApigoto({ ...APIGOTO_BODY, balance_usd: "2.50000000" }, AT);
+	assert.equal(withWallet.extras.find(x => x.value.includes("充值钱包")).value, "充值钱包另有 2.5 USD", "钱包有余额时说明");
+
+	// 已过到期日要明确说出来，而不是显示「还有 0 天」。
+	const expired = normalizeApigoto(APIGOTO_BODY, Date.parse("2026-12-05T00:00:00Z"));
+	assert.equal(expired.extras.find(x => x.value.includes("套餐已于")).value, "套餐已于 2026-11-29 到期");
 
 	// 套餐失效是上游明确状态，要说出来。
-	assert.ok(normalizeApigoto({ ...APIGOTO_BODY, is_active: false }).extras.some(x => x.kind === "note" && x.value.includes("停用")), "套餐停用要提示");
+	assert.ok(normalizeApigoto({ ...APIGOTO_BODY, is_active: false }, AT).extras.some(x => x.kind === "note" && x.value.includes("停用")), "套餐停用要提示");
 
 	// 上游改口径时宁可报错也不编数字。
 	for (const bad of [undefined, null, {}, [], { subscription: null }]) {
-		assert.throws(() => normalizeApigoto(bad), `非法响应必须报错：${JSON.stringify(bad)}`);
+		assert.throws(() => normalizeApigoto(bad, AT), `非法响应必须报错：${JSON.stringify(bad)}`);
 	}
-	console.log("PASS APIGOTO：按 window_sec 定档、resetsAt 不误用 expires_at、套餐余额优先于 0 元钱包");
+	// 只有元数据（套餐名 / 到期 / 策略 / 模式 / 积分）而没有窗口与余额：这不是额度数据，
+	// 不能让一条「计费模式：订阅制」把失败装成成功。
+	const metaOnly = { is_active: true, isValid: true, mode: "subscription", points: 0, subscription: { plan_name: "P", policy_name: "P", expires_at: "2026-11-29T23:59:12Z" } };
+	assert.throws(() => normalizeApigoto(metaOnly, AT), "只有元数据必须报错，不能当成读到额度");
+	// 但上游明确的「套餐无效或已停用」是真实状态，仍要如实返回。
+	const disabled = normalizeApigoto({ ...metaOnly, is_active: false }, AT);
+	assert.ok(disabled.extras.some(x => x.value === "套餐无效或已停用"), "停用状态照常返回");
+	console.log("PASS APIGOTO：按 window_sec 定档、到期倒计时独立成行、套餐余额优先于 0 元钱包");
 }
 
-// ── [2] 七牛云归一化：花费，不是余额 ─────────────────────────────────────
-{
-	const out = normalizeQnaigc(QNAIGC_BODY, "month");
-	assert.deepEqual(out.windows, [], "只有花费，没有额度窗口");
-	const spend = out.extras.find(x => x.kind === "spend");
-	assert.equal(spend.value, "0.07 CNY", "花费用人民币，且**不是** balance 类型");
-	assert.ok(!out.extras.some(x => x.kind === "balance"), "绝不能产出 balance：会把花费读成余额");
-	assert.ok(out.extras.some(x => x.kind === "note" && x.value.includes("本月消耗")), "口径写在 note 里");
-	// 口径随 type 变化。
-	assert.ok(normalizeQnaigc(QNAIGC_BODY, "day").extras.some(x => x.kind === "note" && x.value.includes("今日消耗")));
-	assert.ok(normalizeQnaigc(QNAIGC_BODY, "week").extras.some(x => x.kind === "note" && x.value.includes("本周消耗")));
-	// 多 Key 分组时求和（本插件用 Key 级鉴权只会有一条，但不把可能的多条丢掉）。
-	assert.equal(normalizeQnaigc({ status: true, data: { api_keys: [{ total_fee: 0.1 }, { total_fee: 0.2 }] } }).extras[0].value, "0.3 CNY");
-	// 非法响应报错，不当作 0 元。
-	for (const bad of [undefined, null, {}, { status: true }, { status: true, data: {} }, { status: true, data: [] }]) {
-		assert.throws(() => normalizeQnaigc(bad), `非法响应必须报错：${JSON.stringify(bad)}`);
-	}
-	assert.throws(() => normalizeQnaigc({ status: true, data: { api_keys: [{ total_fee: -1 }] } }), "负花费说明口径变了，报错");
-	console.log("PASS 七牛云：spend 而非 balance、口径写进 note、非法值报错");
-}
-
-// ── [3] UnoRouter 归一化：无限额度 ≠ 欠费 ────────────────────────────────
-{
-	const out = normalizeUnorouter(UNOROUTER_BODY);
-	assert.deepEqual(out.windows, [], "new-api 单 Key 没有窗口");
-	assert.ok(!out.extras.some(x => x.kind === "balance"), "无限额度不报余额，避免与负的 total_available 自相矛盾");
-	const spend = out.extras.find(x => x.kind === "spend");
-	// 13215921 / 500000 = 26.4318…，官方口径 500000 单位 = 1 USD。
-	assert.equal(spend.value, "26.43 USD", "累计消费按 500000 单位 = 1 USD 换算");
-	assert.ok(out.extras.some(x => x.kind === "note" && x.value.includes("无限额度")), "无限额度要说明清楚");
-	assert.equal(out.extras.find(x => x.kind === "account").value, "DSH", "Key 名称作为账户标注");
-
-	// 有上限的普通 Key：余额取 total_available。
-	const capped = normalizeUnorouter({ success: true, data: { name: "k", total_granted: 1000000, total_used: 250000, total_available: 750000, unlimited_quota: false } });
-	assert.equal(capped.extras.find(x => x.kind === "balance").value, "1.5 USD");
-	// 缺 total_available 时用 granted - used 兜底。
-	assert.equal(normalizeUnorouter({ success: true, data: { total_granted: 1000000, total_used: 250000, unlimited_quota: false } }).extras.find(x => x.kind === "balance").value, "1.5 USD");
-
-	// new-api 的失败也返回 HTTP 200，只是 success=false —— 归一化不认这个形状。
-	for (const bad of [undefined, null, {}, { success: false, message: "x" }, { success: true }, { success: true, data: [] }]) {
-		assert.throws(() => normalizeUnorouter(bad), `非法响应必须报错：${JSON.stringify(bad)}`);
-	}
-	console.log("PASS UnoRouter：无限额度只报累计消费、500000 单位换算、success=false 不算成功");
-}
-
-// ── [4] Host 端到端：三家各自请求、默认关闭、Key 不回显 ──────────────────
+// ── [2] Host 端到端：默认关闭、端点来自元数据、Key 不回显 ─────────────────
 {
 	const files = new Map(), calls = [];
 	const io = {
@@ -146,75 +110,40 @@ const UNOROUTER_BODY = {
 		mkdirSync() {}, writeFileSync(path, value) { files.set(path, value); }, chmodSync() {},
 		renameSync(from, to) { files.set(to, files.get(from)); files.delete(from); }
 	};
-	const keys = { apigoto: "sk-fixture-apigoto", qnaigc: "sk-fixture-qnaigc", unorouter: "sk-fixture-unorouter" };
-	const bodies = { "api.apigoto.com": APIGOTO_BODY, "api.qnaigc.com": QNAIGC_BODY, "api.unorouter.com": UNOROUTER_BODY };
+	const KEY = "sk-fixture-apigoto";
 	const service = new SubUsageService({ effect() {}, llm: { listProviders: () => [] } }, {
 		io, configPath: "memory/config",
-		resolveCredentials: async id => keys[id] ? { value: keys[id] } : undefined,
+		resolveCredentials: async id => id === "apigoto" ? { value: KEY } : undefined,
 		resolveEnvironment: () => undefined,
 		fetch: async (url, options) => {
 			calls.push({ url, options });
-			const hostname = new URL(url).hostname;
-			const body = bodies[hostname];
-			if (!body) throw new Error(`unexpected host ${hostname}`);
-			return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(body) };
+			if (new URL(url).hostname !== "api.apigoto.com") throw new Error(`unexpected host ${url}`);
+			return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(APIGOTO_BODY) };
 		}
 	});
 
 	let result = await service.read();
-	for (const id of ["apigoto", "qnaigc", "unorouter"]) {
-		assert.equal(result.settings.visibility.providers[id], false, `${id} 默认关闭`);
-	}
+	assert.equal(result.settings.visibility.providers.apigoto, false, "默认关闭");
 	assert.equal(calls.length, 0, "默认关闭时即使继承到 Key 也不访问网络");
 
-	result = await service.save({ expectedRevision: result.settings.revision, visibility: { providers: { apigoto: true, qnaigc: true, unorouter: true } } });
-	result = await service.refresh({ providerIds: ["apigoto", "qnaigc", "unorouter"], force: true });
-	const byId = new Map(result.entries.map(e => [e.providerId, e]));
-	for (const id of ["apigoto", "qnaigc", "unorouter"]) assert.equal(byId.get(id).state, "ok", `${id} 读取成功`);
+	result = await service.save({ expectedRevision: result.settings.revision, visibility: { providers: { apigoto: true } } });
+	result = await service.refresh({ providerIds: ["apigoto"], force: true });
+	const entry = result.entries.find(e => e.providerId === "apigoto");
+	assert.equal(entry.state, "ok", "读取成功");
 
-	const urls = Object.fromEntries(calls.map(c => [new URL(c.url).hostname, c.url]));
-	assert.equal(urls["api.apigoto.com"], "https://api.apigoto.com/v1/usage");
-	assert.equal(urls["api.qnaigc.com"], "https://api.qnaigc.com/v3/stat/usage/apikey/cost?type=month");
-	assert.equal(urls["api.unorouter.com"], "https://api.unorouter.com/api/usage/token/");
-	for (const call of calls) assert.match(call.options.headers.authorization, /^Bearer sk-fixture-/, "三家都用推理 Key 的 Bearer");
+	assert.equal(calls.length, 1, "只请求一个端点");
+	assert.equal(calls[0].url, PROVIDERS.apigoto.usageUrl, "端点来自 PROVIDERS.usageUrl");
+	assert.equal(PROVIDERS.apigoto.usageUrl, "https://api.apigoto.com/v1/usage");
+	assert.match(calls[0].options.headers.authorization, new RegExp(`^Bearer ${KEY}$`), "用推理 Key 的 Bearer");
+	assert.equal(entry.windows[0].kind, "week");
 
-	assert.equal(byId.get("apigoto").windows[0].kind, "week");
-	assert.equal(byId.get("qnaigc").extras.find(x => x.kind === "spend").value, "0.07 CNY");
-	assert.equal(byId.get("unorouter").extras.find(x => x.kind === "spend").value, "26.43 USD");
-
-	// 任何一把 Key 都不能出现在返回体里。
-	const wire = JSON.stringify(result);
-	for (const key of Object.values(keys)) assert.ok(!wire.includes(key), "响应不回显 Key");
+	// Key 不能出现在返回体里。
+	assert.ok(!JSON.stringify(result).includes(KEY), "响应不回显 Key");
 	assert.equal(service.dispose(), undefined);
-	console.log("PASS 三家 Host：默认关闭、各自端点、Bearer 同 Key、响应不回显 Key");
+	console.log("PASS APIGOTO Host：默认关闭、端点来自元数据、Bearer 同 Key、响应不回显 Key");
 }
 
-// ── [5] UnoRouter success=false 在 Host 侧变成认证错误而不是数字 ──────────
-{
-	const files = new Map();
-	const io = {
-		readFileSync(path) { if (!files.has(path)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); return files.get(path); },
-		mkdirSync() {}, writeFileSync(path, value) { files.set(path, value); }, chmodSync() {},
-		renameSync(from, to) { files.set(to, files.get(from)); files.delete(from); }
-	};
-	const service = new SubUsageService({ effect() {}, llm: { listProviders: () => [] } }, {
-		io, configPath: "memory/config",
-		resolveCredentials: async id => id === "unorouter" ? { value: "sk-fixture-bad" } : undefined,
-		resolveEnvironment: () => undefined,
-		fetch: async () => ({ ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ success: false, message: "Unauthorized, invalid access token" }) })
-	});
-	let result = await service.read();
-	result = await service.save({ expectedRevision: result.settings.revision, visibility: { providers: { unorouter: true } } });
-	result = await service.refresh({ providerIds: ["unorouter"], force: true });
-	const entry = result.entries[0];
-	assert.equal(entry.state, "error", "success=false 不能当成成功");
-	assert.equal(entry.errorCode, "subusage/auth");
-	assert.ok(entry.error.includes("Unauthorized"), "把上游说明原样带出，便于排障");
-	assert.equal(service.dispose(), undefined);
-	console.log("PASS UnoRouter：success=false 映射为认证错误");
-}
-
-// ── [6] Client：注册、顺序、别名 ─────────────────────────────────────────
+// ── [3] Client：注册、顺序、默认关闭 ─────────────────────────────────────
 {
 	let spec;
 	const react = { createElement: () => null, Fragment: "fragment", useState: (v) => [typeof v === "function" ? v() : v, () => {}], useRef: (v) => ({ current: v }), useEffect: () => {}, useMemo: (f) => f(), useSyncExternalStore: () => null };
@@ -223,26 +152,23 @@ const UNOROUTER_BODY = {
 	const client = spec.factory((name) => { assert.equal(name, "react"); return react; });
 	const { PROVIDER_ORDER, PROVIDER_META, ROUTE_PROVIDER_ALIAS, balanceText, extraLabel } = client.__test;
 
-	for (const id of ["apigoto", "qnaigc", "unorouter"]) {
-		assert.ok(PROVIDER_ORDER.includes(id), `${id} 在提供商顺序中`);
-		assert.equal(PROVIDER_META[id].defaultEnabled, false, `${id} 默认关闭`);
-	}
-	assert.equal(PROVIDER_META["apigoto"].envName, "APIGOTO_API_KEY");
-	assert.equal(PROVIDER_META["qnaigc"].envName, "QNAIGC_API_KEY");
-	assert.equal(PROVIDER_META["unorouter"].envName, "UNOROUTER_API_KEY");
+	assert.ok(PROVIDER_ORDER.includes("apigoto"), "apigoto 在提供商顺序中");
+	assert.equal(PROVIDER_META.apigoto.defaultEnabled, false, "默认关闭");
+	assert.equal(PROVIDER_META.apigoto.envName, "APIGOTO_API_KEY");
 	// 追加在既有条目之后，不打乱现有位置。
 	assert.ok(PROVIDER_ORDER.indexOf("apigoto") > PROVIDER_ORDER.indexOf("github-copilot"), "追加在既有条目之后");
 
-	// 两条 UnoRouter 路由共用一份额度，必须归并。
-	assert.equal(ROUTE_PROVIDER_ALIAS["unorouter-sonnet"], "unorouter", "unorouter-sonnet 归并到 unorouter");
+	// 已移除的两家不得残留：注册表、顺序表与路由别名三处都要干净。
+	for (const gone of ["unorouter", "qnaigc"]) {
+		assert.ok(!PROVIDER_ORDER.includes(gone), `${gone} 已从顺序表移除`);
+		assert.ok(!(gone in PROVIDER_META), `${gone} 已从注册表移除`);
+	}
+	assert.equal(ROUTE_PROVIDER_ALIAS["unorouter-sonnet"], undefined, "unorouter 路由别名已移除");
 
 	const t = key => key;
-	// 七牛云与 UnoRouter 只有花费时，药丸显示花费而不是「暂无额度数据」。
-	assert.equal(balanceText({ extras: [{ kind: "spend", value: "0.07 CNY" }] }, t), "spendLabel 0.07 CNY");
-	assert.equal(balanceText({ extras: [{ kind: "spend", value: "26.43 USD" }] }, t), "spendLabel 26.43 USD");
-	assert.equal(extraLabel({ kind: "spend" }, t, "qnaigc"), "spendLabel", "花费走 spendLabel，不冒充余额");
 	assert.equal(extraLabel({ kind: "balance" }, t, "apigoto"), "balanceLabel");
-	console.log("PASS 三家 Client：注册、默认关闭、顺序追加、unorouter-sonnet 归并、花费文案");
+	assert.equal(balanceText({ extras: [{ kind: "balance", value: "4.42 USD" }] }, t), "balanceLabel 4.42 USD");
+	console.log("PASS APIGOTO Client：注册、默认关闭、顺序追加、已移除两家无残留");
 }
 
 console.log("\n中转聚合商适配测试全部通过 ✅");

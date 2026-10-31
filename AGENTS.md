@@ -21,13 +21,13 @@
 
 ## 中转聚合商的额度口径
 
-- `apigoto` / `unorouter` / `qnaigc` 只读官方额度接口，与推理共用或同源的 Key；不注册路由、不写上游。
-- 三家的**额度语义不同**，不得互相套用显示方式：`apigoto` 是订阅窗口 + 套餐内剩余金额；`unorouter` 是 Key 余额或累计消费；`qnaigc` 只有**费用**（人民币元），没有余额接口。
+- `apigoto` 是**目前唯一**的中转聚合商（2026-10-31 按用户决策移除 `unorouter` 与 `qnaigc`：它们只给 Key 级余额或时间范围内的花费，没有窗口与订阅语义，信息量不足以撑起一个入口）。它只读官方额度接口，与推理共用同一把 Key；不注册路由、不写上游。
+- 额度语义如实照搬，不套用别家的显示方式：`apigoto` 是订阅窗口 + 套餐内剩余金额 + 充值钱包（两个池，钱包为 0 不是告警）。
 - 花费一律用 `spend`，不要放进 `balance`：余额行的告警阈值与「还剩多少」文案会把花费读成可用额度。
-- 时间字段按语义区分：`apigoto` 的 `subscription.expires_at` 是套餐到期日，不是窗口重置时间，不写进 `resetsAt`。
-- 上游「无限额度」是真实状态而非欠费：`unorouter` 的 `unlimited_quota` 与负的 `total_available` 只报累计消费，不产余额行。
-- `unorouter-sonnet` 与 `unorouter` 共用同一把 Key、同一份额度，Client 用 `ROUTE_PROVIDER_ALIAS` 归并；新增同类第二路由须同样归并，避免显示成两份套餐。
-- 单位换算只在各自 `normalize` 内显式完成（`unorouter` 按 500000 单位 = 1 USD），不引入通用折算。
+- 时间字段按语义区分：`apigoto` 的 `subscription.expires_at` 是套餐到期日，不是窗口重置时间，不写进 `resetsAt`；它以「套餐到期 …（还有 N 天）」说明行显示，已过期改写为「套餐已于 … 到期」，不显示「还有 0 天」。
+- 徽标只放套餐名（`plan`），到期/策略/模式/积分走 `note` 说明行：徽标是标题行里的一小块，塞进结论会被挤成一串。`policy_name` 与套餐名相同则不重复占行，`points` 为 0 不占行，`mode` 只翻译认得出的取值。
+- 归一化走同一返回结构 `windowExtrasResult({ windows, extras, coverage })` 与窗口档位 `windowKindFromSeconds()`；额度端点只登记在 `PROVIDERS[id].usageUrl`，不在 `fetchProvider` 里散写 URL。
+- 附加行 kind 只用 `plan` / `balance` / `spend` / `note`，不产 `account` 附加行，避免工具文本把单 Key 读成多账户标注。
 
 ## 凭据解析与多 Key 监控
 

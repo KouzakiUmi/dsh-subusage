@@ -18,7 +18,7 @@
 
 </div>
 
-> **0.19.0**：新增三家中转聚合商额度——APIGOTO（订阅窗口 + 套餐内余额）、UnoRouter（Key 余额或累计消费，与 `unorouter-sonnet` 路由共用）、七牛云（只有费用口径，显示消耗而非余额）。[查看更新记录](docs/changelog.md)。
+> **0.19.1**：中转聚合商收窄到 APIGOTO，并优化其显示——套餐到期带剩余天数、计费模式翻成中文、策略名与套餐名相同时不重复占行；移除信息量不足的 UnoRouter 与七牛云两条入口。[查看更新记录](docs/changelog.md)。
 
 ## 快速开始
 
@@ -55,13 +55,13 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 ## 支持什么
 
-**33 条数据入口，新安装默认开启 11 条。** 按使用场景，主要分为：
+**31 条数据入口，新安装默认开启 11 条。** 按使用场景，主要分为：
 
 | 你想看什么 | 代表提供商 |
 |---|---|
 | 订阅窗口与重置时间 | Kimi、MiMo、Codex、GitHub Copilot、SuperGrok、MiniMax、Z.ai、OpenCode Go、OpenDesign |
 | 账号钱包与 API 余额 | DeepSeek API / 账号、SiliconFlow、Novita、Hyperbolic、DeepInfra |
-| 套餐、余额与多层预算 | Command Code、NanoGPT、OpenRouter、ZenMux、LiteLLM、APIGOTO、UnoRouter |
+| 套餐、余额与多层预算 | Command Code、NanoGPT、OpenRouter、ZenMux、LiteLLM、APIGOTO |
 | 账号级套餐与企业席位 | 火山方舟 Agent Plan / Coding Plan |
 
 [查看完整支持清单](#支持的数据--supported-data) · [查看哪些经过真实账号验证](#support-status--实测覆盖)
@@ -138,7 +138,7 @@ OpenDesign 药丸按当前路由标注计费来源：套餐模型显示「使用
 
 ## 支持的数据 / Supported data
 
-共 **33 条 provider id**：新安装**有效默认开启 11 条、关闭 22 条**。另有 **4 条联动项**（`antigravity`、`trae`、`trae-global`、`trae-enterprise`）：它们没有自己的凭据、检测开关与设置卡片，只在本机运行对应兄弟插件（[`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) / [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae)）时才出现在 `subusage_quota` 工具报告与 `quota()` 视图里，数据取自那些插件自己算好的额度（一个读它的 Cordis 服务，一个读它挂在本机的只读用量路由）。清单取自 [`lib/index.js`](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 的组归一化为准：Ark 个人版两路默认开启，Team 两路由独立开关控制且默认关闭。展示顺序与短名取自 [`lib/client.js`](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
+共 **31 条 provider id**：新安装**有效默认开启 11 条、关闭 20 条**。另有 **4 条联动项**（`antigravity`、`trae`、`trae-global`、`trae-enterprise`）：它们没有自己的凭据、检测开关与设置卡片，只在本机运行对应兄弟插件（[`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) / [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae)）时才出现在 `subusage_quota` 工具报告与 `quota()` 视图里，数据取自那些插件自己算好的额度（一个读它的 Cordis 服务，一个读它挂在本机的只读用量路由）。清单取自 [`lib/index.js`](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 的组归一化为准：Ark 个人版两路默认开启，Team 两路由独立开关控制且默认关闭。展示顺序与短名取自 [`lib/client.js`](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
 
 | 提供商 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|---|
@@ -172,9 +172,7 @@ OpenDesign 药丸按当前路由标注计费来源：套餐模型显示「使用
 | ZenMux | `zenmux` | 5 小时 / 周窗口 + PAYG 余额 | **Management API Key** | 关 |
 | LiteLLM | `litellm` | Key / 用户 / 团队预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
 | OpenDesign | `opendesign` | Design Plan 5 小时 / 7 天窗口 + 套餐余额（订阅额度）、总额度（钱包合计 = 订阅 + 充值） | **控制台会话 Cookie**（不是模型调用的 sk- Key） | 关 |
-| APIGOTO | `apigoto` | 订阅窗口（`window_sec` 定档）+ 套餐内剩余金额 | Bearer，与推理同一把 Key | 关 |
-| UnoRouter | `unorouter` | Key 余额 / 累计消费（`unorouter-sonnet` 路由共用） | Bearer，**用 Key 自身**读额度 | 关 |
-| 七牛云 | `qnaigc` | **本月消耗（人民币元）**，不是余额 | Bearer，与推理同一把 Key | 关 |
+| APIGOTO | `apigoto` | 订阅窗口（`window_sec` 定档）+ 套餐内剩余金额 + 套餐到期倒计时 | Bearer，与推理同一把 Key | 关 |
 
 - 各家的**窗口语义、明细字段与单位换算**（例如 ZenMux / Ollama 的 0–1 小数、Novita 的 1/10000 USD、Kimi 随套餐变化的窗口集合）见 [提供商清单与额度语义](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md)。
 - 评估过但**不接入**的厂商与理由见 [提供商覆盖与取舍](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/provider-coverage.md)（含已由用户决策跳过的 Anthropic）。
@@ -306,7 +304,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 
 - **设置页路径**：设置 → **订阅用量** → 提供商管理。管理区使用单列列表，每家都有独立的检测开关与「配置」按钮；编辑器在当前项下方展开，不会切换上方正在查看的用量。「没有检测到API的默认隐藏」默认开启；首次没有可见条目时管理区自动展开。关闭的提供商仍可配置凭据，只是不会发起用量请求。
 - **凭据从哪来**：每一类凭据的**官网入口、环境变量名与界面填入位置**都写在[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)——包括火山的 IAM AK/SK（子用户还要挂 `ArkReadOnlyAccess` 且不限制到项目）、MiMo 的平台会话 Cookie、以及各家 API Key 的对照表。**注意推理 Key 与额度凭据不通用。**
-- **默认开关策略**：新安装默认开启 11 条、默认关闭 22 条（**Codex 默认关闭**——它的提供方插件自带用量药丸；GitHub Copilot 与火山 Team 检测也默认关闭）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
+- **默认开关策略**：新安装默认开启 11 条、默认关闭 20 条（**Codex 默认关闭**——它的提供方插件自带用量药丸；GitHub Copilot 与火山 Team 检测也默认关闭）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
 - **火山方舟共用凭据、分组检测**：4 条路由共用同一组 IAM AK/SK，所以设置页只呈现**一张卡片**。其中「个人版」开关控制 Agent Plan / Coding Plan，独立的「Team 检测」开关控制两条团队版路由且默认关闭；两组互不影响。这些 provider id 并没有合并——药丸仍按 id 匹配路由。旧插件 `@volcengine/ark-plan-api` 的两个国内路由（`ark-coding-plan-cn` / `ark-agent-plan-cn`）**已移除**：它们与 arkcli 的路由查同一份订阅，并列显示只会让人以为买了两个套餐；装了旧插件的用户，药丸仍按那两个 id 显示同一份数据（入口归并到 arkcli 路由）。
 - **火山方舟不按路由收起**：它的额度走**账号级管控面**，一组 AK/SK 就能查到名下所有套餐（`GetCodingPlanUsage` 与 `GetAFPUsage` 是同一套协议、同一组凭据）。推理路由装没装只影响模型能不能用，**不影响额度能不能查**——所以只持有 Coding Plan、却没在 DSH 里配 coding-plan 路由时，那条额度照样会显示（前提是配了 AK/SK）。
 - **凭据来源优先级**（`inherit` 模式）：**DSH 路由实际声明的 `apiKeyEnv` → 该提供商额外配置的监控引用名 → 内置环境变量名 → 启动环境 → 旧手动配置兜底**。客户端 Models 页保存的自定义 Key 写进路由的 `apiKeyEnv`，药丸与用量跟随它。切到自定义（`manual`）模式时优先使用保存的手动 Key；删除手动 Key 后自动回到继承。界面会区分这些来源。

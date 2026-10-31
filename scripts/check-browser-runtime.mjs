@@ -52,12 +52,12 @@ try {
     assert.equal(info.tabsVisible, true, '窄屏仍使用按钮导航');
     assert(info.tabWidths.every(width => width > 0), '所有标签均有可点击区域');
     assert.equal(info.selectCount, 0, '整个设置页不使用下拉列表');
-    // 原有 32 个开关 + 默认关闭的手动匹配开关。
-    assert.equal(info.switches.length, 33, '提供商、Ark Team、默认隐藏与手动匹配开关');
+    // 原有 30 个开关 + 默认关闭的手动匹配开关。
+    assert.equal(info.switches.length, 31, '提供商、Ark Team、默认隐藏与手动匹配开关');
     assert(info.switches.every(item => item.label), '开关有无障碍名称');
-    // 默认关闭 22 条 − 桩里显式打开的 MiniMax 国际版 1 条 = 21 条路由；
-    // 两条 Team 路由共用一个开关，加上默认关闭的手动匹配，界面有 21 个关闭开关。
-    assert.equal(info.switches.filter(item => item.state === 'false').length, 21, '预览桩下关闭的 21 个开关');
+    // 默认关闭 20 条 − 桩里显式打开的 MiniMax 国际版 1 条 = 19 条路由；
+    // 两条 Team 路由共用一个开关，加上默认关闭的手动匹配，界面有 19 个关闭开关。
+    assert.equal(info.switches.filter(item => item.state === 'false').length, 19, '预览桩下关闭的 19 个开关');
     await page.screenshot({ path: file.replace(/\.html$/, '.png'), fullPage: true });
     await context.close();
     console.log(`PASS ${theme}/${width} 提供商开关、可换行按钮、无下拉、无溢出`);

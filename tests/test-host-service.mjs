@@ -84,7 +84,7 @@ staleManual.environment[Z] = { value: "env-fallback" };
 result = await staleManual.service.refresh({ providerIds: [Z], force: true });
 assert.equal(result.entries[0].keySource, "env");
 const isolated = harness(); isolated.service.credentials = async id => { if (id === Z) throw new Error("DO NOT LEAK"); return undefined; };
-result = await isolated.service.read(); assert.equal(result.entries.length, 33); assert.equal(result.entries[0].errorCode, "subusage/credentials"); assert(!JSON.stringify(result).includes("DO NOT LEAK")); assert.equal(isolated.calls.length, 0);
+result = await isolated.service.read(); assert.equal(result.entries.length, 31); assert.equal(result.entries[0].errorCode, "subusage/credentials"); assert(!JSON.stringify(result).includes("DO NOT LEAK")); assert.equal(isolated.calls.length, 0);
 // identity 解析（凭据服务/登录文件读取）与 HTTP 一样可能永久挂起：默认 10s（对齐 fetchJson 的
 // AbortSignal.timeout）。注入极短 identityTimeoutMs + 永不 resolve 的 resolveCredentials，验证
 // 超时后该家在短时间内返回可读 error 条目、不拖死同批其它 provider（Client 的「刷新中」不再

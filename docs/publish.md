@@ -23,6 +23,8 @@ tag 必须等于 `v` 加包版本。版本 Release 使用 `make_latest: legacy`�
 
 ## npm
 
+0.19.1 中转聚合商收窄到 APIGOTO（按用户决策移除 `unorouter` 与 `qnaigc` 两条 provider：它们只给 Key 级余额或时间范围内的花费，没有窗口与订阅语义；登记 31 条、默认 11 开 / 20 关），并优化 APIGOTO 显示（套餐到期带剩余天数且已过期改写、`policy_name` 与套餐名相同时不重复占行、`mode` 翻成中文、`points` 为 0 不占行、钱包文案改为「充值钱包另有 …」、`unit` 缺失时不留悬空空格）。发布完成以 `v0.19.1` 标签对应的 Actions、GitHub Release 资产与 npm registry 的实际结果为准，不自动安装或重启本机 DSH。
+
 0.19.0 三家中转聚合商额度（新增 `apigoto` / `unorouter` / `qnaigc` 三条 provider，均默认关闭；登记 33 条、默认 11 开 / 22 关；`kxyai` 按用户要求未接入）。已于 2026-10-30 经 `v0.19.0` 标签 → `release.yml` 发布：工作流 success（标签版本校验、测试、清单/语法、打包、Release、npm 发布全绿），主分支 CI 同步 success；registry 的 `versions["0.19.0"]` 与 `dist-tags.latest` 均为 0.19.0，未出现既有传播延迟形态。`v0.19.0` Release 资产与 npm tarball SHA256 一致（`sha256:faa4c7b4918b185ff7b3611fae6cfaaabdbd4fdd4d4d3b7d454a1829b5c733f8`，184681 字节）。**未安装到 `desktop` Profile、未重启 DSH**，界面验收待安装后进行。
 
 0.18.2 客户端 Key 同步与多 Key 监控（解析优先路由实际 `apiKeyEnv`；每个 provider 最多 8 个 `keyRefs` 额外引用名；清除手动 Key 后自动回到 `inherit`）。已于 2026-10-30 经 `v0.18.2` 标签 → `release.yml` 发布：工作流 success（测试、清单/语法、打包、Release、npm 发布全绿），registry 的 `versions["0.18.2"]` 与 `dist-tags.latest` 均为 0.18.2；`v0.18.2` Release 资产与 npm tarball SHA256 一致（`sha256:17186836ac2a610933b55a280bd645146e63a7951d1694a6fa3f33ac049f4858`，180706 字节）。未安装到 `desktop` Profile、未重启 DSH。

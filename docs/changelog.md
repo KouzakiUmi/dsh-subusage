@@ -2,6 +2,24 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.19.1：中转聚合商收窄到 APIGOTO，并优化其显示
+
+**移除 `unorouter` 与 `qnaigc` 两条 provider（按用户决策）**：它们的信息量不足——UnoRouter 只给出 Key 级余额/累计消费，七牛云只有一个时间范围内的花费金额，都没有窗口或订阅语义，与药丸和额度面板要表达的东西对不上。移除后登记 **31 条** provider id，默认 11 开 / 20 关。注册表、归一化函数、`fetchProvider` 分支、Client 元数据与顺序表、`unorouter-sonnet` 路由别名、相关测试与文档一并清理；已经启用过这两家的旧配置在解析时被忽略，不再请求它们的端点。
+
+- 窗口档位统一由 `windowKindFromSeconds()` 决定，APIGOTO 的 `window_sec` 与 OpenDesign 的 `durationSeconds` 共用同一套口径。
+- 归一化统一返回 `windowExtrasResult({ windows, extras, coverage })`，字段名与默认值只有一处定义。
+- 额度端点登记进 `PROVIDERS[id].usageUrl`，`fetchProvider` 不再散落硬编码 URL。
+
+**APIGOTO 显示优化**（信息集合扩大，条目更有层次）：
+
+- `plan` 徽标只放套餐名。到期日原先挤在徽标里（「套餐名 · 到期 2026-11-29」），现在另起说明行并带剩余天数：`套餐到期 2026-11-29（还有 31 天）`；已过期则写 `套餐已于 2026-11-29 到期`，不显示「还有 0 天」。**到期日仍然不写进 `resetsAt`**——它是套餐有效期，不是窗口重置。
+- `policy_name` 与套餐名不同时补一行 `策略 …`；实测两者只差厂商前缀，相同时不重复占行。
+- `mode` 翻译成中文显示（`subscription` → 订阅制，`paygo` → 按量计费），认不出的模式原样带出，不猜。
+- `points` 非 0 时显示；0 是没有信息量的默认值，不占行。
+- 充值钱包文案由「另有余额钱包」改为「充值钱包另有 N USD」，与主余额的「套餐内剩余」区分开。
+- 窗口明细行在 `unit` 缺失时不再留一个悬空空格（新增 `detailUsedNoUnit` 文案键）。
+- 回归重写为 `tests/test-relay-aggregators.mjs` 单家覆盖，钉住到期倒计时、策略去重、模式翻译、积分为 0 不占行、钱包为 0 不告警、`expires_at` 不进 `resetsAt`，以及已移除两家在注册表 / 顺序表 / 路由别名三处无残留。
+
 ## 0.19.0：三家中转聚合商（APIGOTO / UnoRouter / 七牛云）
 
 - 新增 3 条 provider id，均默认关闭、不进新安装的默认开启序列；至此登记 33 条，默认 11 开 / 22 关。
