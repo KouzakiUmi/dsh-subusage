@@ -177,7 +177,18 @@ Cookie 必须**同时包含** `api-platform_serviceToken` 与 `userId`，否则�
 | NanoGPT | `NANOGPT_API_KEY` | NanoGPT 控制台 |
 | Synthetic | `SYNTHETIC_API_KEY` | Synthetic 控制台 |
 | LiteLLM | `LITELLM_API_KEY` | **你自建的网关**：虚拟 Key + 在设置页填 proxy 地址 |
+| New API | `NEWAPI_API_KEY` | **你自建的 New API / one-api 站点**：推理用的同一把 `sk-` Key + 在设置页填站点根地址。不要填控制台访问令牌；账户余额需要令牌开启「允许查询用户额度」 |
 | OpenDesign | `OPEN_DESIGN_COOKIE` | 「登录并自动导入」可用（遇 Cloudflare 人机验证在弹出窗口中完成）；也可手动获取：在自己浏览器登录 open-design.ai → `F12` → Network（筛 Fetch/XHR）→ `F5` 刷新 → 点状态 200 的 `coding-plan-usage` → Headers → Request Headers → 复制 `cookie` 字段的**完整值**（不含 `cookie:` 字段名），粘进卡片里标签为「会话 Cookie」的输入框。手动填写先保存，再独立验证；认证失效明确报告，不归为「数据不完整」，此时更新 Cookie 后再验证。要的是会话 Cookie（含 `__Secure-better-auth.session_token`），不是 `sk-` 模型 Key——那把 Key 只在模型端点生效，没有额度端点 |
+
+### New API（自建站点）
+
+New API / one-api 的余额查询与推理共用**同一把 `sk-` Key**：把它填进 New API 卡片的「连接与凭据」，或在凭据库 / 环境变量里提供 `NEWAPI_API_KEY`。
+
+- **站点地址**：填站点根，例如 `https://your-newapi.example.com`。末尾的 `/v1`（OpenAI 兼容地址）或 `/api`（管理接口前缀）会被自动去掉；自建子路径保留。
+- **不要用控制台访问令牌**：额度查询走 `GET {站点}/api/usage/token/`，只认 `sk-` 模型 Key 的 Bearer；控制台令牌与用户 ID 不是这里要的凭据。
+- **账户余额**：`user_quota` 只在令牌开启「允许查询用户额度」（`allow_user_quota_query`）时返回；没有它时只显示令牌自身额度。无限额度令牌如果也没有账户额度，会明确提示开启该开关。
+- **自定义模型路由**：例如本机的 `custom-relay` 路由，先在「手动匹配 provider」里把 `New API` 绑定到它，再把该路由的 `apiKeyEnv`（如 `CUSTOM_RELAY_API_KEY`）加进「额外监控的 Key」，或直接把同一把 Key 手动填进 New API 卡片。手动匹配不改变凭据来源，所以 Key 仍要从这条链里取。
+- 金额按站点标准 **500000 quota = 1 Credits** 显示，不按国家货币或站点汇率换算。
 
 ### OpenCode Go 的两个引用名
 

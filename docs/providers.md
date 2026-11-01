@@ -11,7 +11,7 @@
 
 ## 1. 清单与默认开关
 
-31 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 11 条、关闭 20 条**，与注册元数据的 11 开 / 20 关一致：火山个人版两条默认开启，Team 两条由独立的 `visibility.arkTeam` 控制且默认关闭，不再随 `visibility.ark` 打开。Codex 仍默认关闭，避免与提供方自带药丸重复。设置页里这 31 条合并成 **28 张卡片**；历史已保存开关继续合并，未显式配置过 `arkTeam` 的旧配置按关闭迁移。
+32 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 11 条、关闭 21 条**：火山个人版两条默认开启，Team 两条由独立的 `visibility.arkTeam` 控制且默认关闭，不再随 `visibility.ark` 打开；New API 默认关闭。Codex 仍默认关闭，避免与提供方自带药丸重复。设置页里这 32 条合并成 **29 张卡片**；历史已保存开关继续合并，未显式配置过 `arkTeam` 的旧配置按关闭迁移。
 
 新增厂商须同时改 `PROVIDERS`、`PROVIDER_META` / `PROVIDER_ORDER`、帮助文案、README 与默认值测试；未获明确需求的新订阅商一律 `defaultEnabled: false`，原有偏好通过存储合并保留。
 
@@ -49,6 +49,7 @@
 | ZenMux | 5 小时 / 周滚动窗口 | `usage_percentage` 是 **0–1 小数**，另附 flows 明细与 `resets_at`；有 Management Key 时显示 PAYG 余额。两个端点各拿各的——余额被拒不影响配额；**订阅端点失败时保留余额但标部分数据并写明「套餐状态暂不可确认」，不据此宣称未订阅** |
 | LiteLLM | 独立 Key / User / Team 预算周期 | 各层已用 / 预算、百分比和可用重置；**没有预算上限时不编造百分比**，只如实显示已用金额 |
 | APIGOTO（`apigoto`） | 订阅窗口，档位由 `subscription.window_sec` 换算（不从套餐名反推） | 已用 / 上限按 `used`/`limit` 算（接口不给百分比），单位如实透传（实测 `rpm_credits`）；余额取套餐内 `remaining`（单位随 `unit`）。**`expires_at` 是套餐到期日，不写进 `resetsAt`**，另以「套餐到期 …（还有 N 天）」说明行显示（已过期改写为「套餐已于 … 到期」）；`policy_name` 与套餐名相同时不重复占行；`mode` 翻成中文（订阅制 / 按量计费），`points` 为 0 不占行；充值钱包 `balance_usd` 为 0 时不产生余额行，大于 0 时以「充值钱包另有 …」另起一行 |
+| New API（`newapi`） | 有限令牌的 `period` 额度窗口；无限制令牌无窗口 | 有限令牌：余额取 `total_available`，窗口按 `total_used / total_granted` 算；无限制令牌：余额取 `user_quota.total_available`，累计消费取 `user_quota.total_used`。单位固定 **500000 quota = 1 Credits**，不按国家货币换算；`expires_at` 是令牌到期，只作说明行、不进 `resetsAt` |
 | OpenDesign（`opendesign`） | Design Plan 5 小时 / 7 天窗（按套餐下发；plan model credits 无窗、按账期） | 已用 / 上限（credits 整数）与重置时间、档位（Go / Plus / Pro / Max）。窗口接口不下发百分比，由 `usedCredits / limitCredits` 算；个人工作区另读 `/api/v1/billing/summary`：钱包合计（订阅 + 充值）显示为**总额度**、订阅额度（换算成美元）显示为**套餐余额**——两者是**两个池**，旧文案「月额度剩余 / 余额」会被读成同份额度的两个比较值（0.15.0 起改名，见 [界面文案](#opendesign-额度文案)）。两个端点对普通取数故障独立降级；认证/凭据错误不参与降级，应明确提示登录失效或凭据被拒，且不沿用旧额度缓存。零余额照常显示且不影响 Design Plan 窗口；不按模型倍率或套餐价格推算钱包上限。**5 小时窗不是每个套餐都有**，只有 7 天窗不构成缺数据 |
 
 非公开控制台接口可能变更；缺失或非法百分比不会当作零用量。部分数据、未知额度和暂时失败有明确状态，不能据此保证推理接口一定可用。
@@ -61,7 +62,7 @@ Kimi 的窗口集合随套餐体系变化：老套餐（节奏命名，如 Alleg
 
 ### 余额的显示与预警
 
-余额型条目（`deepseek`、`deepseek-account`、`siliconflow`、`novita`、`hyperbolic`、`deepinfra`、`vercel-ai-gateway`）**不要求本机装有对应的模型路由**：官方余额与本机账号余额都独立于推理入口，手动模式或已存 Key 的账号照样能查。火山方舟同样按账号级管控面而非推理路由收起。
+余额型条目（`deepseek`、`deepseek-account`、`siliconflow`、`novita`、`hyperbolic`、`deepinfra`、`vercel-ai-gateway`、`newapi`）**不要求本机装有对应的模型路由**：官方余额、本机账号余额与自建 New API 站点都独立于推理入口，手动模式或已存 Key 的账号照样能查。火山方舟同样按账号级管控面而非推理路由收起。
 
 药丸与弹层对余额的规则（与 [UX 设计](design-ux.md) 的 `computeStatus` 章节一致）：
 
@@ -240,6 +241,24 @@ Command Code 的凭据由提供方插件 `@mars-sea/dsh-commandcode-provider` �
 
 **一次读全部账户**：`subusage_quota` 与 Host 的 `subUsage.quota()` 在涉及 Command Code 时会**按账户各返回一条**（`account` / `accountActive` / `accountMode`，当前激活的排最前），数据来自同一批计费接口、按「路由 id + 账户引用名」各占一份缓存（TTL 60 秒），因此读全部账户不会把彼此的缓存顶掉。账户清单读自提供方插件的 `llm-commandcode` 设置（带 `redactSecrets` 只读非秘密字段、不额外请求接口）：默认账户 + 各额外账户（id 取凭据引用名，label 空白回退 `Account N`），无凭据引用、重复引用与登记未完成的账户不列——与提供方插件 `slots()` 的唯一差异是**不支持「字面 Key」账户**（`accounts[].apiKey` 直接写在提供方配置里的那种）：那种 Key 按引用名解析不到，列出来只会选中即「未配置凭据」，所以设置页与工具两处都跳过它；代价是**把这种账户固定为 `activeAccount` 时本插件读不到该 id，会按「自动轮换」显示**（提供方插件的设置页仍会显示它被固定）。
 
+### New API（new-api / one-api）
+
+`newapi` 是**自建站点**入口：站点根由 `settings.newapi.baseUrl` 提供，代码里不硬编码任何中转域名。额度查询走 `GET {站点根}/api/usage/token/`，鉴权是**推理同一把 `sk-` Key** 的 `Authorization: Bearer …`；不要填控制台访问令牌或用户 ID。路径用尾斜杠，因为演示站会把无斜杠地址 301 到有斜杠，而请求层把 3xx 当错误。站点根末尾的 `/v1`（OpenAI 兼容地址）或 `/api`（管理接口前缀）会被去掉一层，自建子路径保留；只接受 http(s)，拒绝把用户名密码写进 URL。
+
+响应可以是 New API 的 `{ code: true, data }`，也可以是部分 one-api 系的 `{ success: true, data }`；显式 `false` 是**拒绝**（附截断后的 message），不是数字。`data` 字段：`name`、`total_granted`、`total_used`、`total_available`、`unlimited_quota`、`expires_at`，以及**可选**的 `user_quota: { total_available, total_used }`——后者只在令牌开启 `allow_user_quota_query` 时返回。
+
+单位固定按站点标准 **500000 quota = 1 Credits**，不按国家货币或站点汇率换算：
+
+- **无限制令牌**（`unlimited_quota: true`）：令牌自身的 `total_*` 没有可用上限；主余额取 `user_quota.total_available`，累计消费（`spend`，不是余额）取 `user_quota.total_used`，并说明「无限额度令牌」。没有 `user_quota` 时报可行动错误，提示开启「允许查询用户额度」或改用有额度的令牌。
+- **有限令牌**：主余额取 `total_available`；`total_granted > 0` 时产出 `period` 窗口（`total_used / total_granted`，**没有重置时间**，不编造 `resetsAt`）。若同时有 `user_quota`，另以说明行给出账户余额（`账户余额另有 …` / `账户余额为 0`），不把两个池合并成一个数字；有限令牌的 `used` 已在窗口里，不再重复报账户累计消费。
+- **显式非无限但全 0**：如实显示 `0 Credits`，不判失败；`unlimited_quota` 缺失且没有任何正数/账户额度时才是「没有可用余额」。
+- **`expires_at`** 是令牌到期（秒；大于 1e12 视为毫秒），只作「令牌到期 …（还有 N 天）」/「令牌已于 … 到期」说明行，**不是额度窗口重置**。
+- 只有元数据（令牌名/到期）而没有余额或窗口时判为读取失败，不把说明行当额度。
+- 401/403 映射为认证错误（提示「额度查询与推理使用同一把 sk- Key」）；404 提示站点缺少 `/api/usage/token/` 或版本不匹配；429/5xx 沿用可重试退避。
+- 站点地址变化会改变查询指纹并立即失效旧缓存；站点地址为空按「未配置凭据」处理，不发起请求。
+
+自定义模型路由（例如本机的 `custom-relay`）通过**手动匹配 provider** 绑定到本订阅；站点地址与 Key 仍在 New API 卡片里单独配置。Key 可以手动填，也可以把该路由的 `apiKeyEnv`（如 `CUSTOM_RELAY_API_KEY`）加进「额外监控的 Key」或导出为 `NEWAPI_API_KEY`。手动匹配只改变药丸显示哪份订阅数据，不改变凭据来源或查询端点。
+
 ### 网络端点
 
 | 用途 | 域名 |
@@ -247,7 +266,7 @@ Command Code 的凭据由提供方插件 `@mars-sea/dsh-commandcode-provider` �
 | 各订阅 / 余额接口 | `api.apigoto.com`、`api.deepseek.com`、`open.bigmodel.cn`、`api.z.ai`、`api.kimi.com`、`opencode.ai`、`api.siliconflow.cn`、`openrouter.ai`、`api.synthetic.new`、`nano-gpt.com`、`api.novita.ai`、`api.hyperbolic.ai`、`api.deepinfra.com`、`api.chutes.ai`、`ollama.com`、`ai-gateway.vercel.sh`、`zenmux.ai`、`api.minimax.io`、`api.minimaxi.com` |
 | 会话 / 登录文件型 | `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`（Command Code 计费）、`cli-chat-proxy.grok.com`（SuperGrok 计费代理）、`grok.com`（credits 格式失败时的 GetGrokCreditsConfig gRPC-web）、`chatgpt.com/backend-api`（Codex 订阅用量）、`api.github.com`（GitHub Copilot 私有额度接口；企业版按记录里的 `enterpriseUrl` 换 `api.<域名>`，主机名只取普通域名）、`amr-api.open-design.ai`（OpenDesign 控制台额度：先读 `/v1/workspaces/current` 取 workspaceId，再读该工作区的 coding-plan-usage） |
 | 火山方舟管控面 | `open.volcengineapi.com` |
-| 自建网关 | 用户自填的 LiteLLM proxy 地址（只去掉 `/v1` 这类版本段，其余路径原样保留） |
+| 自建网关 | 用户自填的 LiteLLM proxy 地址（只去掉 `/v1` 这类版本段，其余路径原样保留）；用户自填的 New API / one-api 站点（`/api/usage/token/`，站点根的 `/v1` 或 `/api` 尾缀会被去掉） |
 | 复用宿主账号请求链 | `deepseek-account`：调用本机 `deepseekAccount` 服务，由 DSH 完成鉴权与余额请求；宿主服务可能按自身配置联网，本插件不另发 HTTP、不复制 token |
 
 除上面这些，插件不访问其他网络地址；MiMo 自动登录会额外打开官方平台页面，由你在该页面自行完成登录。
