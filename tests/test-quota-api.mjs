@@ -124,11 +124,14 @@ const okFetch = calls => async (url, options) => {
 	assert.equal(tool.output.schema.properties.providers.items.properties.windows.items.properties.percent.required, true, "windows 元素有字段级 schema");
 	assert.equal(tool.output.schema.properties.providers.items.properties.windows.items.additionalProperties, true, "窗口形态随厂商变化，保留扩展余地");
 	assert.equal(tool.output.schema.properties.providers.items.properties.extras.items.properties.value.required, true, "extras 元素有字段级 schema");
-	// 模型看不到 output schema，所以「怎么用」必须写在描述里。
+	// 模型看不到 output schema，所以「怎么用」必须写在描述里。描述是常驻提示词的一部分，
+	// 细节都在 render 的输出里，这里只钉「精简后仍保留的契约」与体量上限，防止又长回去。
 	assert.ok(tool.description.includes("no arguments"), "描述要说明可以不传参数");
-	assert.ok(tool.description.includes("vendor names"), "描述要说明可以传厂商名");
-	assert.ok(tool.parameters.providers.description.includes("unmatched name"), "参数说明要交代认不出时的行为");
-	assert.ok(tool.parameters.providers.description.includes("separators"), "参数说明要交代大小写与分隔符无关");
+	assert.ok(tool.description.includes("vendor name"), "描述要说明可以传厂商名");
+	assert.ok(tool.description.includes("unrecognized name"), "描述要交代认不出名字时的行为");
+	assert.ok(tool.parameters.providers.description.includes("omit"), "参数说明要交代省略即读全部");
+	assert.ok(tool.description.length < 1000, `工具描述要精简（当前 ${tool.description.length} 字符）`);
+	assert.ok(tool.parameters.providers.description.length < 200, "参数描述要精简");
 	// 明确受限但无窗口的企业条目不应在无参工具查询中消失。
 	const scopeText = tool.output.render({}, { providers: [{ providerId: "fixture", state: "ok", windows: [
 		{ kind: "period", budgetScope: "key", percent: 100, status: "rate-limited" },

@@ -227,8 +227,9 @@ const respondByKey = (_url, options) => {
 	assert.equal(tool.output.schema.properties.providers.items.properties.account.type, "string");
 	assert.equal(tool.output.schema.properties.providers.items.properties.accountActive.type, "boolean");
 	assert.equal(tool.output.schema.properties.providers.items.properties.accountMode.type, "string");
-	assert.ok(tool.description.includes("omitted") && tool.description.includes("multi-account"), "描述写明省略规则与多账户形态");
-	assert.ok(tool.description.includes("failed to fetch") && tool.description.includes("unrecognized"), "描述写明读取失败与「名字认不出」两条规则");
+	// 多账户形态与省略规则由 output schema 与 render 输出表达；描述只留「认不出名字」这条
+	// 用户必须知道的例外，不再把 schema 能说明的事重复进常驻提示词。
+	assert.ok(tool.description.includes("unrecognized"), "描述写明「名字认不出」这条规则");
 	// 名字一个都没认出来时：quota() 会兜底返回全量，工具**仍然**要过滤（否则拼错一个名字就换来三十条未启用）。
 	{
 		const fallback = { quota: async () => ({ updatedAt: "2026-10-11T00:00:00.000Z", providers: [

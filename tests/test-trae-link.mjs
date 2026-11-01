@@ -240,8 +240,8 @@ function harness({ webServer, replies = {}, now } = {}) {
 	};
 	apply({ get: name => name === "subUsage" ? service : undefined, inject: (names, cb) => cb(scope), plugin: () => {}, logger: scope.logger });
 	const tool = tools.find(t => t.name === "subusage_quota");
-	assert.ok(tool.description.includes("dsh-connect-trae"), "描述里要交代这块联动数据从哪来");
-	assert.ok(tool.parameters.providers.description.includes("trae"), "参数说明要能点名 trae");
+	assert.ok(tool.description.includes("trae"), "描述里要交代这块联动数据的存在");
+	// 数据来源已精简掉（兄弟插件在场才出现，写在说明里太占常驻提示词）；能否点名以行为为准。
 	const asked = await tool.execute({ providers: ["trae-global"] }, {});
 	assert.equal(asked.providers.length, 1, "点名国际版只回它自己");
 	const auto = await tool.execute({}, {});
