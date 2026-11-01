@@ -196,12 +196,23 @@ Cookie 落在通用的手动 Key 槽，并把凭据模式切成 manual，不额�
 
 ### Antigravity（联动项）
 
-`antigravity` **不是本插件登记的 provider id**，也不出现在设置页：本机运行 [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp)（包名 `dsh-bundle-antigravity-host`）时，它注册的 Cordis 服务 `agyQuota` 已经算好套餐额度快照，本插件只读那份快照并折算成同样的条目形状，并入 `quota()` 视图与 `subusage_quota` 报告。
+`antigravity` **不是本插件登记的 provider id**，也不出现在设置页。本机只要运行下面**两个提供方插件中的任一个**，本插件就读它算好的结果并折算成统一的条目形状，并入 `quota()` 视图与 `subusage_quota` 报告（同一份 Google Antigravity 配额只出一条；两者都在场时优先信息更全的 `agyQuota`）：
+
+1. [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp)（包名 `dsh-bundle-antigravity-host`）注册的 Cordis 服务 `agyQuota`，方法 `read({ force })`，快照为 `QuotaSnapshot`。
+2. [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity)（本机实际安装的版本 0.5.x，底层 `@cortexkit/antigravity-auth-core`）`ctx.provide("antigravityAuth", AntigravityAuthService)` 暴露的认证服务，方法 `usage(signal?, force?)`，返回 `QuotaStatusView`。
 
 - 换算：它报**剩余**（`remainingPct` 或 0..1 的 `remainingFraction`），对外 `percent` 是**已用** = 100 − 剩余；`window` / `name` 归到 `5h` / `week` / `month` / `day` / `period`；组名进 `groupLabel`（它说明这条百分比约束哪批模型，单组也保留）。
 - `disabled` 窗口表示「此窗口对本账号不可用」，**不等于**已达限额，因此不产出窗口、只在 extras 里留一条说明；没有比例就不产出窗口（绝不补 0）；接口只给比例不给绝对值，所以不写 `detail.used/limit`。
 - AI Credits 余额进 `balance`（单位 `credits`）、套餐名进 `plan`；刷新失败但手里有上次成功数据时由提供方插件标 `stale`，本插件照实报 `freshness: "stale"`。
-- 取数有 15 秒独立预算，请求本身带取消信号（`AbortSignal.any([controller.signal, timeout])`，随 `dispose()` abort）；对方的报错只影响这一条（`state: "error"`，`error` 截断到 200 字符）。**默认（不点名）全量查询遇到超时静默**——对方冷启动可达 45s，一次超时不该在默认报告里顶出一条 error（它的缓存随后会被补上）；**点名**查询超时仍如实报。插件不在场时顺带查询里不出现该条目；**点名**却检测不到服务时回一条可执行说明，而不是空结果。
+- 取数有 15 秒独立预算，请求本身带取消信号（`AbortSignal.any([controller.signal, timeout])`，随 `dispose()` abort）；对方的报错只影响这一条（`state: "error"`，`error` 截断到 200 字符）。**默认（不点名）全量查询遇到超时静默**——对方冷启动可达 45s，一次超时不该在默认报告里顶出一条 error（它的缓存随后会被补上）；**点名**查询超时仍如实报。两个插件都不在场时顺带查询里不出现该条目；**点名**时回一条同时列出两个插件名的安装指引，而不是空结果。
+
+**`antigravityAuth` 通道（dsh-tool-antigravity）的形状与换算**（`normalizeAntigravityAuthView()`，字段照抄该包 `lib/types/quota.d.ts`）：
+
+- 顶层 `state`：`available` 正常出数；`unauthenticated` 等同「未登录」——归一化返回 `null`（全量静默，点名给「去完成 Google 授权」指引）；`forbidden` / `rate-limited` / `timeout` / `offline` / `protocol-drift` 各折成带可读原因的 `state: "error"`。注意 **`rate-limited` 是查询被限流，不是额度用尽**，绝不画成红色耗尽窗口。
+- `groups[]` 只有固定两类：`group: "gemini"` → `groupLabel`「Gemini 模型」，`"non-gemini"` →「Claude 与 GPT 模型」（徽章口径照抄该包自带的 pet-balance 卡片）；每组 `windows[]` 的 `window` 只有 `"5h"` / `"weekly"`（→ 本插件 kind `5h` / `week`），`remainingFraction` 是 0..1 的**剩余**比例，对外 percent = `(1 − fraction) × 100`；`resetTime` 进 `resetsAt`。比例 / 窗口档位缺失或非法时跳过该窗口，不补 0、不写 `detail`。
+- 该通道没有套餐名与 AI Credits（`extras` 为空）；需要这些信息时由信息更全的 `agyQuota` 通道提供。
+
+**输入区药丸**：dsh-tool-antigravity 注册的模型路由 id 是 `google-antigravity`。Client 的 `ROUTE_PROVIDER_ALIAS` 把它归并到联动 id `antigravity`，由独立的 `subUsage/readLinked` Typert 方法取数（Host 的 `readLinked()` 走与 `quota()` 相同的联动通道，但结果只含 `{ updatedAt, entries }`、不回 settings，避免药丸轮询顶掉设置快照）。联动项不进 `PROVIDER_META` / `PROVIDER_ORDER`，因此不出现在设置页，也不受检测开关 / 凭据存在性 / 路由存在性过滤——可见性完全由 Host 返回的条目决定（未装插件时药丸仍渲染并显示缺席原因）。
 
 ### Trae（联动项）
 

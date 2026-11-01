@@ -41,7 +41,7 @@ function shape(contract) {
   }));
 }
 assert.deepEqual(shape(mounted), shape(host.subUsageRemote), '两端 method、wire、codec 必须一致');
-assert.deepEqual(JSON.parse(JSON.stringify(mounted.descriptors.map(d => d.method).sort())), ['cancelMimoLogin', 'cancelOpenDesignLogin', 'getMimoLoginStatus', 'getOpenDesignLoginStatus', 'read', 'refresh', 'save', 'startMimoLogin', 'startOpenDesignLogin']);
+assert.deepEqual(JSON.parse(JSON.stringify(mounted.descriptors.map(d => d.method).sort())), ['cancelMimoLogin', 'cancelOpenDesignLogin', 'getMimoLoginStatus', 'getOpenDesignLoginStatus', 'read', 'readLinked', 'refresh', 'save', 'startMimoLogin', 'startOpenDesignLogin']);
 const start = host.subUsageRemote.descriptors.find(d => d.method === 'startMimoLogin');
 const cancel = host.subUsageRemote.descriptors.find(d => d.method === 'cancelMimoLogin');
 assert.equal(start.parameters[0].codec.schema.parse({ expectedRevision: 'current-revision' }).expectedRevision, 'current-revision');
@@ -67,6 +67,17 @@ assert.deepEqual(unknownQuery.providerIds, [], '未知 id 不进 providerIds');
 assert.deepEqual(unknownQuery.unknown, ['not-supported'], '未知 id 单独列出，交给 refresh 说明原因');
 assert.throws(() => refresh.parameters[0].codec.schema.parse({ providerIds: 'not-an-array', force: true }), 'providerIds 形状错误仍拒绝');
 assert.throws(() => refresh.parameters[0].codec.schema.parse({ providerIds: ['kimi-coding'] }), '缺 force 仍拒绝');
+// readLinked：两端 descriptor 同 id / 同 codec；联动 id 白名单（antigravity / trae*）。
+const linkedHost = host.subUsageRemote.descriptors.find(d => d.method === 'readLinked');
+const linkedClient = mounted.descriptors.find(d => d.method === 'readLinked');
+assert.ok(linkedHost && linkedClient, '两端都注册 readLinked');
+assert.equal(linkedHost.parameters[0].codec.typeSymbol, linkedClient.parameters[0].codec.typeSymbol);
+assert.deepEqual(linkedHost.parameters[0].codec.schema.parse({ providerIds: ['antigravity'], force: false }).providerIds, ['antigravity']);
+assert.deepEqual(linkedHost.parameters[0].codec.schema.parse(undefined), { providerIds: [], force: false }, 'Host 缺省请求合法');
+assert.deepEqual(linkedHost.parameters[0].codec.schema.parse({ providerIds: ['antigravity', 'deepseek'], force: true }).providerIds, ['antigravity'], 'Host 过滤非联动 id');
+assert.throws(() => linkedHost.parameters[0].codec.schema.parse({ providerIds: [], force: 'no' }), 'Host 拒绝非法 force');
+assert.deepEqual(linkedClient.parameters[0].codec.schema.parse({ providerIds: ['trae-global'], force: true }).providerIds, ['trae-global']);
+assert.throws(() => linkedClient.parameters[0].codec.schema.parse({ providerIds: ['deepseek'], force: false }), 'Client 出站请求拒绝非联动 id');
 const save = host.subUsageRemote.descriptors.find(d => d.method === 'save');
 const patch = save.parameters[0].codec.schema.parse({ providerId: 'kimi-coding', keyUpdate: { action: 'keep' } });
 assert.equal(patch.providerId, 'kimi-coding');

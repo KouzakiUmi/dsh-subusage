@@ -2,6 +2,13 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.20.0：Antigravity 用量接入本机 dsh-tool-antigravity，并进入输入区药丸
+
+- **新增第二条 Antigravity 联动通道**：本机实际安装的 Antigravity 提供方插件是 [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity)（0.5.x），它经 `ctx.provide("antigravityAuth", AntigravityAuthService)` 暴露服务，取数方法 `usage(signal?, force?)` 返回 `QuotaStatusView`（`state` 七态；`groups[]` 固定 `gemini` / `non-gemini` 两组，各带 `5h` / `weekly` 两窗的 0..1 剩余比例与 `resetTime`）。新增 `normalizeAntigravityAuthView()` 照其 `lib/types/quota.d.ts` 归一化：剩余比例换算成已用百分比，组名映射为「Gemini 模型」「Claude 与 GPT 模型」；`unauthenticated` 按未登录处理（全量静默、点名给登录指引），`forbidden` / `rate-limited` / `timeout` / `offline` / `protocol-drift` 各折成可读 error（查询限流不等于额度耗尽）。
+- **与既有 `agyQuota`（dsh-antigravity-acp）通道二选一**：`LINKED_PROVIDERS.antigravity.channels = ["agyQuota", "antigravityAuth"]`，`linkedSnapshot()` 顺序探测，只在「服务取不到 / 没有该方法」时回落；服务在场但回失败快照不回落。同一份 Google Antigravity 配额始终只出一条 `antigravity`，agyQuota 信息更全（套餐名 + AI Credits）故优先。别名补充 `google-antigravity`（该插件的模型路由 id）、`dsh-tool-antigravity`。
+- **Antigravity 联动首次进入输入区药丸**：选中 `google-antigravity` 模型路由时，Client 经 `ROUTE_PROVIDER_ALIAS` 归并到联动 id 并显示用量。联动项不进 `PROVIDER_META` / `PROVIDER_ORDER`（无设置卡片、无检测开关、不参与凭据 / 路由存在性过滤）。新增独立 Typert 方法 `subUsage/readLinked`（Host `readLinked()`，结果只含 `{ updatedAt, entries }` 不回 settings，避免药丸轮询顶掉设置快照），两端各加 `SubUsageLinkedQuery` / `SubUsageLinkedResult` codec。Trae 三块面板维持「仅工具报告」。
+- 回归：新增 `tests/test-antigravity-tool-link.mjs` 与 `tests/test-client-antigravity-link.mjs`；更新 `tests/test-antigravity-link.mjs`（双通道缺席文案）、`tests/test-contract.mjs`（双端 codec + 方法白名单）、`tests/smoke-host.mjs`（invocations 清单）。`npm run check` 全绿。真实形状依据 dsh-tool-antigravity 0.5.2 的类型声明与其自带 pet-balance 消费代码双重核对；本机该插件账户池（`%LOCALAPPDATA%/dsh-tool-antigravity/accounts.json`）已有登录账号。**尚未安装到 desktop profile 重启做真机 GUI 验收**。
+
 ## 0.19.1：中转聚合商收窄到 APIGOTO，并优化其显示
 
 **移除 `unorouter` 与 `qnaigc` 两条 provider（按用户决策）**：它们的信息量不足——UnoRouter 只给出 Key 级余额/累计消费，七牛云只有一个时间范围内的花费金额，都没有窗口或订阅语义，与药丸和额度面板要表达的东西对不上。移除后登记 **31 条** provider id，默认 11 开 / 20 关。注册表、归一化函数、`fetchProvider` 分支、Client 元数据与顺序表、`unorouter-sonnet` 路由别名、相关测试与文档一并清理；已经启用过这两家的旧配置在解析时被忽略，不再请求它们的端点。

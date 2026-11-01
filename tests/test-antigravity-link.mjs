@@ -127,8 +127,8 @@ function harness(agy, options = {}) {
 	const named = await service.quota({ providerIds: ["antigravity"] });
 	const row = named.providers.find(p => p.providerId === "antigravity");
 	assert.equal(row.state, "error");
-	assert.ok(row.error.includes("没有检测到它的额度服务"), "点名的联动项缺席时必须说清楚原因与下一步");
-	assert.ok(row.error.includes("dsh-antigravity-acp"));
+	assert.ok(row.error.includes("没有检测到可用通道"), "点名的联动项缺席时必须说清楚原因与下一步");
+	assert.ok(row.error.includes("dsh-antigravity-acp") && row.error.includes("dsh-tool-antigravity"), "两个提供方插件都要给出名字");
 	service.dispose();
 }
 // 提供方插件报错 / 超时：只影响它自己那一条，其余家照常。
