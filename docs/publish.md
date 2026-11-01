@@ -23,6 +23,8 @@ tag 必须等于 `v` 加包版本。版本 Release 使用 `make_latest: legacy`�
 
 ## npm
 
+0.21.3 精简 `subusage_quota` 的工具提示词：主描述 2683 → 866 字符，`providers` 参数描述 792 → 63 字符，合计约 3475 → 929（约 870 → 232 token）；砍掉的是 render 报告与 output schema 已能表达的内容，保留无参全量、可传厂商名、认不出名字回全量加说明、只读、缓存 60 秒等模型必须知道的规则。4 处文案断言改为校验实际调用行为，并新增体量上限防止长回去。无功能变更。已于 2026-11-02 经 `v0.21.3` 标签 → `release.yml` 发布：工作流 success（标签版本校验、测试、清单/语法、打包、Release、npm 发布全绿），主分支 CI 同步 success；registry 的 `versions["0.21.3"]` 与 `dist-tags.latest` 均为 0.21.3。`v0.21.3` Release 资产与 npm tarball SHA256 一致（`sha256:570fd6545ff71c74fac7f8254351b40bc67cf852fe9830bf59d01cf2cb785c1c`，200065 字节）。**未安装到 `desktop` Profile、未重启 DSH**。
+
 0.21.2 文档收尾（扫码登录后的措辞对齐）：`mobileNoAuto` 改为指明 MiMo 可扫码、其他站点才需手动粘贴（中英文同步），README 的 dsh-go 段落与 FAQ 同步，更新记录把 0.21.0 的两条「未发布」条目归入正式版本并写明原生胶囊已移除的原因。无功能变更。已于 2026-11-02 经 `v0.21.2` 标签 → `release.yml` 发布：工作流 success（标签版本校验、测试、清单/语法、打包、Release、npm 发布全绿），主分支 CI 同步 success；registry 的 `versions["0.21.2"]` 与 `dist-tags.latest` 均为 0.21.2。`v0.21.2` Release 资产与 npm tarball SHA256 一致（`sha256:67f8f08a76a877e6c41a9f95224bb4032936fa8fc5aad11929fbd226401fe8e1`，200922 字节）。本机发布环境缺 `ssh-keygen`，先装 `openssh-client` 才恢复 SSH 提交签名（此前提交均为签名提交）；远端凭据助手 `gh` 已不存在，推送改用已验证的 SSH 密钥。**未安装到 `desktop` Profile、未重启 DSH**。
 
 0.21.1 / 0.21.0 小米账号扫码登录 MiMo 额度，并适配 dsh-go 手机引擎（0.21.1 把「小米扫码登录」提到药丸上方的建议操作横幅）。两个标签均于 2026-11-01 经 `release.yml` 发布成功，`v0.21.1` 工作流 success；registry 的 `dist-tags.latest` 与 `versions` 依次为 0.21.0、0.21.1。**扫码登录路径已在本机 dsh-go 引擎实机验收**（读到真实 Pro 套餐数据与 CNY 余额）；桌面主机的自动登录仍以隔离测试守住，未在桌面实机复验。
