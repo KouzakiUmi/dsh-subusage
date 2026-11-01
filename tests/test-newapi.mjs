@@ -126,23 +126,26 @@ const USAGE_LIMITED = {
 	console.log("PASS New API 归一化：Credits 换算、无限/有限令牌、账户余额说明、到期不进 resetsAt、两种信封与错误映射");
 }
 
+function harness(fetchImpl, overrides = {}) {
+	const files = new Map(), calls = [];
+	const io = {
+		readFileSync(path) { if (!files.has(path)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); return files.get(path); },
+		mkdirSync() {}, writeFileSync(path, value) { files.set(path, value); }, chmodSync() {},
+		renameSync(from, to) { files.set(to, files.get(from)); files.delete(from); }
+	};
+	const ctx = overrides.ctx ?? { effect() {}, llm: { listProviders: () => [] } };
+	const service = new SubUsageService(ctx, {
+		io, configPath: "memory/config", now: () => NOW,
+		resolveCredentials: async id => id === ID ? { value: "sk-fixture-newapi" } : undefined,
+		resolveEnvironment: () => undefined,
+		fetch: async (url, options) => { calls.push({ url, options }); return fetchImpl(url, options); },
+		...overrides.options
+	});
+	return { service, calls, files };
+}
+
 // ── [3] Host 端到端：默认关闭、地址来自设置、Bearer、缓存失效与错误映射 ──
 {
-	function harness(fetchImpl) {
-		const files = new Map(), calls = [];
-		const io = {
-			readFileSync(path) { if (!files.has(path)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); return files.get(path); },
-			mkdirSync() {}, writeFileSync(path, value) { files.set(path, value); }, chmodSync() {},
-			renameSync(from, to) { files.set(to, files.get(from)); files.delete(from); }
-		};
-		const service = new SubUsageService({ effect() {}, llm: { listProviders: () => [] } }, {
-			io, configPath: "memory/config", now: () => NOW,
-			resolveCredentials: async id => id === ID ? { value: "sk-fixture-newapi" } : undefined,
-			resolveEnvironment: () => undefined,
-			fetch: async (url, options) => { calls.push({ url, options }); return fetchImpl(url, options); }
-		});
-		return { service, calls, files };
-	}
 	const okFetch = async url => {
 		if (!url.endsWith("/api/usage/token/")) throw new Error(`unexpected url ${url}`);
 		return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(USAGE_UNLIMITED) };
@@ -226,6 +229,45 @@ const USAGE_LIMITED = {
 	assert.match(refused.error, /Invalid token/);
 	business.service.dispose();
 	console.log("PASS New API Host：默认关闭、地址来自设置、尾斜杠端点与 Bearer、改地址重新取数、缺地址/401/404/业务失败映射");
+}
+
+// ── [3b] 手动匹配自建路由：自动沿用路由的 baseURL 与 apiKeyEnv ──────────
+{
+	const route = { provider: "yyapi", settingsNs: "llm-pi-ai", settingsPath: ["providers", "yyapi"] };
+	const ctx = { effect() {}, llm: { listProviders: () => [{ id: "yyapi" }], listConfigurableProviders: () => [route] } };
+	const settingsService = { describe: () => [{ ns: "llm-pi-ai", value: { providers: { yyapi: { apiKeyEnv: "CUSTOM_RELAY_API_KEY", baseURL: "https://www.relay.example.com/v1" } } } }] };
+	const h = harness(async url => {
+		if (!url.endsWith("/api/usage/token/")) throw new Error(`unexpected url ${url}`);
+		return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(USAGE_UNLIMITED) };
+	}, {
+		ctx,
+		options: {
+			settingsService,
+			resolveCredentials: async (id, ref) => id === ID && ref === "CUSTOM_RELAY_API_KEY" ? { value: "sk-mapped-route" } : undefined
+		}
+	});
+	let result = await h.service.read();
+	result = await h.service.save({ expectedRevision: result.settings.revision, visibility: { manualMatching: true, providerMappings: { [ID]: ["yyapi"] }, providers: { [ID]: true } } });
+	result = await h.service.refresh({ providerIds: [ID], force: true });
+	const entry = result.entries[0];
+	assert.equal(entry.state, "ok", "绑定路由后应直接用路由的站点与 Key 取数");
+	assert.equal(entry.keySource, "credentials");
+	assert.equal(entry.apiDetected, true, "设置卡片应显示已检测到 API / 凭据");
+	assert.equal(h.calls[0].url, "https://www.relay.example.com/api/usage/token/", "站点根来自路由 baseURL，/v1 被去掉");
+	assert.match(h.calls[0].options.headers.authorization, /^Bearer sk-mapped-route$/, "Key 引用来自路由 apiKeyEnv");
+
+	// 卡片里显式填写的站点地址仍然优先于路由 profile。
+	result = await h.service.save({ expectedRevision: result.settings.revision, providerId: ID, newapi: { baseUrl: "https://own.example.com" } });
+	result = await h.service.refresh({ providerIds: [ID], force: true });
+	assert.equal(h.calls.at(-1).url, "https://own.example.com/api/usage/token/", "卡片地址优先于路由 baseURL");
+
+	// 关闭手动匹配：映射保留，但不再参与凭据/端点；没有自己的 Key 时回到 no-key。
+	result = await h.service.save({ expectedRevision: result.settings.revision, visibility: { manualMatching: false } });
+	assert.deepEqual(result.settings.visibility.providerMappings[ID], ["yyapi"], "关闭开关保留映射");
+	result = await h.service.refresh({ providerIds: [ID], force: true });
+	assert.equal(result.entries[0].state, "no-key", "关闭手动匹配后不再沿用路由 Key");
+	h.service.dispose();
+	console.log("PASS New API 手动匹配：自动继承路由 baseURL/apiKeyEnv、卡片值优先、关闭开关即停止继承");
 }
 
 // ── [4] Client：注册、顺序、地址草稿与补丁、余额型可见性 ─────────────────

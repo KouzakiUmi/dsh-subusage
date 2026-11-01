@@ -76,7 +76,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 2. 在对应订阅项的下拉列表中选择本机已注册的 provider；同一订阅可连续添加多个，适合不同协议或端点拆成多条路由的情况。
 3. 选择后立即保存；点击绑定旁的 `×` 可移除。一个 provider 只能绑定一个订阅，已绑定项不会出现在其他下拉列表中。
 
-**只改变药丸显示哪份订阅数据**，不改变模型路由、凭据来源、额度查询端点或检测开关。手动绑定优先于内置匹配，未绑定的 provider 继续自动匹配；关闭开关会恢复自动匹配，但保留已保存的绑定。目标订阅仍需启用检测并配置其所需凭据。绑定关系不会校验两个账号是否相同，请选择与该模型实际使用账号对应的订阅。例如自建 New API 站点的模型路由 id 是 `custom-relay`：把订阅 **New API** 绑定到 `custom-relay`，再在 New API 的「连接与凭据」里填站点地址与同一把 `sk-` Key（或把该路由的 `apiKeyEnv` 加进额外引用名）。
+**默认只改变药丸显示哪份订阅数据**，不改变模型路由、凭据来源、额度查询端点或检测开关。手动绑定优先于内置匹配，未绑定的 provider 继续自动匹配；关闭开关会恢复自动匹配，但保留已保存的绑定。目标订阅仍需启用检测并配置其所需凭据。绑定关系不会校验两个账号是否相同，请选择与该模型实际使用账号对应的订阅。**唯一例外是 New API**：开启手动匹配并把它绑定到自建路由时，会自动沿用该路由 profile 的 `baseURL` 与 `apiKeyEnv`（卡片里显式填写的站点地址 / Key 仍优先；关闭开关保留映射但停止继承）。例如自建 New API 站点的模型路由 id 是 `custom-relay`，且该路由已填写 `baseURL` 与 `apiKeyEnv`：把订阅 **New API** 绑定到它即可取数，无需再抄一遍地址与 Key。
 
 ## 兼容的插件与路由
 
@@ -199,7 +199,7 @@ Antigravity 在本机可能装了上面**两个提供方插件中的任意一个
 | Codex (ChatGPT) | 主 / 次窗口 + 档位 | 真实 `~/.codex/auth.json`（本插件默认关闭） |
 | GitHub Copilot | 2026-10-23 真机联调：真实凭据库记录的长期 token 调 `GET /copilot_internal/user` **HTTP 200**（个人档 `premium_interactions` 月池 1500 / 已用 744，重置 2026-11-01；chat / completions 为 unlimited 不画窗口）；企业版、免费档与组织席位仅有隔离测试 | 复用 `@inventec/dsh-copilot-auth` 写入 DSH 凭据库的 OAuth 记录（`refresh` 长期 token），只读不续期 |
 | OpenDesign | 历史接口实测（2026-10-18 / 20）：真实 workspaceId、Design Plan 扁平窗口、套餐余额 / 总额度（钱包合计）及零余额（当时界面文案为「月额度剩余 / 余额」）；本次认证失效修复只做隔离回归，未验收当前 GUI | 控制台会话 Cookie：「登录并自动导入」实测可用（2026-10-24 确认，Cloudflare 人机验证在弹出窗口中由用户完成），手动导入仍是备选 |
-| New API | 2026-11-01 用演示站真实 Key 只读核对：`GET {站点}/api/usage/token/` **HTTP 200**，返回 `code: true`、无限额度令牌与 `user_quota` 账户可用/已用；按 500000 = 1 Credits 换算后 Host 端 `state=ok`、`coverage=complete`。站点 `/api/status` 的 `quota_per_unit` 为 500000（本入口按该标准固定换算，不请求状态接口）；不显示国家货币。未做 GUI 实机验收 | 推理同一把 `sk-` Key + 用户自填站点地址；未保存演示 Key |
+| New API | 2026-11-01 用演示站真实 Key 只读核对：`GET {站点}/api/usage/token/` **HTTP 200**，返回 `code: true`、无限额度令牌与 `user_quota` 账户可用/已用；按 500000 = 1 Credits 换算后 Host 端 `state=ok`、`coverage=complete`。另以「手动匹配到带 `baseURL` / `apiKeyEnv` 的模拟路由」复核：不填卡片地址与 Key 也能取数，`apiDetected=true`。站点 `/api/status` 的 `quota_per_unit` 为 500000（本入口按该标准固定换算，不请求状态接口）；不显示国家货币。未做 GUI 实机验收 | 推理同一把 `sk-` Key + 用户自填站点地址；开启手动匹配时也可沿用绑定路由的 `baseURL` / `apiKeyEnv`；未保存演示 Key |
 | Trae（联动，`trae` / `trae-global` / `trae-enterprise`） | 2026-10-23 对**运行中的 DSH** 实测：`region=cn` 返回 `signed-in` 的真实账号数据（积分包合计 / 已用 / 余量、Work 与通用两个桶、到期分组），企业版与国际版在该机返回 `signed-out` 时**不产生条目**；真实 `SubUsageService` 首次 527ms、缓存命中 0ms、`force` 552ms 且两次条目逐字一致 | 由 `dsh-connect-trae` 自己持有的登录态（本插件不读凭据、不碰上游）；尚未在装上新版本后从界面验收 |
 
 ### The X Subscription（新统一订阅）
@@ -473,6 +473,7 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 | OpenCode Go 提示无凭据，但模型能正常调用 | Go 订阅 Key 的引用名有两种写法，插件两个都认（`OPENCODE_GO_API_KEY` 优先，回退 `OPENCODE_API_KEY`）。核对 DSH 里该路由的 `apiKeyEnv` 与凭据库 / 环境变量里实际保存的名字是否**逐字一致**；两个名字都没配才会报无凭据 |
 | 提示「已保存」但仍是「无凭据」 | 凭据编辑要点「**保存设置**」才提交（提供商开关才是立即保存）；确认后若仍为空，把界面文案反馈上来 |
 | New API 报「未配置站点地址」或 404 | 在 New API 卡片填站点根（如 `https://your-newapi.example.com`，末尾 `/v1`、`/api` 会被去掉）；确认这是 New API / one-api 站点且版本支持 `/api/usage/token/`。额度查询要推理用的那把 `sk-` Key，不是控制台访问令牌 |
+| New API 提示「未检测到 API」 | 确认 New API 检测开关、手动匹配开关与 `New API → 自建路由` 绑定都已开启；该路由 profile 需有 `baseURL` 与 `apiKeyEnv`，且引用的 Key 在凭据库/启动环境里可解析。绑定保存后会自动重探测；仍无则检查路由的 `apiKeyEnv` 是否与实际保存的引用名逐字一致 |
 | New API 只显示令牌额度，没有账户余额 | 该令牌未开启「允许查询用户额度」（`allow_user_quota_query`），或令牌是无限额度但站点没有返回 `user_quota`；到 New API 控制台的令牌设置里开启后重试 |
 | 某家读取失败，其他家正常 | 单家失败只影响自己的条目。按文案分类处理：认证类（401 / 凭据被拒）换对应产品与区域的凭据；权限 / 未订阅类（403）检查账号权限与套餐；限流类等待退避后重试 |
 | 显示认证失效 | 检查是否用了对应产品 / 区域的订阅 Key；MiMo 重新登录或导入 Cookie，OpenDesign 更新控制台会话 Cookie。认证错误不按「部分数据」展示，旧额度不会当作有效数据保留 |

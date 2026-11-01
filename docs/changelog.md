@@ -4,13 +4,13 @@
 
 ## 未发布：New API（new-api / one-api）余额入口（第 32 条 provider `newapi`）
 
-- 新增自建 New API / one-api 站点余额：`GET {站点根}/api/usage/token/`，鉴权是**推理同一把 `sk-` Key** 的 Bearer，站点根由新增的公开设置 `settings.newapi.baseUrl` 提供，代码不硬编码任何域名。`/v1`（OpenAI 兼容地址）与 `/api`（管理接口前缀）尾缀会被去掉一层，自建子路径保留；只接受 http(s)，拒绝带用户名密码的 URL。尾斜杠是刻意的：演示站会把无斜杠地址 301 到有斜杠，而请求层把 3xx 当错误。
+- 新增自建 New API / one-api 站点余额：`GET {站点根}/api/usage/token/`，鉴权是**推理同一把 `sk-` Key** 的 Bearer，站点根由新增的公开设置 `settings.newapi.baseUrl` 提供，代码不硬编码任何域名。`/v1`（OpenAI 兼容地址）与 `/api`（管理接口前缀）尾缀会被去掉（两者同时出现也都去掉），自建子路径保留；只接受 http(s)，拒绝带用户名密码的 URL。尾斜杠是刻意的：演示站会把无斜杠地址 301 到有斜杠，而请求层把 3xx 当错误。
 - 单位固定按站点标准 **500000 quota = 1 Credits**，不按国家货币或站点汇率显示。无限制令牌的主余额取 `user_quota.total_available`（累计消费走 `spend`），没有 `user_quota` 时提示开启「允许查询用户额度」（`allow_user_quota_query`）或改用有额度的令牌；有限令牌的主余额取 `total_available`，`total_granted > 0` 时产出 `period` 窗口（无重置时间），账户钱包只作说明不并入主余额；显式非无限但全 0 如实显示 0；`expires_at` 是令牌到期，只作「令牌到期 …（还有 N 天）」/「已过期」说明行，不写进 `resetsAt`。只有令牌名/到期等元数据时判为读取失败。
 - 两种成功信封（New API 的 `code: true` 与部分 one-api 系的 `success: true`）都认；显式 false 映射为认证错误并附截断后的上游 message。401/403 提示「额度查询与推理使用同一把 sk- Key」，404 提示站点缺少 `/api/usage/token/` 或版本不匹配，429/5xx 沿用可重试退避；缺站点地址按「未配置凭据」处理且不发起请求。
-- Client 注册 `newapi`（追加在顺序表末尾、默认关闭、`NEWAPI_API_KEY`），新增「New API」凭据卡片中的站点地址字段；`new-api` / `one-api` 路由归并到本订阅，`custom-relay` 等自定义路由用既有「手动匹配 provider」绑定，站点地址与 Key 仍需单独配置。`newapi` 进入余额型可见性豁免，没有同名模型路由也能查询。
+- Client 注册 `newapi`（追加在顺序表末尾、默认关闭、`NEWAPI_API_KEY`），新增「New API」凭据卡片中的站点地址字段；`new-api` / `one-api` 路由归并到本订阅，`custom-relay` 等自定义路由用既有「手动匹配 provider」绑定。**手动匹配开启时自动沿用绑定路由 profile 的 `baseURL` 与 `apiKeyEnv`**（`baseURL`/`baseUrl` 都认），卡片里显式填写的站点地址/手动 Key 仍优先；关闭开关保留映射但停止继承。映射/开关变化单独失效 `newapi` 缓存，Client 在保存后立即重探测，避免卡片停在旧的「未检测到 API」。`newapi` 进入余额型可见性豁免，没有同名模型路由也能查询。
 - 计数：登记 **32 条** provider id，新安装 **11 开 / 21 关**，设置页合并 Ark 后 **29 张卡片**；浏览器预览断言 32 个开关 / 11 个可见标签 / 20 个关闭开关。
 - 回归：新增 `tests/test-newapi.mjs`（地址规范化、Credits 换算、无限/有限令牌、账户余额说明、到期、两种信封、Host 端到端与错误映射、Client 注册/草稿/补丁/可见性）；同步更新 `tests/test-contract.mjs` 的 provider 表、`test-provider-controls` 默认关闭清单、各计数断言、`scripts/check-browser-runtime.mjs` 与文档。`node tests/run-all.mjs` 全绿。
-- **真实契约只读核对（2026-11-01）**：用用户提供的演示 Key 经本插件 Host 请求演示站点的 `/api/usage/token/`，HTTP 200，`code: true`、`unlimited_quota: true`、返回 `user_quota`；`state=ok`、`coverage=complete`，按 500000 = 1 Credits 换算。演示 Key 未写入仓库、配置或测试夹具；**未做 GUI 实机验收，也未观测有限令牌/到期/余额为零的真实站点路径**。
+- **真实契约只读核对（2026-11-01）**：用用户提供的演示 Key 经本插件 Host 请求演示站点的 `/api/usage/token/`，HTTP 200，`code: true`、`unlimited_quota: true`、返回 `user_quota`；`state=ok`、`coverage=complete`，按 500000 = 1 Credits 换算。另以「手动匹配到带 `baseURL` / `apiKeyEnv` 的模拟路由」复核：不填卡片地址与 Key 也能取数，`apiDetected=true`。演示 Key 未写入仓库、配置或测试夹具；**未做 GUI 实机验收，也未观测有限令牌/到期/余额为零的真实站点路径**。
 
 ## 0.20.0：Antigravity 用量接入本机 dsh-tool-antigravity，并进入输入区药丸
 

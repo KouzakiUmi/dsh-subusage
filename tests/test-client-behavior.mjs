@@ -504,6 +504,31 @@ nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 MiniMax").props
 assert(nodes(tree).some(n => n.props.id === `subusage-credentials-${ids[1]}`), "切换其他编辑器必须先保存或取消草稿");
 const beforeToggle = controlPatches.length; await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax").props.onClick(); assert.equal(controlPatches.length, beforeToggle);
 ch.unmount();
+// New API 的 Key/站点可以来自手动绑定路由：保存映射后必须立即重探测，不能停在「未检测到 API」。
+{
+ let mappingSnapshot = withPrefs(result([]), preferences({ newapi: true }));
+ mappingSnapshot.settings.visibility = { ...mappingSnapshot.settings.visibility, manualMatching: true, providerMappings: {} };
+ const mappingRefreshes = [];
+ const mappingStore = {
+  ...uiStore,
+  getSnapshot: () => mappingSnapshot,
+  readAll: async () => mappingSnapshot,
+  refresh: async (refreshIds) => { mappingRefreshes.push(refreshIds); return mappingSnapshot; },
+  save: async (patch) => {
+   const old = mappingSnapshot.settings.visibility;
+   mappingSnapshot = { ...mappingSnapshot, settings: { ...mappingSnapshot.settings, revision: "mapping-2", visibility: { ...old, ...patch.visibility, providers: { ...old.providers, ...(patch.visibility.providers ?? {}) } } } };
+   return mappingSnapshot;
+  }
+ };
+ const mappingHooks = new Hooks();
+ const mappingTree = mappingHooks.render(api.SubusageSection, { ...props, usageStore: mappingStore });
+ const mappingSelect = nodes(mappingTree).find(n => n.type === "select" && n.props["aria-label"] === "New API provider");
+ assert.ok(mappingSelect, "开启手动匹配后 New API 有绑定下拉");
+ mappingSelect.props.onChange({ target: { value: "yyapi" } });
+ await flush();
+ assert.deepEqual(JSON.parse(JSON.stringify(mappingRefreshes.at(-1))), ["newapi"], "保存映射后立即刷新 New API");
+ mappingHooks.unmount();
+}
 controlSnapshot = withPrefs(result(controlSnapshot.entries), preferences(Object.fromEntries(ids.map(id => [id, false]))));
 const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSection, cp);
 // 空状态仍列出全部管理开关：27 家非 Ark + Ark 两个组开关 + 默认隐藏 = 30。

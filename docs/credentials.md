@@ -187,7 +187,8 @@ New API / one-api 的余额查询与推理共用**同一把 `sk-` Key**：把它
 - **站点地址**：填站点根，例如 `https://your-newapi.example.com`。末尾的 `/v1`（OpenAI 兼容地址）或 `/api`（管理接口前缀）会被自动去掉；自建子路径保留。
 - **不要用控制台访问令牌**：额度查询走 `GET {站点}/api/usage/token/`，只认 `sk-` 模型 Key 的 Bearer；控制台令牌与用户 ID 不是这里要的凭据。
 - **账户余额**：`user_quota` 只在令牌开启「允许查询用户额度」（`allow_user_quota_query`）时返回；没有它时只显示令牌自身额度。无限额度令牌如果也没有账户额度，会明确提示开启该开关。
-- **自定义模型路由**：例如本机的 `custom-relay` 路由，先在「手动匹配 provider」里把 `New API` 绑定到它，再把该路由的 `apiKeyEnv`（如 `CUSTOM_RELAY_API_KEY`）加进「额外监控的 Key」，或直接把同一把 Key 手动填进 New API 卡片。手动匹配不改变凭据来源，所以 Key 仍要从这条链里取。
+- **自定义模型路由**：例如本机的 `custom-relay` 路由，开启「手动匹配 provider」并把 `New API` 绑定到它即可。New API 会自动沿用该路由 profile 的 `baseURL` 与 `apiKeyEnv`，所以**通常不用再填站点地址或 Key**；卡片里显式填写的地址 / 手动 Key 仍优先。关闭手动匹配开关会停止继承但保留映射。若想手动指定，也可以填同一把 Key，或把该路由的 `apiKeyEnv` 加进「额外监控的 Key」，或导出为 `NEWAPI_API_KEY`。
+- 手动匹配只影响药丸选择哪份订阅、以及 New API 这一条的连接继承；不会改变其它订阅的凭据或查询端点。
 - 金额按站点标准 **500000 quota = 1 Credits** 显示，不按国家货币或站点汇率换算。
 
 ### OpenCode Go 的两个引用名

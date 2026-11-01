@@ -22,8 +22,10 @@
 
 - `visibility.manualMatching` 默认关闭；`visibility.providerMappings` 保存订阅 ID 到多个模型 provider ID 的映射。
 - 下拉列表来源是 Host 当前 `llm.listProviders()` 的 ID，不是硬编码候选列表；一个模型 provider 只能绑定一个订阅。
-- 手动绑定只影响药丸选择订阅，优先于内置路由别名；未绑定路由继续自动匹配，关闭开关保留映射。
-- 不改变检测开关、凭据、查询端点、额度缓存含义或工具报告的订阅 ID。实际选中模型的药丸 reader 以独立上下文跳过订阅原始路由 ID 的存在性过滤，刷新和轮询保持该上下文；设置页的原有过滤不变，药丸仍遵守检测开关、缺凭据隐藏和订阅状态判断。
+- 手动绑定默认只影响药丸选择订阅，优先于内置路由别名；未绑定路由继续自动匹配，关闭开关保留映射。
+- **唯一例外是 `newapi`**：手动匹配开关打开且订阅绑定到自建路由时，New API 会沿用该路由 profile 的 `apiKeyEnv` 与 `baseURL`（`baseURL`/`baseUrl` 都认）作为默认连接；New API 卡片里显式填写的站点地址与手动 Key 仍优先。多条路由绑同一订阅时，按映射顺序取第一条有 `baseURL` 的，Key 引用按顺序逐个尝试——适合同一站点的多种协议路由，不适合把两个不同站点绑到同一个 New API 条目。
+- 除 `newapi` 外，不改变检测开关、凭据、查询端点、额度缓存含义或工具报告的订阅 ID。实际选中模型的药丸 reader 以独立上下文跳过订阅原始路由 ID 的存在性过滤，刷新和轮询保持该上下文；设置页的原有过滤不变，药丸仍遵守检测开关、缺凭据隐藏和订阅状态判断。
+- `newapi` 的映射/开关变化会单独失效该条目缓存（因为映射参与它的取数），其它订阅的映射仍只影响显示；`querySettingsHash` 仍不把 `manualMatching` / `providerMappings` 纳入。映射保存后 Client 立即重探测 `newapi`，避免卡片停在旧的「未检测到 API」。
 - 火山 `volcengine-agent-plan` / `volcengine-coding-plan` 对应现有 Ark Agent / Coding 订阅；OpenDesign `opendesign-corouter-plan` / `opendesign-corouter-paid` 共用 OpenDesign 订阅。新增别名须核对提供方实际注册 ID。
 
 ## 中转聚合商的额度口径
@@ -35,7 +37,7 @@
 - 徽标只放套餐名（`plan`），到期/策略/模式/积分/令牌名走 `note` 说明行：徽标是标题行里的一小块，塞进结论会被挤成一串。`policy_name` 与套餐名相同则不重复占行，`points` 为 0 不占行，`mode` 只翻译认得出的取值。
 - 归一化走同一返回结构 `windowExtrasResult({ windows, extras, coverage })` 与窗口档位 `windowKindFromSeconds()`；固定额度端点登记在 `PROVIDERS[id].usageUrl`，不在 `fetchProvider` 里散写 URL。`newapi` 的 `usageUrl` 是相对站点根的路径，唯一动态地址来自 `settings.newapi.baseUrl`；该地址不是秘密但必须进入查询指纹，改地址后同 Key 也要重新取数。
 - New API 的响应信封两代都认：`code: true`（New API）与 `success: true`（部分 one-api 系）；显式 false 是认证拒绝而不是数字。401/403 提示「额度查询与推理同一把 sk- Key」，404 提示站点缺少 `/api/usage/token/`，缺站点地址按「未配置凭据」处理且不发起请求。
-- 自定义路由（如本机 `custom-relay`）不改代码：用「手动匹配 provider」把该路由绑定到 `newapi`，Key 通过该路由的 `apiKeyEnv` 加入额外引用名或手动填写；手动匹配不改变凭据来源与查询端点。`newapi` 进 Client 的余额型可见性豁免（`BALANCE_ONLY_IDS`），没有同名模型路由也能查询。
+- 自定义路由（如本机 `custom-relay`）不改代码：用「手动匹配 provider」把该路由绑定到 `newapi`，Host 会自动沿用该路由 profile 的 `baseURL` 与 `apiKeyEnv`（卡片显式值优先）；关闭手动匹配开关即停止继承、但保留映射。`newapi` 进 Client 的余额型可见性豁免（`BALANCE_ONLY_IDS`），没有同名模型路由也能查询。
 - 附加行 kind 只用 `plan` / `balance` / `spend` / `note`，不产 `account` 附加行，避免工具文本把单 Key 读成多账户标注。
 
 ## 凭据解析与多 Key 监控
