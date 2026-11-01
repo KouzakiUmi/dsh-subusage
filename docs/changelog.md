@@ -2,6 +2,11 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.21.1：扫码登录补上药丸快捷入口
+
+- Cookie 过期或缺失时，药丸上方的「建议操作」横幅原先在手机上只有「手动导入 Cookie」——扫码按钮只藏在提供商编辑器里，要先展开编辑器才找得到。现在手机引擎上 MiMo 的横幅直接给「小米扫码登录」，与「手动填写」并列；有浏览器的主机保留原「登录并自动导入」，两条通道不互相挤占。
+- 无行为变更：只是把已有能力放到用户真正会看的位置。
+
 ## 未发布：小米账号扫码登录（MiMo）
 
 - **动机**：MiMo 的套餐额度接口 `/api/v1/tokenPlan/usage`、`tokenPlan/detail`、`balance` 只认控制台会话 Cookie（`api-platform_serviceToken` + `userId`）。推理用的 `tp-`（Token Plan）与 `sk-`（按量付费）Key 都读不到：实测两者请求控制台接口一律返回 `401 {"code":401,"loginUrl":…}`。官方 `@mimo-ai/cli` 的二进制里没有任何额度端点（46MB 归档内搜不到 `tokenPlan`/`usage`/`quota` 路径），第三方 CLI 的 `/v1/token_plan/remains` 在 `api.xiaomimimo.com` 与 `token-plan-cn.xiaomimimo.com` 上都是 404。而手机上浏览器普遍不再允许导出 Cookie，手动粘贴这条路在移动端等于不存在。
