@@ -275,7 +275,7 @@ function harness(fetchImpl, overrides = {}) {
 	let spec;
 	const react = { createElement: () => null, Fragment: "fragment", useState: (v) => [typeof v === "function" ? v() : v, () => {}], useRef: (v) => ({ current: v }), useEffect: () => {}, useMemo: (f) => f(), useSyncExternalStore: () => null };
 	const code = readFileSync(fileURLToPath(new URL("../lib/client.js", import.meta.url)), "utf8");
-	vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { PROVIDER_ORDER, PROVIDER_META, ROUTE_PROVIDER_ALIAS, draftFor, settingsPatch, providerVisible, balanceText }; exports.apply = apply;"), { window: { __ModuleLoader__: { load: (value) => { spec = value; } } }, console });
+	vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { PROVIDER_ORDER, PROVIDER_META, ROUTE_PROVIDER_ALIAS, draftFor, settingsPatch, providerVisible, balanceText, balanceVisual, computeStatus }; exports.apply = apply;"), { window: { __ModuleLoader__: { load: (value) => { spec = value; } } }, console });
 	const api = spec.factory((name) => { assert.equal(name, "react"); return react; }).__test;
 	const flat = (v) => JSON.stringify(v);
 	assert.ok(api.PROVIDER_ORDER.includes(ID), "newapi 在提供商顺序中");
@@ -296,7 +296,18 @@ function harness(fetchImpl, overrides = {}) {
 	const visible = api.providerVisible({ visibility: { hideWithoutApi: true, providers: { [ID]: true } } }, ID, undefined, { entries: [], settings: { hasKeys: {}, keyModes: { [ID]: "inherit" } }, configured: {} });
 	assert.equal(visible, true, "New API 不按模型路由收起");
 	assert.equal(api.balanceText({ providerId: ID, extras: [{ kind: "balance", value: "18.78 Credits" }] }, key => key), "balanceLabel 18.78 Credits");
-	console.log("PASS New API Client：注册、顺序、路由别名、地址草稿/补丁、余额型可见性与 Credits 文案");
+	// New API 的 Credits 有固定口径，成功时按美元档显示绿色对勾；其它家的 credits 仍是灰色信息图标。
+	const visual = api.balanceVisual({ providerId: ID, extras: [{ kind: "balance", value: "18.78 Credits" }] }, key => key);
+	assert.equal(visual.icon, "✓");
+	assert.equal(visual.color, "#22c55e");
+	assert.equal(api.balanceVisual({ providerId: ID, extras: [{ kind: "balance", value: "0.5 Credits" }] }, key => key).color, "#eab308", "低于 1 Credit 变黄");
+	assert.equal(api.balanceVisual({ providerId: ID, extras: [{ kind: "balance", value: "0.1 Credits" }] }, key => key).color, "#ef4444", "低于 0.2 Credits 变红");
+	assert.equal(api.balanceVisual({ providerId: "commandcode", extras: [{ kind: "balance", value: "18.78 Credits" }] }, key => key).icon, "ℹ", "其它家的 credits 不套用 New API 阈值");
+	const status = api.computeStatus({ providerId: ID, state: "ok", freshness: "fresh", coverage: "complete", windows: [], extras: [{ kind: "balance", value: "18.78 Credits" }] }, { providerId: ID, t: key => key, getLocale: () => "zh" });
+	assert.equal(status.key, "balance");
+	assert.equal(status.icon, "✓", "药丸显示绿色对勾而不是灰色信息图标");
+	assert.equal(status.color, "#22c55e");
+	console.log("PASS New API Client：注册、顺序、路由别名、地址草稿/补丁、余额型可见性与 Credits 文案/颜色");
 }
 
 console.log("\nNew API 适配测试全部通过 ✅");

@@ -6,6 +6,7 @@
 
 - 新增自建 New API / one-api 站点余额：`GET {站点根}/api/usage/token/`，鉴权是**推理同一把 `sk-` Key** 的 Bearer，站点根由新增的公开设置 `settings.newapi.baseUrl` 提供，代码不硬编码任何域名。`/v1`（OpenAI 兼容地址）与 `/api`（管理接口前缀）尾缀会被去掉（两者同时出现也都去掉），自建子路径保留；只接受 http(s)，拒绝带用户名密码的 URL。尾斜杠是刻意的：演示站会把无斜杠地址 301 到有斜杠，而请求层把 3xx 当错误。
 - 单位固定按站点标准 **500000 quota = 1 Credits**，不按国家货币或站点汇率显示。无限制令牌的主余额取 `user_quota.total_available`（累计消费走 `spend`），没有 `user_quota` 时提示开启「允许查询用户额度」（`allow_user_quota_query`）或改用有额度的令牌；有限令牌的主余额取 `total_available`，`total_granted > 0` 时产出 `period` 窗口（无重置时间），账户钱包只作说明不并入主余额；显式非无限但全 0 如实显示 0；`expires_at` 是令牌到期，只作「令牌到期 …（还有 N 天）」/「已过期」说明行，不写进 `resetsAt`。只有令牌名/到期等元数据时判为读取失败。
+- **药丸颜色**：New API 的 Credits 有站点固定口径，按美元档位染色（< 0.2 红 / 0.2–1 黄 / ≥ 1 绿），成功时显示绿色对勾，不再沿用其它家 credits 的灰色信息图标；其它家的 credits 保持灰色，避免按不可比面值制造价值感。
 - 两种成功信封（New API 的 `code: true` 与部分 one-api 系的 `success: true`）都认；显式 false 映射为认证错误并附截断后的上游 message。401/403 提示「额度查询与推理使用同一把 sk- Key」，404 提示站点缺少 `/api/usage/token/` 或版本不匹配，429/5xx 沿用可重试退避；缺站点地址按「未配置凭据」处理且不发起请求。
 - Client 注册 `newapi`（追加在顺序表末尾、默认关闭、`NEWAPI_API_KEY`），新增「New API」凭据卡片中的站点地址字段；`new-api` / `one-api` 路由归并到本订阅，`custom-relay` 等自定义路由用既有「手动匹配 provider」绑定。**手动匹配开启时自动沿用绑定路由 profile 的 `baseURL` 与 `apiKeyEnv`**（`baseURL`/`baseUrl` 都认），卡片里显式填写的站点地址/手动 Key 仍优先；关闭开关保留映射但停止继承。映射/开关变化单独失效 `newapi` 缓存，Client 在保存后立即重探测，避免卡片停在旧的「未检测到 API」。`newapi` 进入余额型可见性豁免，没有同名模型路由也能查询。
 - 计数：登记 **32 条** provider id，新安装 **11 开 / 21 关**，设置页合并 Ark 后 **29 张卡片**；浏览器预览断言 32 个开关 / 11 个可见标签 / 20 个关闭开关。
