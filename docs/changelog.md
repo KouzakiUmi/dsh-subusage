@@ -2,15 +2,25 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 0.21.2：文档收尾（扫码登录后的措辞对齐）
+
+- 0.21.0 起 MiMo 已能扫码登录，但文档与界面文案还停在「打开官方登录页 + 手动粘贴 Cookie」的阶段，读起来像手机端只能靠导 Cookie。
+- `mobileNoAuto` 改为指明 MiMo 可扫码、其他站点才需手动粘贴（中英文同步）；这是提示文案，不改任何行为。
+- README 的 dsh-go 段落与 FAQ 同步：手机引擎没有 Chrome 属预期，MiMo 用小米账号扫码，OpenDesign 手动粘贴 Cookie（该站小众，手机上不另做登录通道）。
+- 更新记录把 0.21.0 的两条「未发布」条目归入正式版本，并注明原生胶囊已移除的原因（只能打开网页，与已有手动导入重复）。
+- 无功能变更；`npm run check` 全绿。
+
 ## 0.21.1：扫码登录补上药丸快捷入口
 
 - Cookie 过期或缺失时，药丸上方的「建议操作」横幅原先在手机上只有「手动导入 Cookie」——扫码按钮只藏在提供商编辑器里，要先展开编辑器才找得到。现在手机引擎上 MiMo 的横幅直接给「小米扫码登录」，与「手动填写」并列；有浏览器的主机保留原「登录并自动导入」，两条通道不互相挤占。
 - 无行为变更：只是把已有能力放到用户真正会看的位置。
 
-## 未发布：小米账号扫码登录（MiMo）
+## 0.21.0：小米账号扫码登录 MiMo 额度，并适配 dsh-go 手机引擎
+
+**小米账号扫码登录（`lib/mimo-qr.js`）**
 
 - **动机**：MiMo 的套餐额度接口 `/api/v1/tokenPlan/usage`、`tokenPlan/detail`、`balance` 只认控制台会话 Cookie（`api-platform_serviceToken` + `userId`）。推理用的 `tp-`（Token Plan）与 `sk-`（按量付费）Key 都读不到：实测两者请求控制台接口一律返回 `401 {"code":401,"loginUrl":…}`。官方 `@mimo-ai/cli` 的二进制里没有任何额度端点（46MB 归档内搜不到 `tokenPlan`/`usage`/`quota` 路径），第三方 CLI 的 `/v1/token_plan/remains` 在 `api.xiaomimimo.com` 与 `token-plan-cn.xiaomimimo.com` 上都是 404。而手机上浏览器普遍不再允许导出 Cookie，手动粘贴这条路在移动端等于不存在。
-- **方案**：改用小米账号官方的「用小米手机扫一扫」授权（`sid=api-platform`，回调 `platform.xiaomimimo.com/sts`）。协议全程是普通 HTTP，不需要浏览器；手机「设置 > 小米账号」自带扫码器。新增 `lib/mimo-qr.js`，与 `CookieLogin` 并列（那套骨架是"开浏览器 → 抓 Cookie"，这里无浏览器且多一步换票），终态语义保持一致以便复用同一套登录卡片。
+- **方案**：改用小米账号官方的「用小米手机扫一扫」授权（`sid=api-platform`，回调 `platform.xiaomimimo.com/sts`）。协议全程是普通 HTTP，不需要浏览器；手机「设置 > 小米账号」自带扫码器。新增 `lib/mimo-qr.js`，与 `CookieLogin` 并列（那套骨架是「开浏览器 → 抓 Cookie」，这里无浏览器且多一步换票），终态语义保持一致以便复用同一套登录卡片。
 - **协议四步**（均实测）：① `serviceLogin?sid=api-platform&_json=true` 取 `_sign` 与初始 Cookie；② `longPolling/loginUrl` 取二维码 `qr` 与长轮询地址 `lp`；③ 长轮询等扫码，返回 `userId`/`passToken`/`nonce`/`ssecurity`/`location`；④ `location + clientSign` 换控制台 Cookie，其中 `clientSign = base64(sha1("nonce=<nonce>&<ssecurity>"))`。
 - **两个实测陷阱**：(a) 第①步下发的 `deviceId` 等初始 Cookie 必须带到后续请求，缺了扫码后小米回 `70036 系统错误`；(b) `nonce` 是 19 位整数（超过 `Number.MAX_SAFE_INTEGER`），直接 `JSON.parse` 会把末几位改写（`…275584` → `…276000`），签名随之算错、换票恒回 401。`parsePollResponse()` 用正则取原始字面量绕开它，测试钉住该行为。
 - **凭据**：只保存换到的控制台 Cookie（与手动粘贴同一落点）；`passToken` 声明有效期一个月，控制台 `serviceToken` 按服务端声明通常 24 小时。凭据不进入公开状态、RPC 响应与错误消息（`status()` 只带二维码与进度）。
@@ -18,14 +28,13 @@
 - **实测**：本机（dsh-go 手机引擎）完整跑通，读到真实套餐数据（Pro 套餐、周期结束日、已用/上限与百分比、CNY 余额）。
 - 回归：新增 `tests/test-mimo-qr.mjs`（nonce 精度、签名稳定性、Cookie 解析、完整状态机、凭据不外泄、取消与重新开始）；`tests/test-contract.mjs` 与 `tests/smoke-host.mjs` 的方法白名单同步。`npm run check` 全绿。
 
-## 未发布：dsh-go 手机引擎适配
+**dsh-go 手机引擎适配**
 
 - Host 新增运行环境探测：读 `/etc/dsh-app/runtime.json` 判定是否 dsh-go 本机引擎；结果经 `host.mobile` / `host.browserLogin` 交给 Client。路径与内容只用于判定，不含秘密，检测可注入（`options.hostRuntime`）以便隔离测试在手机上仍能验证桌面行为。
 - 手机引擎里没有 Chrome/Chromium（实测 `playwright-core` 报 `Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome`，proot 内 `am` 也不可用），因此 `CookieLogin.start()` 在该环境下不再排队启动浏览器，而是立即返回 `subusage/no-browser` 与可读原因；桌面主机 `browserLogin` 恒为 true，流程与文案一字不变。
-- Client 按该字段把「登录并自动导入」整组换成手机引导（打开官方登录页 + 三步粘贴 Cookie 说明），药丸快捷入口改称「手动导入 Cookie」并直接展开手动区；OpenDesign 面板里「自动登录可用」那段说明在手机上不再出现。
-- ~~新增 dsh-go 原生入口：输入框上方「登录页」胶囊 → 「订阅登录页」面板~~（**已移除**：它只能打开官方登录网页，与设置页手动 Cookie 导入重复，无法替用户完成登录）。
-- 回归：新增 `tests/test-dsh-go.mjs`（标记文件判定、坏文件降级、桌面自动登录行为不变、手机端 `no-browser` 且零次 `chromium.launch`、手动 Cookie 导入仍可用）。面板视图经 dsh-go 检查器的视图解析器校验（中英文均可显示）。
-- **未做实机 GUI 验收**：本机就是 dsh-go 引擎，但 App 原生胶囊/面板的实际显示需在 App 内查看；本轮只核对了清单、注册与视图结构。
+- Client 按该字段把「登录并自动导入」整组换成手机引导；MiMo 优先扫码，OpenDesign 走手动粘贴 Cookie（该站小众，手机上不另做登录通道）。OpenDesign 面板里「自动登录可用」那段说明在手机上不再出现。
+- 曾加过 dsh-go 原生胶囊（「登录页」→「订阅登录页」面板），随后**已移除**：它只能打开官方登录网页，与设置页已有的手动 Cookie 导入重复，无法替用户完成登录，信息量不足以占一个原生座位。
+- 回归：新增 `tests/test-dsh-go.mjs`（标记文件判定、坏文件降级、桌面自动登录行为不变、手机端 `no-browser` 且零次 `chromium.launch`、手动 Cookie 导入仍可用）。`npm run check` 全绿。**扫码登录路径已在本机 dsh-go 引擎实机验收**；桌面主机的自动登录仍以隔离测试守住。
 
 ## 0.20.0：Antigravity 用量接入本机 dsh-tool-antigravity，并进入输入区药丸
 

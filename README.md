@@ -235,7 +235,7 @@ Antigravity 在本机可能装了上面**两个提供方插件中的任意一个
 - **凭据以明文落盘**：本插件的配置不是加密凭据库；Windows 上真正的访问边界取决于目录 ACL，`chmod` 不能替代它。
 - **火山方舟是账号级读取**：一组 IAM AK/SK 能查到该账号名下**所有**套餐（Agent Plan、Coding Plan、团队席位）。把装了本插件的机器或配置文件交给别人时请注意这一点。
 - **浏览器自动化**：支持自动登录的提供商（MiMo、OpenDesign）会启动一个隔离的 Chromium 会话——不点「登录并自动导入」就不会触发。OpenDesign 的 Cloudflare 人机验证会在弹出窗口中出现，由你亲自完成即可（自动登录实测可用）；手动导入仍是备选（见凭据表）。
-- **dsh-go 手机 App 里没有自动登录**：手机本机引擎是 proot 里的 Ubuntu，没有 Chrome/Chromium，`playwright-core` 启动必然失败。插件会检测 `/etc/dsh-app/runtime.json`，在这类主机上不再提供「登录并自动导入」，改为「打开官方登录页 + 手动粘贴 Cookie」，并在输入框上方给一个原生「登录页」胶囊。桌面与远程主机行为完全不变。
+- **dsh-go 手机 App 里没有自动登录**：手机本机引擎是 proot 里的 Ubuntu，没有 Chrome/Chromium，`playwright-core` 启动必然失败。插件会检测 `/etc/dsh-app/runtime.json`，在这类主机上不再提供「登录并自动导入」；MiMo 改用**小米账号扫码登录**（全程 HTTP，不需要浏览器），OpenDesign 走手动粘贴 Cookie。桌面与远程主机行为完全不变。
 - **收录不等于安全审计**：无论 DSH STORE 还是 awesome-dsh-plugin，收录只表示满足它们各自的清单规则，都不是对代码的安全审查。
 
 ## Compatibility / 兼容性
@@ -477,7 +477,7 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 | 显示缓存、部分数据或额度未知 | 查看更新时间和错误说明；缓存来自之前的成功读取，部分数据不保证有可用额度，余额也不等于订阅余量 |
 | 刷新后数字暂未变化 | 成功结果按提供商缓存 60 秒；手动刷新可跳过普通 TTL，但仍遵守限流退避和 `Retry-After` |
 | MiMo 自动登录无法启动 | Host 所在机器需安装 Google Chrome 并有桌面环境；远程或无桌面部署使用手动导入 |
-| dsh-go 里没有「登录并自动导入」 | 手机本机引擎没有 Chrome，这是预期行为；用「打开官方登录页」在手机浏览器登录，再回来粘贴 Cookie。插件检测 `/etc/dsh-app/runtime.json` 后自动切换，不提供注定失败的按钮 |
+| dsh-go 里没有「登录并自动导入」 | 手机本机引擎没有 Chrome，这是预期行为。MiMo 点「小米扫码登录」用小米账号扫一扫（不需要浏览器）；OpenDesign 在设置页手动粘贴会话 Cookie。插件检测 `/etc/dsh-app/runtime.json` 后自动切换，不提供注定失败的按钮 |
 | 保存成功但验证失败 | 凭据已保存，检查网络、区域或账号后重试；保存与在线验证分别反馈 |
 | 保存提示配置已改变 | 另一窗口或实例更新了设置；重新读取配置后再编辑，避免旧表单覆盖新值 |
 | 升级后仍是旧界面或 RPC 不匹配 | 确认运行中的 Host 和 Client 都已重载；仅刷新页面不能保证 Host 升级 |
