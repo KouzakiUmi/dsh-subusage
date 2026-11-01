@@ -47,7 +47,7 @@ dsh plugin --profile web add dsh-subusage
 
 ### 看余额：金额直接显示，单位不混淆
 
-无套餐窗口且数据完整时，药丸直接显示金额。人民币、美元与 credits 各按自己的规则展示；**余额不等于订阅额度，也不能盖过已耗尽的套餐**。DeepSeek API 与本机账号有各自的开关、凭据来源与余额。
+无套餐窗口且数据完整时，药丸直接显示金额。人民币、美元与 credits 各按自己的规则展示（New API 的 Credits 按 500000 quota = 1 Credits 的固定口径、与美元同档）；**余额不等于订阅额度，也不能盖过已耗尽的套餐**。DeepSeek API 与本机账号有各自的开关、凭据来源与余额。
 
 ### 管账户：需要时展开，不让长列表占满界面
 
@@ -55,13 +55,13 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 ## 支持什么
 
-**31 条数据入口，新安装默认开启 11 条。** 按使用场景，主要分为：
+**32 条数据入口，新安装默认开启 11 条。** 按使用场景，主要分为：
 
 | 你想看什么 | 代表提供商 |
 |---|---|
 | 订阅窗口与重置时间 | Kimi、MiMo、Codex、GitHub Copilot、SuperGrok、MiniMax、Z.ai、OpenCode Go、OpenDesign |
 | 账号钱包与 API 余额 | DeepSeek API / 账号、SiliconFlow、Novita、Hyperbolic、DeepInfra |
-| 套餐、余额与多层预算 | Command Code、NanoGPT、OpenRouter、ZenMux、LiteLLM、APIGOTO |
+| 套餐、余额与多层预算 | Command Code、NanoGPT、OpenRouter、ZenMux、LiteLLM、APIGOTO、New API |
 | 账号级套餐与企业席位 | 火山方舟 Agent Plan / Coding Plan |
 
 [查看完整支持清单](#支持的数据--supported-data) · [查看哪些经过真实账号验证](#support-status--实测覆盖)
@@ -76,7 +76,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 2. 在对应订阅项的下拉列表中选择本机已注册的 provider；同一订阅可连续添加多个，适合不同协议或端点拆成多条路由的情况。
 3. 选择后立即保存；点击绑定旁的 `×` 可移除。一个 provider 只能绑定一个订阅，已绑定项不会出现在其他下拉列表中。
 
-**只改变药丸显示哪份订阅数据**，不改变模型路由、凭据来源、额度查询端点或检测开关。手动绑定优先于内置匹配，未绑定的 provider 继续自动匹配；关闭开关会恢复自动匹配，但保留已保存的绑定。目标订阅仍需启用检测并配置其所需凭据。绑定关系不会校验两个账号是否相同，请选择与该模型实际使用账号对应的订阅。
+**默认只改变药丸显示哪份订阅数据**，不改变模型路由、凭据来源、额度查询端点或检测开关。手动绑定优先于内置匹配，未绑定的 provider 继续自动匹配；关闭开关会恢复自动匹配，但保留已保存的绑定。目标订阅仍需启用检测并配置其所需凭据。绑定关系不会校验两个账号是否相同，请选择与该模型实际使用账号对应的订阅。**唯一例外是 New API**：开启手动匹配并把它绑定到自建路由时，会自动沿用该路由 profile 的 `baseURL` 与 `apiKeyEnv`（卡片里显式填写的站点地址 / Key 仍优先；关闭开关保留映射但停止继承）。例如自建 New API 站点的模型路由 id 是 `custom-relay`，且该路由已填写 `baseURL` 与 `apiKeyEnv`：把订阅 **New API** 绑定到它即可取数，无需再抄一遍地址与 Key。
 
 ## 兼容的插件与路由
 
@@ -139,7 +139,7 @@ Antigravity 在本机可能装了上面**两个提供方插件中的任意一个
 
 ## 支持的数据 / Supported data
 
-共 **31 条 provider id**：新安装**有效默认开启 11 条、关闭 20 条**。另有 **4 条联动项**（`antigravity`、`trae`、`trae-global`、`trae-enterprise`）：它们没有自己的凭据、检测开关与设置卡片，只在本机运行对应兄弟插件（[`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity)、[`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) 或 [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae)）时才出现在 `subusage_quota` 工具报告与 `quota()` 视图里（Antigravity 还会出现在输入区药丸），数据取自那些插件自己算好的额度（读它们的 Cordis 服务，或本机只读用量路由）。清单取自 [`lib/index.js`](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 的组归一化为准：Ark 个人版两路默认开启，Team 两路由独立开关控制且默认关闭。展示顺序与短名取自 [`lib/client.js`](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
+共 **32 条 provider id**：新安装**有效默认开启 11 条、关闭 21 条**。另有 **4 条联动项**（`antigravity`、`trae`、`trae-global`、`trae-enterprise`）：它们没有自己的凭据、检测开关与设置卡片，只在本机运行对应兄弟插件（[`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity)、[`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) 或 [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae)）时才出现在 `subusage_quota` 工具报告与 `quota()` 视图里（Antigravity 还会出现在输入区药丸），数据取自那些插件自己算好的额度（读它们的 Cordis 服务，或本机只读用量路由）。清单取自 [`lib/index.js`](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 的组归一化为准：Ark 个人版两路默认开启，Team 两路由独立开关控制且默认关闭。展示顺序与短名取自 [`lib/client.js`](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
 
 | 提供商 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|---|
@@ -174,6 +174,7 @@ Antigravity 在本机可能装了上面**两个提供方插件中的任意一个
 | LiteLLM | `litellm` | Key / 用户 / 团队预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
 | OpenDesign | `opendesign` | Design Plan 5 小时 / 7 天窗口 + 套餐余额（订阅额度）、总额度（钱包合计 = 订阅 + 充值） | **控制台会话 Cookie**（不是模型调用的 sk- Key） | 关 |
 | APIGOTO | `apigoto` | 订阅窗口（`window_sec` 定档）+ 套餐内剩余金额 + 套餐到期倒计时 | Bearer，与推理同一把 Key | 关 |
+| New API | `newapi` | 令牌额度窗口 + 账户余额（500000 quota = 1 Credits） | 推理同一把 `sk-` Key + **用户自填站点地址** | 关 |
 
 - 各家的**窗口语义、明细字段与单位换算**（例如 ZenMux / Ollama 的 0–1 小数、Novita 的 1/10000 USD、Kimi 随套餐变化的窗口集合）见 [提供商清单与额度语义](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md)。
 - 评估过但**不接入**的厂商与理由见 [提供商覆盖与取舍](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/provider-coverage.md)（含已由用户决策跳过的 Anthropic）。
@@ -198,6 +199,7 @@ Antigravity 在本机可能装了上面**两个提供方插件中的任意一个
 | Codex (ChatGPT) | 主 / 次窗口 + 档位 | 真实 `~/.codex/auth.json`（本插件默认关闭） |
 | GitHub Copilot | 2026-10-23 真机联调：真实凭据库记录的长期 token 调 `GET /copilot_internal/user` **HTTP 200**（个人档 `premium_interactions` 月池 1500 / 已用 744，重置 2026-11-01；chat / completions 为 unlimited 不画窗口）；企业版、免费档与组织席位仅有隔离测试 | 复用 `@inventec/dsh-copilot-auth` 写入 DSH 凭据库的 OAuth 记录（`refresh` 长期 token），只读不续期 |
 | OpenDesign | 历史接口实测（2026-10-18 / 20）：真实 workspaceId、Design Plan 扁平窗口、套餐余额 / 总额度（钱包合计）及零余额（当时界面文案为「月额度剩余 / 余额」）；本次认证失效修复只做隔离回归，未验收当前 GUI | 控制台会话 Cookie：「登录并自动导入」实测可用（2026-10-24 确认，Cloudflare 人机验证在弹出窗口中由用户完成），手动导入仍是备选 |
+| New API | 2026-11-01 用演示站真实 Key 只读核对：`GET {站点}/api/usage/token/` **HTTP 200**，返回 `code: true`、无限额度令牌与 `user_quota` 账户可用/已用；按 500000 = 1 Credits 换算后 Host 端 `state=ok`、`coverage=complete`。另以「手动匹配到带 `baseURL` / `apiKeyEnv` 的模拟路由」复核：不填卡片地址与 Key 也能取数，`apiDetected=true`。站点 `/api/status` 的 `quota_per_unit` 为 500000（本入口按该标准固定换算，不请求状态接口）；不显示国家货币。未做 GUI 实机验收 | 推理同一把 `sk-` Key + 用户自填站点地址；开启手动匹配时也可沿用绑定路由的 `baseURL` / `apiKeyEnv`；未保存演示 Key |
 | Trae（联动，`trae` / `trae-global` / `trae-enterprise`） | 2026-10-23 对**运行中的 DSH** 实测：`region=cn` 返回 `signed-in` 的真实账号数据（积分包合计 / 已用 / 余量、Work 与通用两个桶、到期分组），企业版与国际版在该机返回 `signed-out` 时**不产生条目**；真实 `SubUsageService` 首次 527ms、缓存命中 0ms、`force` 552ms 且两次条目逐字一致 | 由 `dsh-connect-trae` 自己持有的登录态（本插件不读凭据、不碰上游）；尚未在装上新版本后从界面验收 |
 
 ### The X Subscription（新统一订阅）
@@ -305,7 +307,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 
 - **设置页路径**：设置 → **订阅用量** → 提供商管理。管理区使用单列列表，每家都有独立的检测开关与「配置」按钮；编辑器在当前项下方展开，不会切换上方正在查看的用量。「没有检测到API的默认隐藏」默认开启；首次没有可见条目时管理区自动展开。关闭的提供商仍可配置凭据，只是不会发起用量请求。
 - **凭据从哪来**：每一类凭据的**官网入口、环境变量名与界面填入位置**都写在[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)——包括火山的 IAM AK/SK（子用户还要挂 `ArkReadOnlyAccess` 且不限制到项目）、MiMo 的平台会话 Cookie、以及各家 API Key 的对照表。**注意推理 Key 与额度凭据不通用。**
-- **默认开关策略**：新安装默认开启 11 条、默认关闭 20 条（**Codex 默认关闭**——它的提供方插件自带用量药丸；GitHub Copilot 与火山 Team 检测也默认关闭）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
+- **默认开关策略**：新安装默认开启 11 条、默认关闭 21 条（**Codex 默认关闭**——它的提供方插件自带用量药丸；GitHub Copilot、火山 Team 检测与 New API 检测也默认关闭）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
 - **火山方舟共用凭据、分组检测**：4 条路由共用同一组 IAM AK/SK，所以设置页只呈现**一张卡片**。其中「个人版」开关控制 Agent Plan / Coding Plan，独立的「Team 检测」开关控制两条团队版路由且默认关闭；两组互不影响。这些 provider id 并没有合并——药丸仍按 id 匹配路由。旧插件 `@volcengine/ark-plan-api` 的两个国内路由（`ark-coding-plan-cn` / `ark-agent-plan-cn`）**已移除**：它们与 arkcli 的路由查同一份订阅，并列显示只会让人以为买了两个套餐；装了旧插件的用户，药丸仍按那两个 id 显示同一份数据（入口归并到 arkcli 路由）。
 - **火山方舟不按路由收起**：它的额度走**账号级管控面**，一组 AK/SK 就能查到名下所有套餐（`GetCodingPlanUsage` 与 `GetAFPUsage` 是同一套协议、同一组凭据）。推理路由装没装只影响模型能不能用，**不影响额度能不能查**——所以只持有 Coding Plan、却没在 DSH 里配 coding-plan 路由时，那条额度照样会显示（前提是配了 AK/SK）。
 - **凭据来源优先级**（`inherit` 模式）：**DSH 路由实际声明的 `apiKeyEnv` → 该提供商额外配置的监控引用名 → 内置环境变量名 → 启动环境 → 旧手动配置兜底**。客户端 Models 页保存的自定义 Key 写进路由的 `apiKeyEnv`，药丸与用量跟随它。切到自定义（`manual`）模式时优先使用保存的手动 Key；删除手动 Key 后自动回到继承。界面会区分这些来源。
@@ -347,6 +349,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | Vercel AI Gateway | `AI_GATEWAY_API_KEY` | 余额型；金额是**十进制字符串** |
 | ZenMux | `ZENMUX_MANAGEMENT_API_KEY` | 额度端点**只认 Management API Key**（推理 key 不适用），所以变量名单独区分。在 <https://zenmux.ai/platform/management> 创建该 key |
 | LiteLLM | `LITELLM_API_KEY` + 代理地址 | 自建网关：除虚拟 Key（**与推理同一把**）还要在凭据区填写自己的 proxy 地址。管理端点在 **proxy 根**——填了 `/v1` 也会被去掉，不会拼成 `/v1/key/info` |
+| New API | `NEWAPI_API_KEY` + 站点地址 | New API / one-api 自建站点：额度查询与推理用**同一把 `sk-` Key**，另需在凭据区填写站点根地址（`/v1`、`/api` 会被去掉）。账户余额取决于令牌的「允许查询用户额度」（`allow_user_quota_query`）；显示单位按站点标准 **500000 quota = 1 Credits**，不按国家货币换算 |
 | OpenDesign | `OPEN_DESIGN_COOKIE`（或在凭据区手填会话 Cookie） | 额度只在**控制台接口**上，鉴权是浏览器登录会话 Cookie——`sk-` 模型 Key 换的是 `amr-link.open-design.ai` 的模型响应，**没有额度端点**。「登录并自动导入」可用（Cloudflare 人机验证在弹出窗口中完成）；也可手动取：在自己浏览器登录 open-design.ai → 进入「方案与余额」页 → `F12` → Network（筛 Fetch/XHR）→ `F5` 刷新 → 点状态 200 的 `coding-plan-usage` → Headers → Request Headers → 复制 `cookie` 字段的**完整值**（不要包含 `cookie:` 字段名，应含 `__Secure-better-auth.session_token`）→ 粘进凭据区先保存、再独立验证；认证失效会明确报告，不当作部分数据，此时重新复制会话 Cookie |
 
 按 provider id 的字面映射（补齐上表按语义分组、未逐条列出的 4 条火山路由，逐条对应 `PROVIDERS[id].envName`，有 `envAliases` 的一并列出）：
@@ -376,6 +379,7 @@ ollama-cloud             OLLAMA_API_KEY
 vercel-ai-gateway        AI_GATEWAY_API_KEY
 zenmux                   ZENMUX_MANAGEMENT_API_KEY
 litellm                  LITELLM_API_KEY                （另需自填 proxy 地址）
+newapi                   NEWAPI_API_KEY                 （另需自填站点地址）
 arkcli-agent-plan        ARKCLI_AGENT_PLAN_API_KEY      （额度用 VOLC_ACCESSKEY / VOLC_SECRETKEY）
 arkcli-coding-plan       ARKCLI_CODING_PLAN_API_KEY
 arkcli-agent-plan-team   ARKCLI_AGENT_PLAN_TEAM_API_KEY
@@ -392,12 +396,12 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 
 | 路径 | 用途 | 读写 |
 |---|---|---|
-| `~/.dsh/dsh-subusage.json` | 本插件自己的配置：开关、手动 Key、MiMo Cookie、Z.ai 组织 / 项目、LiteLLM 地址、火山 AK/SK、计时元数据 | 读写；POSIX 上新建目录 `0700`、临时文件 `0600`，替换前再收紧 |
+| `~/.dsh/dsh-subusage.json` | 本插件自己的配置：开关、手动 Key、MiMo Cookie、Z.ai 组织 / 项目、LiteLLM 地址、New API 地址、火山 AK/SK、计时元数据 | 读写；POSIX 上新建目录 `0700`、临时文件 `0600`，替换前再收紧 |
 | `~/.codex/auth.json`（或 `$CODEX_HOME/auth.json`） | Codex CLI 的 ChatGPT 登录（要求 `auth_mode: chatgpt`） | **只读**，不保存、不刷新 |
 | `~/.grok/auth.json`（回退 `~/.dsh/.xai-oauth-auth.json`） | Grok CLI / dsh-grok-kit 的 OAuth 登录 | 平时只读；过期时经 grok-kit 官方链续约并写回同一文件，不自行裸刷 |
 | `~/.commandcode/auth.json` | Command Code CLI（`cmd login`）的 Key | **只读**兜底 |
 
-**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`grok.com`（仅 Grok credits 回退）、`chatgpt.com/backend-api`、`api.github.com`（GitHub Copilot 私有额度接口；企业版按记录里的 `enterpriseUrl` 换 `api.<域名>`）、`amr-api.open-design.ai`（OpenDesign 控制台额度）、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#网络端点)。**`deepseek-account` 不自行发起 HTTP 请求**——它复用 DSH 的 `deepseekAccount` 服务，由宿主完成鉴权与余额请求（宿主服务可能按自身配置联网）；本插件不读取、导出或保存 OAuth token。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
+**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`grok.com`（仅 Grok credits 回退）、`chatgpt.com/backend-api`、`api.github.com`（GitHub Copilot 私有额度接口；企业版按记录里的 `enterpriseUrl` 换 `api.<域名>`）、`amr-api.open-design.ai`（OpenDesign 控制台额度）、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址与 New API 站点。完整域名表见 [网络端点](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#网络端点)。**`deepseek-account` 不自行发起 HTTP 请求**——它复用 DSH 的 `deepseekAccount` 服务，由宿主完成鉴权与余额请求（宿主服务可能按自身配置联网）；本插件不读取、导出或保存 OAuth token。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
 
 **命令、进程与安装期行为**
 
@@ -468,6 +472,9 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 | 提示「无凭据 / 未检测到 Key」 | 先确认填的是**额度凭据**而不是推理 Key（两者不通用，见[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)），再按该家小节核对来源、环境变量与权限 |
 | OpenCode Go 提示无凭据，但模型能正常调用 | Go 订阅 Key 的引用名有两种写法，插件两个都认（`OPENCODE_GO_API_KEY` 优先，回退 `OPENCODE_API_KEY`）。核对 DSH 里该路由的 `apiKeyEnv` 与凭据库 / 环境变量里实际保存的名字是否**逐字一致**；两个名字都没配才会报无凭据 |
 | 提示「已保存」但仍是「无凭据」 | 凭据编辑要点「**保存设置**」才提交（提供商开关才是立即保存）；确认后若仍为空，把界面文案反馈上来 |
+| New API 报「未配置站点地址」或 404 | 在 New API 卡片填站点根（如 `https://your-newapi.example.com`，末尾 `/v1`、`/api` 会被去掉）；确认这是 New API / one-api 站点且版本支持 `/api/usage/token/`。额度查询要推理用的那把 `sk-` Key，不是控制台访问令牌 |
+| New API 提示「未检测到 API」 | 确认 New API 检测开关、手动匹配开关与 `New API → 自建路由` 绑定都已开启；该路由 profile 需有 `baseURL` 与 `apiKeyEnv`，且引用的 Key 在凭据库/启动环境里可解析。绑定保存后会自动重探测；仍无则检查路由的 `apiKeyEnv` 是否与实际保存的引用名逐字一致 |
+| New API 只显示令牌额度，没有账户余额 | 该令牌未开启「允许查询用户额度」（`allow_user_quota_query`），或令牌是无限额度但站点没有返回 `user_quota`；到 New API 控制台的令牌设置里开启后重试 |
 | 某家读取失败，其他家正常 | 单家失败只影响自己的条目。按文案分类处理：认证类（401 / 凭据被拒）换对应产品与区域的凭据；权限 / 未订阅类（403）检查账号权限与套餐；限流类等待退避后重试 |
 | 显示认证失效 | 检查是否用了对应产品 / 区域的订阅 Key；MiMo 重新登录或导入 Cookie，OpenDesign 更新控制台会话 Cookie。认证错误不按「部分数据」展示，旧额度不会当作有效数据保留 |
 | MiMo Cookie 过期 | 会话 Cookie 自签发起 24 小时有效。药丸与设置页会在 2 小时内 / 30 分钟内分别变黄、变橙，到期显示「Cookie 已过期，请重新登录」；重新登录或重新导入即重新计时。倒计时只是提醒，真实失效以官方接口返回为准 |
