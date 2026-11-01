@@ -177,6 +177,8 @@ MiMo 接口字段是不可信输入：余额只接受有限十进制字符串，
 
 原 webview 取数桥已移除；普通官网链接仍不自动同步外部浏览器 Cookie。自动登录由 Host 的隔离 Chrome 会话实现，延迟加载 `playwright-core`，不使用 persistent context，不读取日常浏览器配置，不下载浏览器。
 
+**dsh-go 适配**：`lib/host-env.js` 读 `/etc/dsh-app/runtime.json` 判定手机本机引擎（该文件存在即 dsh-go 桥接主机）。proot 内没有 Chrome，`chromium.launch()` 必然报 `Chromium distribution 'chrome' is not found`，且 `/system/bin/am` 因 uid 不符不可用，所以这类主机上 `CookieLogin.start()` 直接抛 `subusage/no-browser`（不排队、不启动、不留假任务）。公开结果带 `host: { mobile, browserLogin }`，Client 据此整组替换登录控件；旧 Host 无该字段时 Client 按「能自动登录」处理，两端可独立升级。原生胶囊与面板（`lib/dsh-go.js`、`package.json` 的 `dshGo` 贡献声明）已移除：它只能打开官方登录网页，与设置页里已有的手动 Cookie 导入重复，且无法替用户完成登录。桌面主机行为不变，由 `tests/test-dsh-go.mjs` 的桌面分支守住。
+
 登录任务单实例、五分钟期限，start 立即返回，Client 每两秒串行查询活跃任务，卸载只停止 UI 轮询；Host 处理取消、关闭窗口、迟到启动、超时和 dispose。只提取官方 API 域/路径匹配的两个必需 Cookie，验证成功后同步检查 MiMo 材料冲突并保存。其他厂商修改可合并；认证/网络失败不提前持久化。有效登录但只有余额时保留 partial/额度未知语义。
 
 成功登录状态不是永久可复用快照：MiMo 材料改变时返回 idle，其他厂商改变时刷新公开 revision；Client 同时使用请求 epoch 防止保存之后收到旧 success 再合并。浏览器异常使用固定安全说明，不回显原始 URL、Cookie 或令牌。真实官方登录仍需用户验收。

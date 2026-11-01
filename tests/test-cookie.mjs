@@ -14,11 +14,11 @@ const out1 = normalizeCookieText(`当前页面 Cookies
 api-platform_serviceToken
 "A/EKIm1WUwZb=="
 userId
-171340177
+900000001
 clngdbkpkpeebahjckkjfobafhncgmne
 d06948e9-24c4-46db-acab-4541169db504`);
 assert(out1.includes('api-platform_serviceToken="A/EKIm1WUwZb=="'), "多行清单 → 标准串（保值原样）");
-assert(out1.includes("userId=171340177"), "name/value 成对解析");
+assert(out1.includes("userId=900000001"), "name/value 成对解析");
 assert(!out1.includes("当前页面"), "表头行被跳过");
 
 // JSON 导出

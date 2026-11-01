@@ -29,7 +29,7 @@ dsh plugin --profile web add dsh-subusage
 `web` 是示例 Profile，请替换为实际目标。**Desktop 使用目标桌面壳提供的 DSH Desktop CLI**，不要从独立公共 CLI 管理保留的 `desktop` Profile。
 
 1. **启用插件**：按部署方式重载，让 Host 与 Client 一起生效；只刷新页面不保证 Host 已升级。
-2. **配置需要的提供商**：打开 **设置 → 订阅用量 → 提供商管理**。填 API Key，或使用对应提供方插件的登录态；MiMo 可“登录并自动导入”。[不知道该填什么？](docs/credentials.md)
+2. **配置需要的提供商**：打开 **设置 → 订阅用量 → 提供商管理**。填 API Key，或使用对应提供方插件的登录态；MiMo 可“登录并自动导入”，手机上可用**小米账号扫码登录**（不需要导出 Cookie）。[不知道该填什么？](docs/credentials.md)
 3. **回到对话**：选择该提供商的模型，输入区出现用量药丸。点开看明细；读取失败会说明原因，不把未知当充足。
 
 **已经登录 DSH 的 DeepSeek 账号？** 默认开启的「DeepSeek 账号」直接读取宿主余额，不需要复制 token。独立 API Key 使用另一个「DeepSeek API」入口，两份余额不相加、不互相替代。[两种入口的区别](docs/providers.md#deepseek-api-与-deepseek-账号)
@@ -147,7 +147,7 @@ Antigravity 在本机可能装了上面**两个提供方插件中的任意一个
 | DeepSeek 账号 | `deepseek-account` | 余额（本机账号充值） | 复用 DSH `deepseekAccount` 登录态，无独立 Key | 开 |
 | Z.ai（中国） | `zai-coding-cn` | 订阅窗口 | Bearer（团队档另加组织 / 项目请求头） | 开 |
 | Kimi Coding | `kimi-coding` | 订阅窗口 | Bearer | 开 |
-| Xiaomi MiMo | `xiaomi-token-plan-cn` | 周期额度池 | 官方平台 Cookie（含登录流程） | 开 |
+| Xiaomi MiMo | `xiaomi-token-plan-cn` | 周期额度池 | 官方平台 Cookie（含登录流程与手机扫码登录） | 开 |
 | OpenCode Go | `opencode-go` | 订阅窗口 | Bearer | 开 |
 | Command Code | `commandcode` | 5 小时 / 周 / 月额度池 | 提供方插件的凭据链 | 开 |
 | SuperGrok | `xai-oauth` | 周期池 | 共享 Grok CLI 登录文件，过期经 grok-kit 续约 | 开 |
@@ -192,7 +192,7 @@ Antigravity 在本机可能装了上面**两个提供方插件中的任意一个
 | 火山方舟 Coding Plan（个人版，`arkcli-coding-plan`） | session / weekly / monthly 三个窗口 | 同一组 AK/SK 直连 `GetCodingPlanUsage`，HTTP 200 |
 | Kimi Coding | 5 小时 / 周 / 月窗口 | 真实 Key |
 | OpenCode Go | 2026-10-25 真机只读：`GET https://opencode.ai/zen/go/v1/usage` **HTTP 200**，三窗 rolling 3% / week 97% / month 56%（重置 2026-10-25 / 2026-10-26 / 2026-11-13），`state=ok`、`coverage=complete`，用时约 0.9 秒 | 本机 DSH 凭据库里的 `OPENCODE_GO_API_KEY`（desktop profile 该路由的 `apiKeyEnv`）；0.16.2 修复引用名之前，同一份凭据只会报「无凭据」 |
-| 小米 MiMo | 余额 + 套餐额度 | 真实平台会话 Cookie（含自动登录） |
+| 小米 MiMo | 余额 + 套餐额度 | 真实平台会话 Cookie（含自动登录；手机上可用小米账号扫码登录，全程不需要浏览器） |
 | Command Code | 月额度 | 提供方插件的凭据链 |
 | SuperGrok | 统一周池 + 加量余额 | 真实 `~/.grok/auth.json` |
 | Codex (ChatGPT) | 主 / 次窗口 + 档位 | 真实 `~/.codex/auth.json`（本插件默认关闭） |
@@ -235,6 +235,7 @@ Antigravity 在本机可能装了上面**两个提供方插件中的任意一个
 - **凭据以明文落盘**：本插件的配置不是加密凭据库；Windows 上真正的访问边界取决于目录 ACL，`chmod` 不能替代它。
 - **火山方舟是账号级读取**：一组 IAM AK/SK 能查到该账号名下**所有**套餐（Agent Plan、Coding Plan、团队席位）。把装了本插件的机器或配置文件交给别人时请注意这一点。
 - **浏览器自动化**：支持自动登录的提供商（MiMo、OpenDesign）会启动一个隔离的 Chromium 会话——不点「登录并自动导入」就不会触发。OpenDesign 的 Cloudflare 人机验证会在弹出窗口中出现，由你亲自完成即可（自动登录实测可用）；手动导入仍是备选（见凭据表）。
+- **dsh-go 手机 App 里没有自动登录**：手机本机引擎是 proot 里的 Ubuntu，没有 Chrome/Chromium，`playwright-core` 启动必然失败。插件会检测 `/etc/dsh-app/runtime.json`，在这类主机上不再提供「登录并自动导入」，改为「打开官方登录页 + 手动粘贴 Cookie」，并在输入框上方给一个原生「登录页」胶囊。桌面与远程主机行为完全不变。
 - **收录不等于安全审计**：无论 DSH STORE 还是 awesome-dsh-plugin，收录只表示满足它们各自的清单规则，都不是对代码的安全审查。
 
 ## Compatibility / 兼容性
@@ -476,6 +477,7 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 | 显示缓存、部分数据或额度未知 | 查看更新时间和错误说明；缓存来自之前的成功读取，部分数据不保证有可用额度，余额也不等于订阅余量 |
 | 刷新后数字暂未变化 | 成功结果按提供商缓存 60 秒；手动刷新可跳过普通 TTL，但仍遵守限流退避和 `Retry-After` |
 | MiMo 自动登录无法启动 | Host 所在机器需安装 Google Chrome 并有桌面环境；远程或无桌面部署使用手动导入 |
+| dsh-go 里没有「登录并自动导入」 | 手机本机引擎没有 Chrome，这是预期行为；用「打开官方登录页」在手机浏览器登录，再回来粘贴 Cookie。插件检测 `/etc/dsh-app/runtime.json` 后自动切换，不提供注定失败的按钮 |
 | 保存成功但验证失败 | 凭据已保存，检查网络、区域或账号后重试；保存与在线验证分别反馈 |
 | 保存提示配置已改变 | 另一窗口或实例更新了设置；重新读取配置后再编辑，避免旧表单覆盖新值 |
 | 升级后仍是旧界面或 RPC 不匹配 | 确认运行中的 Host 和 Client 都已重载；仅刷新页面不能保证 Host 升级 |

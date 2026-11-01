@@ -2,6 +2,26 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 未发布：小米账号扫码登录（MiMo）
+
+- **动机**：MiMo 的套餐额度接口 `/api/v1/tokenPlan/usage`、`tokenPlan/detail`、`balance` 只认控制台会话 Cookie（`api-platform_serviceToken` + `userId`）。推理用的 `tp-`（Token Plan）与 `sk-`（按量付费）Key 都读不到：实测两者请求控制台接口一律返回 `401 {"code":401,"loginUrl":…}`。官方 `@mimo-ai/cli` 的二进制里没有任何额度端点（46MB 归档内搜不到 `tokenPlan`/`usage`/`quota` 路径），第三方 CLI 的 `/v1/token_plan/remains` 在 `api.xiaomimimo.com` 与 `token-plan-cn.xiaomimimo.com` 上都是 404。而手机上浏览器普遍不再允许导出 Cookie，手动粘贴这条路在移动端等于不存在。
+- **方案**：改用小米账号官方的「用小米手机扫一扫」授权（`sid=api-platform`，回调 `platform.xiaomimimo.com/sts`）。协议全程是普通 HTTP，不需要浏览器；手机「设置 > 小米账号」自带扫码器。新增 `lib/mimo-qr.js`，与 `CookieLogin` 并列（那套骨架是"开浏览器 → 抓 Cookie"，这里无浏览器且多一步换票），终态语义保持一致以便复用同一套登录卡片。
+- **协议四步**（均实测）：① `serviceLogin?sid=api-platform&_json=true` 取 `_sign` 与初始 Cookie；② `longPolling/loginUrl` 取二维码 `qr` 与长轮询地址 `lp`；③ 长轮询等扫码，返回 `userId`/`passToken`/`nonce`/`ssecurity`/`location`；④ `location + clientSign` 换控制台 Cookie，其中 `clientSign = base64(sha1("nonce=<nonce>&<ssecurity>"))`。
+- **两个实测陷阱**：(a) 第①步下发的 `deviceId` 等初始 Cookie 必须带到后续请求，缺了扫码后小米回 `70036 系统错误`；(b) `nonce` 是 19 位整数（超过 `Number.MAX_SAFE_INTEGER`），直接 `JSON.parse` 会把末几位改写（`…275584` → `…276000`），签名随之算错、换票恒回 401。`parsePollResponse()` 用正则取原始字面量绕开它，测试钉住该行为。
+- **凭据**：只保存换到的控制台 Cookie（与手动粘贴同一落点）；`passToken` 声明有效期一个月，控制台 `serviceToken` 按服务端声明通常 24 小时。凭据不进入公开状态、RPC 响应与错误消息（`status()` 只带二维码与进度）。
+- **入口**：Host 新增 `startMimoQrLogin` / `getMimoQrStatus` / `cancelMimoQrLogin`；`loginCodec` 增加 `starting` 状态与 `qr`/`qrTip`/`expiresInSec` 展示字段。设置页 MiMo 卡片新增「小米扫码登录」按钮，点开显示二维码；手机端原本「打开登录页 + 手动粘贴 Cookie」的引导改为扫码优先，手动导入保留为备选。
+- **实测**：本机（dsh-go 手机引擎）完整跑通，读到真实套餐数据（Pro 套餐、周期结束日、已用/上限与百分比、CNY 余额）。
+- 回归：新增 `tests/test-mimo-qr.mjs`（nonce 精度、签名稳定性、Cookie 解析、完整状态机、凭据不外泄、取消与重新开始）；`tests/test-contract.mjs` 与 `tests/smoke-host.mjs` 的方法白名单同步。`npm run check` 全绿。
+
+## 未发布：dsh-go 手机引擎适配
+
+- Host 新增运行环境探测：读 `/etc/dsh-app/runtime.json` 判定是否 dsh-go 本机引擎；结果经 `host.mobile` / `host.browserLogin` 交给 Client。路径与内容只用于判定，不含秘密，检测可注入（`options.hostRuntime`）以便隔离测试在手机上仍能验证桌面行为。
+- 手机引擎里没有 Chrome/Chromium（实测 `playwright-core` 报 `Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome`，proot 内 `am` 也不可用），因此 `CookieLogin.start()` 在该环境下不再排队启动浏览器，而是立即返回 `subusage/no-browser` 与可读原因；桌面主机 `browserLogin` 恒为 true，流程与文案一字不变。
+- Client 按该字段把「登录并自动导入」整组换成手机引导（打开官方登录页 + 三步粘贴 Cookie 说明），药丸快捷入口改称「手动导入 Cookie」并直接展开手动区；OpenDesign 面板里「自动登录可用」那段说明在手机上不再出现。
+- ~~新增 dsh-go 原生入口：输入框上方「登录页」胶囊 → 「订阅登录页」面板~~（**已移除**：它只能打开官方登录网页，与设置页手动 Cookie 导入重复，无法替用户完成登录）。
+- 回归：新增 `tests/test-dsh-go.mjs`（标记文件判定、坏文件降级、桌面自动登录行为不变、手机端 `no-browser` 且零次 `chromium.launch`、手动 Cookie 导入仍可用）。面板视图经 dsh-go 检查器的视图解析器校验（中英文均可显示）。
+- **未做实机 GUI 验收**：本机就是 dsh-go 引擎，但 App 原生胶囊/面板的实际显示需在 App 内查看；本轮只核对了清单、注册与视图结构。
+
 ## 0.20.0：Antigravity 用量接入本机 dsh-tool-antigravity，并进入输入区药丸
 
 - **新增第二条 Antigravity 联动通道**：本机实际安装的 Antigravity 提供方插件是 [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity)（0.5.x），它经 `ctx.provide("antigravityAuth", AntigravityAuthService)` 暴露服务，取数方法 `usage(signal?, force?)` 返回 `QuotaStatusView`（`state` 七态；`groups[]` 固定 `gemini` / `non-gemini` 两组，各带 `5h` / `weekly` 两窗的 0..1 剩余比例与 `resetTime`）。新增 `normalizeAntigravityAuthView()` 照其 `lib/types/quota.d.ts` 归一化：剩余比例换算成已用百分比，组名映射为「Gemini 模型」「Claude 与 GPT 模型」；`unauthenticated` 按未登录处理（全量静默、点名给登录指引），`forbidden` / `rate-limited` / `timeout` / `offline` / `protocol-drift` 各折成可读 error（查询限流不等于额度耗尽）。

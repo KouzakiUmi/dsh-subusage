@@ -36,7 +36,9 @@ const h = harness({ keys: { [Z]: "old-manual", [K]: "kimi-manual" } });
 h.credential[Z] = { value: "credential-key" }; h.environment[Z] = { value: "environment-key" };
 let result = await h.service.refresh({ providerIds: [Z], force: false });
 assert.equal(result.entries[0].keySource, "credentials"); assert.equal(h.calls[0].options.headers.authorization, "Bearer credential-key");
-assert.deepEqual(Object.keys(result).sort(), ["availableProviders", "configured", "entries", "settings", "updatedAt"]);
+assert.deepEqual(Object.keys(result).sort(), ["availableProviders", "configured", "entries", "host", "settings", "updatedAt"]);
+// host 只暴露「能不能自动登录」这一件事；测试主机不是 dsh-go，所以 mobile=false 且不泄漏路径。
+assert.deepEqual(result.host, { mobile: false, browserLogin: true });
 assert.equal(result.settings.keyModes[Z], "inherit"); assert.equal(result.settings.hasKeys[Z], true); assert.equal(result.configured[Z], true);
 assert(!JSON.stringify(result).includes("old-manual")); assert(!("keys" in result.settings)); assert(!("cookie" in result.settings.xiaomi));
 const count = h.calls.length;
