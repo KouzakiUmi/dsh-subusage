@@ -32,10 +32,16 @@
 | `opendesign` | Design Plan 窗口 + 个人钱包/订阅额度剩余 | 控制台会话 Cookie；与模型 Key 不通用 | 关 |
 | `apigoto` | 订阅窗口（`window_sec` 定档）+ 套餐内剩余金额 | Bearer，与推理同 Key（`GET /v1/usage`） | 关 |
 
-> 另有 **4 条联动项**（`antigravity`、`trae`、`trae-global`、`trae-enterprise`），不计入上面的 31 条：它们不是本插件登记的 provider id（没有凭据、检测开关与设置卡片）。`antigravity` 有两个互不相干的提供方插件通道——[`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) 的 `agyQuota` 服务（优先，带套餐名与 AI Credits）与 [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity) 的 `antigravityAuth.usage()`（本机实际安装，Gemini / Claude-GPT 两组 5h / 周窗口）；二者读同一份配额，只取第一个在场通道。Antigravity 联动除 `quota()` 视图与 `subusage_quota` 报告外还接入输入区药丸（模型路由 `google-antigravity` → 联动 id）。`trae*` 三块面板仅出现在工具报告，来自 `dsh-connect-trae` 挂在本机 web 服务器上的只读用量路由（`/plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>`）。提供方插件都不在场时联动条目不出现（点名查询除外）。取舍：读兄弟插件**已经算好**的结果，而不是自己实现官方取数，避免第二份凭据读取路径与两套缓存；代价是依赖对方的输出契约（其版本变化时本插件报错而不是编数字）。
+> 另有 **4 条联动项**（`antigravity`、`trae`、`trae-global`、`trae-enterprise`），不计入上面的 31 条：它们不是本插件登记的 provider id（没有凭据槽或普通设置卡片）；Antigravity 另有独立 `visibility.antigravity` 开关，默认开启，关闭后不查询也不显示药丸。`antigravity` 有两个互不相干的提供方插件通道——[`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) 的 `agyQuota` 服务（优先，带套餐名与 AI Credits）与 [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity) 的 `antigravityAuth.usage()`（本机实际安装，Gemini / Claude-GPT 两组 5h / 周窗口）；二者读同一份配额，只取第一个在场通道。Antigravity 联动除 `quota()` 视图与 `subusage_quota` 报告外还接入输入区药丸（模型路由 `google-antigravity` → 联动 id）。`trae*` 三块面板仅出现在工具报告，来自 `dsh-connect-trae` 挂在本机 web 服务器上的只读用量路由（`/plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>`）。提供方插件都不在场时联动条目不出现（点名查询除外）。取舍：读兄弟插件**已经算好**的结果，而不是自己实现官方取数，避免第二份凭据读取路径与两套缓存；代价是依赖对方的输出契约（其版本变化时本插件报错而不是编数字）。
 
 > 火山方舟以官方 CLI（`arkcli helper configure`）写入的 `arkcli-*` 为准：个人版 2 条 + 团队版 2 条，共 **4 条**，共用一组 IAM AK/SK。旧插件 `@volcengine/ark-plan-api` 的两个国内 id（`ark-agent-plan-cn` / `ark-coding-plan-cn`）已从 Host 移除，但 Client 入口（`ROUTE_PROVIDER_ALIAS`）会把它们**归并**到对应的 arkcli 路由——装了旧插件的用户选中那些模型时，药丸仍显示同一份订阅数据，不需要改装。BytePlus 站点（`ark-coding-plan-byteplus`）本机无账号可验证，已整条移除：Host 不识别、Client 也不归并。企业版 / 团队版需要查看席位的权限；个人版与 Team 分别有组开关，个人版默认开启，Team 默认关闭，两者互不影响。新安装有效默认为 11 开 / 20 关；详情以 README 的当前清单为准。
 
+
+### OFM 的十个额外联动渠道
+
+上述四条之外，Our Free Model 的 `usage.badge` 增加十个 `ofm-*` 联动项（总计十四条）：小浣熊、Loomy、Qoder 国际/中国版、LobsterAI、TRAE、Cline、MiniMax Code、ZCode、Gemini。额度由提供方按账号查询并缓存，本插件只消费结果。八个无路由冲突的渠道自动显示药丸；TRAE / MiniMax Code 保留各自已有的非 OFM 匹配，OFM 数据通过显式 ID 查询。
+
+2026-11-02 已用本地既有账号只读核验小浣熊、Loomy、Qoder 的上游额度接口，其余渠道依据 OFM 2.7.1 实现和隔离回归。独立渠道插件只要保留同一接口也能复用；尚未完成安装后的真实联调。包容量、账号与模型池分别展示，不累加异质额度。完整契约、ID 和验证边界见 [OFM 说明](ofm.md)。
 
 ## 评估后不接入
 

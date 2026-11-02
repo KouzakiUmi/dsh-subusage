@@ -196,7 +196,7 @@ Cookie 落在通用的手动 Key 槽，并把凭据模式切成 manual，不额�
 
 ### Antigravity（联动项）
 
-`antigravity` **不是本插件登记的 provider id**，也不出现在设置页。本机只要运行下面**两个提供方插件中的任一个**，本插件就读它算好的结果并折算成统一的条目形状，并入 `quota()` 视图与 `subusage_quota` 报告（同一份 Google Antigravity 配额只出一条；两者都在场时优先信息更全的 `agyQuota`）：
+`antigravity` **不是本插件登记的 provider id**，不占普通提供商设置卡片；管理区顶部的独立开关默认开启，关闭后不查询也不显示药丸。本机只要运行下面**两个提供方插件中的任一个**，本插件就读它算好的结果并折算成统一的条目形状，并入 `quota()` 视图与 `subusage_quota` 报告（同一份 Google Antigravity 配额只出一条；两者都在场时优先信息更全的 `agyQuota`）：
 
 1. [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp)（包名 `dsh-bundle-antigravity-host`）注册的 Cordis 服务 `agyQuota`，方法 `read({ force })`，快照为 `QuotaSnapshot`。
 2. [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity)（本机实际安装的版本 0.5.x，底层 `@cortexkit/antigravity-auth-core`）`ctx.provide("antigravityAuth", AntigravityAuthService)` 暴露的认证服务，方法 `usage(signal?, force?)`，返回 `QuotaStatusView`。
@@ -212,7 +212,7 @@ Cookie 落在通用的手动 Key 槽，并把凭据模式切成 manual，不额�
 - `groups[]` 只有固定两类：`group: "gemini"` → `groupLabel`「Gemini 模型」，`"non-gemini"` →「Claude 与 GPT 模型」（徽章口径照抄该包自带的 pet-balance 卡片）；每组 `windows[]` 的 `window` 只有 `"5h"` / `"weekly"`（→ 本插件 kind `5h` / `week`），`remainingFraction` 是 0..1 的**剩余**比例，对外 percent = `(1 − fraction) × 100`；`resetTime` 进 `resetsAt`。比例 / 窗口档位缺失或非法时跳过该窗口，不补 0、不写 `detail`。
 - 该通道没有套餐名与 AI Credits（`extras` 为空）；需要这些信息时由信息更全的 `agyQuota` 通道提供。
 
-**输入区药丸**：dsh-tool-antigravity 注册的模型路由 id 是 `google-antigravity`。Client 的 `ROUTE_PROVIDER_ALIAS` 把它归并到联动 id `antigravity`，由独立的 `subUsage/readLinked` Typert 方法取数（Host 的 `readLinked()` 走与 `quota()` 相同的联动通道，但结果只含 `{ updatedAt, entries }`、不回 settings，避免药丸轮询顶掉设置快照）。联动项不进 `PROVIDER_META` / `PROVIDER_ORDER`，因此不出现在设置页，也不受检测开关 / 凭据存在性 / 路由存在性过滤——可见性完全由 Host 返回的条目决定（未装插件时药丸仍渲染并显示缺席原因）。
+**输入区药丸**：dsh-tool-antigravity 注册的模型路由 id 是 `google-antigravity`。Client 的 `ROUTE_PROVIDER_ALIAS` 把它归并到联动 id `antigravity`，由独立的 `subUsage/readLinked` Typert 方法取数（Host 的 `readLinked()` 走与 `quota()` 相同的联动通道，但结果只含 `{ updatedAt, entries }`、不回 settings，避免药丸轮询顶掉设置快照）。联动项不进 `PROVIDER_META` / `PROVIDER_ORDER`，不占普通设置卡片，也不受凭据存在性 / 路由存在性过滤；独立 `visibility.antigravity` 关闭时隐藏。开启时可见性由 Host 返回的条目决定（未装插件时药丸仍渲染并显示缺席原因）。
 
 ### Trae（联动项）
 
@@ -232,6 +232,10 @@ GET /plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>
 
 > 契约来源：该插件 `lib/index.d.ts` 的 `TraeWebUsage`、`TraeWebCredits`、`TraeWebPayStatus` 与 `lib/index.js` 里的 `traeWebUsage()` / `registerTraeUsageRoute()`（本机安装版本 4.3.0）。它是第三方插件，路由与字段若在升级中改动，本插件会以「无法识别的响应用」或该条目的 error 呈现，而不会编造数字。
 
+### OFM（联动项）
+
+`ofm-*` 十个渠道消费 Our Free Model 或兼容独立插件的 `usage.badge`，登录和额度采集沿用提供方。工具按账号各返回一条，药丸保留逐账号明细；不同账号、币种或模型池不相加。渠道 ID、缓存与验证范围见 [OFM 说明](ofm.md)。
+
 ### Command Code 账户
 
 Command Code 的凭据由提供方插件 `@mars-sea/dsh-commandcode-provider` 管理，本插件只读继承，并在**两处**提供同一份账户切换：药丸弹层底部，以及 设置 → 订阅用量 的 Command Code 用量面板（同一个控制器、同一个组件、与提供方插件设置页同一开关）。「自动轮换」时仍显示默认账户（顶层 Key）的用量，不跟随轮换中的实际服务账户；提供方自定义 `apiBase` 也不跟随。月总额按已知套餐快照推算，未知套餐只显示月剩余；月池耗尽不代表已购 / 赠送池不可用。
@@ -249,5 +253,6 @@ Command Code 的凭据由提供方插件 `@mars-sea/dsh-commandcode-provider` �
 | 火山方舟管控面 | `open.volcengineapi.com` |
 | 自建网关 | 用户自填的 LiteLLM proxy 地址（只去掉 `/v1` 这类版本段，其余路径原样保留） |
 | 复用宿主账号请求链 | `deepseek-account`：调用本机 `deepseekAccount` 服务，由 DSH 完成鉴权与余额请求；宿主服务可能按自身配置联网，本插件不另发 HTTP、不复制 token |
+| OFM 联动 | 经宿主 Connection 进程内分发到 `/api/channel-pack`，不使用网络端口；提供方按自己的配置查询上游 |
 
 除上面这些，插件不访问其他网络地址；MiMo 自动登录会额外打开官方平台页面，由你在该页面自行完成登录。

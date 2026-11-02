@@ -172,8 +172,8 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   const all = flattenNodes(section), selects = all.filter((n) => n.type === "select");
   assert.equal(selects.length, 0, "设置页不使用任何下拉列表");
   // 火山方舟的 4 条路由在设置页合并成一张卡片，但个人版 / Team 各有一个开关：
-  // 原有 30 个开关 + 手动匹配开关。
-  assert.equal(all.filter(n => n.props?.role === "switch").length, 31, "提供商开关、Ark Team 独立开关与默认隐藏开关均可见");
+  // 原有 30 个开关 + 手动匹配与 Antigravity 联动开关。
+  assert.equal(all.filter(n => n.props?.role === "switch").length, 32, "普通提供商、Ark Team、手动匹配与 Antigravity 开关均可见");
   if (provider === "xiaomi-token-plan-cn") {
     assert.ok(visibleText(section).includes("登录并自动导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));
@@ -296,7 +296,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   assert.ok(!unknownRoutes.includes("arkcli-coding-plan"), "路由表未知且订阅未知时不排出其余方舟标签");
 
   // 管理列表：已启用的在前，关闭项沉到末尾，组内各自保持既有顺序。
-  const listed = flattenNodes(render()).filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("启用 ") && !String(n.props["aria-label"]).includes("Team 检测")).map(n => String(n.props["aria-label"]).slice("启用 ".length));
+  const listed = flattenNodes(render()).filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("启用 ") && !["Team 检测", "Antigravity 用量"].some(label => String(n.props["aria-label"]).includes(label))).map(n => String(n.props["aria-label"]).slice("启用 ".length));
   // Ark 剩下的 4 条路由合并成一张卡片，所以比 PROVIDER_ORDER 少 3 条。
   assert.equal(listed.length, order.length - 3, "管理列表列出全部提供商（Ark 组合并成一张卡片）");
   assert.equal(listed.at(-2), meta["zai-coding-cn"].short, "关闭的 Z.ai 沉到末尾组");

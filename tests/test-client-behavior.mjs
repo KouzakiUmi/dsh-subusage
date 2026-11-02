@@ -229,8 +229,8 @@ let tabs = nodes(tree).filter((n) => n.props.role === "tab");
 assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Grok", "MiniMax CN", "DeepSeek 账号", "DeepSeek API", "ARK Plan"]);
 assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
 assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
-// 原有 30 个开关，加上默认关闭的手动匹配开关。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 31); assert.ok(!textOf(tree).includes("保存设置"));
+// 原有 30 个开关，加上默认关闭的手动匹配与默认开启的 Antigravity 联动开关。
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 32); assert.ok(!textOf(tree).includes("保存设置"));
 let focused; tabs[0].props.onKeyDown({ key: "End", preventDefault() {}, currentTarget: { parentElement: { querySelectorAll: () => tabs.map((_, i) => ({ focus() { focused = i; } })) } } });
 assert.equal(focused, ids.length - 1); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids.at(-1));
 // End 键跳到最后一个 tab，其技术信息应显示该 provider 的继承变量名。
@@ -439,7 +439,7 @@ let controlSnapshot = withPrefs(result([...ids.map(id => entry(id, 20, { apiDete
 const controlPatches = [], controlRefreshes = [];
 const controlStore = { ...uiStore, getSnapshot: () => controlSnapshot, readAll: async () => controlSnapshot, refresh: async (ids) => { controlRefreshes.push(ids); return controlSnapshot; }, save: async patch => {
  controlPatches.push(patch); const old = controlSnapshot.settings.visibility, v = patch.visibility;
- controlSnapshot = withPrefs(result(controlSnapshot.entries, String(controlPatches.length + 1)), { hideWithoutApi: v.hideWithoutApi ?? old.hideWithoutApi, providers: { ...old.providers, ...v.providers }, ...(v.ark !== undefined || old.ark !== undefined ? { ark: v.ark ?? old.ark } : {}), ...(v.arkTeam !== undefined || old.arkTeam !== undefined ? { arkTeam: v.arkTeam ?? old.arkTeam } : {}) });
+ controlSnapshot = withPrefs(result(controlSnapshot.entries, String(controlPatches.length + 1)), { hideWithoutApi: v.hideWithoutApi ?? old.hideWithoutApi, ...(v.antigravity !== undefined || old.antigravity !== undefined ? { antigravity: v.antigravity ?? old.antigravity } : {}), providers: { ...old.providers, ...v.providers }, ...(v.ark !== undefined || old.ark !== undefined ? { ark: v.ark ?? old.ark } : {}), ...(v.arkTeam !== undefined || old.arkTeam !== undefined ? { arkTeam: v.arkTeam ?? old.arkTeam } : {}) });
  return controlSnapshot;
 } };
 memory.set("dsh-subusage:last-provider", ids[0]);
@@ -449,8 +449,16 @@ const management = tree.children.at(-1);
 assert.equal(management.type, "details", "管理区为设置页末尾的折叠菜单");
 assert.equal(management.props.id, "subusage-provider-management"); assert.notEqual(management.props.open, true, "默认折叠");
 assert.equal(management.children[0].type, "summary"); assert.equal(management.children[0].children[0], "提供商管理");
-// 关闭/隐藏的提供商仍保留管理开关；Ark 合并卡片包含个人版 / Team 两个独立开关，所以总共 30 个（含「默认隐藏」）。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 31, "所有关闭/隐藏提供商保留管理开关（Ark 个人版与 Team 独立）");
+// 关闭/隐藏的提供商仍保留管理开关；Ark 两个组开关外，Antigravity 联动也有独立开关。
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 32, "普通提供商、Ark 两组及 Antigravity 均保留独立开关");
+const antigravitySwitch = () => nodes(tree).find(n => n.props["aria-label"] === "启用 Antigravity 用量");
+assert.equal(antigravitySwitch().props["aria-checked"], true, "Antigravity 联动默认开启");
+await antigravitySwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert.deepEqual(JSON.parse(JSON.stringify(controlPatches.at(-1).visibility)), { antigravity: false }, "按钮只提交独立开关，不夹带凭据或普通 provider");
+assert.equal(antigravitySwitch().props["aria-checked"], false);
+await antigravitySwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert.equal(controlPatches.at(-1).visibility.antigravity, true);
+assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), ["antigravity"], "重新开启后立即刷新联动额度");
 assert.deepEqual(nodes(tree).filter(n => n.props.role === "tab").map(n => n.props.id), ids.filter(id => ![ids[1], ids[3]].includes(id)).map(id => `subusage-tab-${id}`));
 assert(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick(); tree = ch.render(api.SubusageSection, cp);
@@ -461,7 +469,7 @@ assert(!nodes(nodes(tree).find(n => n.props.role === "tabpanel")).some(n => n.ty
 assert(nodes(tree).some(n => n.type === "button" && n.children.includes("收起") && n.props["aria-expanded"] === true), "当前配置入口明确显示展开状态");
 assert(!nodes(tree).some(n => n.type === "summary" && n.props["aria-label"] === "连接与凭据 Kimi"), "凭据区不再使用点击行为含混的嵌套 Summary");
 await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax CN").props.onClick(); tree = ch.render(api.SubusageSection, cp);
-assert.equal(controlPatches.at(-1).visibility.providers["minimax-cn"], false); assert.equal(controlPatches.at(-1).expectedRevision, "1");
+assert.equal(controlPatches.at(-1).visibility.providers["minimax-cn"], false); assert.equal(controlPatches.at(-1).expectedRevision, String(controlPatches.length), "开关使用保存后的最新 revision");
 assert(!nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-minimax-cn"));
 await nodes(tree).find(n => n.props["aria-label"] === "没配 Key 或登录的，默认不显示").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.hideWithoutApi, false); assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === `subusage-tab-${ids[1]}`));
@@ -506,8 +514,8 @@ const beforeToggle = controlPatches.length; await nodes(tree).find(n => n.props[
 ch.unmount();
 controlSnapshot = withPrefs(result(controlSnapshot.entries), preferences(Object.fromEntries(ids.map(id => [id, false]))));
 const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSection, cp);
-// 空状态仍列出全部管理开关：27 家非 Ark + Ark 两个组开关 + 默认隐藏 = 30。
-assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 31);
+// 空状态仍列出全部管理开关，并保留 Antigravity 联动独立开关。
+assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 32);
 assert.equal(nodes(tree).find(n => n.props.id === "subusage-provider-management").props.open, true, "空状态展开配置入口");
 assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.role === "tabpanel"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick(); tree = emptyControls.render(api.SubusageSection, cp);
@@ -660,6 +668,8 @@ assert.ok(!arkFilterCalls.some(c => c.method === "refresh" && c.id === "kimi-cod
 arkFilterStore.dispose();
 // 客户端 save 校验器必须接受 Host 合法的火山组开关补丁（双端 schema 对齐），非法类型仍拒绝。
 assert.doesNotThrow(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { ark: false } }), "火山组开关补丁必须被客户端接受");
+assert.doesNotThrow(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { antigravity: false } }), "Antigravity 独立开关补丁必须被客户端接受");
+assert.throws(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { antigravity: "yes" } }), "Antigravity 非布尔必须拒绝");
 assert.doesNotThrow(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { arkTeam: true } }), "火山 Team 独立开关补丁必须被客户端接受");
 assert.doesNotThrow(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { hideWithoutApi: false, ark: true, arkTeam: false } }), "混合可见性补丁必须被客户端接受");
 assert.throws(() => api.parseSettings({ expectedRevision: "ark-r1", visibility: { arkTeam: "yes" } }), "arkTeam 非布尔必须拒绝");

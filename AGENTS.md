@@ -13,10 +13,18 @@
 
 ## Antigravity / Trae 兄弟插件联动
 
-- 联动项不进 `PROVIDERS` / `PROVIDER_META` / `PROVIDER_ORDER`（没有凭据、检测开关与设置卡片），登记在 Host 的 `LINKED_PROVIDERS` 与 Client 的 `PILL_LINKED_META`；改这几处表必须双端同步并更新 `tests/test-contract.mjs`。
+- 联动项不进 `PROVIDERS` / `PROVIDER_META` / `PROVIDER_ORDER`（没有凭据槽与普通设置卡片），登记在 Host 的 `LINKED_PROVIDERS` 与 Client 的 `PILL_LINKED_META`；改这几处表必须双端同步并更新 `tests/test-contract.mjs`。Antigravity 例外地有独立 `visibility.antigravity` 开关（默认开启），只占管理区顶部一个按钮，不进入普通 provider 列表。
 - **Antigravity 一条、两个提供方插件通道**：`channels: ["agyQuota", "antigravityAuth"]`。`agyQuota` 是 dsh-antigravity-acp 的 `read({force})` → `QuotaSnapshot`（带 plan + credits，优先）；`antigravityAuth` 是本机实际安装的 dsh-tool-antigravity 经 `ctx.provide` 暴露的服务，`usage(signal?, force?)` → `QuotaStatusView`（gemini / non-gemini 两组、5h / weekly 两窗）。`linkedSnapshot()` 只在「服务取不到 / 没有方法」时回落，服务在场但回失败快照**不**回落；归一化分别走 `normalizeAntigravity` / `normalizeAntigravityAuthView`，字段形状照抄对方类型声明，不编绝对值。`rate-limited` 是查询限流，不是额度耗尽。
-- 药丸（仅 Antigravity，Trae 仍只进工具报告）走独立 Typert 方法 `subUsage/readLinked`：Client 路由 `google-antigravity` → 联动 id `antigravity`（`ROUTE_PROVIDER_ALIAS`），Host `readLinked()` 复用 `linkedProvider` 但结果只回 `{ updatedAt, entries }`，**不回 settings**，避免轮询顶掉设置快照；两端 codec（`SubUsageLinkedQuery` / `SubUsageLinkedResult`）与方法白名单必须同步。联动 id 在 Client 跳过检测开关 / 凭据 / 路由存在性过滤，可见性由 Host 条目决定（未装插件也渲染缺席原因，不静默消失）。
+- 药丸（Antigravity 与 OFM，Trae 自有联动仍只进工具报告）走独立 Typert 方法 `subUsage/readLinked`：Client 路由 `google-antigravity` → 联动 id `antigravity`（`ROUTE_PROVIDER_ALIAS`），Host `readLinked()` 复用 `linkedProvider` 但结果只回 `{ updatedAt, entries }`，**不回 settings**，避免轮询顶掉设置快照；两端 codec（`SubUsageLinkedQuery` / `SubUsageLinkedResult`）与方法白名单必须同步。联动 id 在 Client 跳过普通 provider 的凭据 / 路由存在性过滤；只有 Antigravity 遵守 `visibility.antigravity`，关闭时不发 `readLinked`、移除旧条目并阻止迟到响应复活药丸。开启且未装插件时渲染缺席原因，不静默消失。
+- 点名联动查询的空 `entries` 表示移除该请求目标的旧额度；Client 仅接受当前请求代的移除信号，不覆盖设置快照，后续轮询可恢复其他窗口重新开启的联动。回归覆盖跨窗口关闭/恢复及关闭前在途成功、缺席和失败响应。
 - 缺席语义：不点名的全量查询静默；点名（含 `google-antigravity` / `dsh-tool-antigravity` 等别名）回一条列出两个插件名的安装指引；`unauthenticated` 点名时给「去 dsh-tool-antigravity 完成 Google 授权（`/antigravity-auth login`）」指引。
+
+## OFM 联动与手机药丸
+
+- 十个渠道以 `ofm-*` 登记在联动表，由 [ofm.js](lib/ofm.js) 经 Connection 的公开进程内 Fetch 分发只读调用 `usage.badge`；完整范围与版本证据见 [OFM 说明](docs/ofm.md)。不解析提供方凭据、不请求其上游、不调用登录、签到或设置方法。
+- 工具结果按账号展开，药丸用 `ofmAccounts` 保留各账号明细；不累加账号余额、不推断实际服务账号、不把余额快照当容量、不把包到期日当窗口重置。Cline 订阅窗口按账号 ID 匹配，独立成功数据可部分保留。
+- `minimax` 和 `trae` 已有不同来源，OFM 的对应渠道只按 `ofm-minimax` / `ofm-trae` 查询，不覆盖既有药丸匹配。其余八个渠道按已核实路由 ID 自动匹配。
+- DSH Go `panel` 网页岛中，药丸详情进入文档流向下展开，外层负责滚动；样式按岛标记自动生效并随 Client 卸载清理。桌面仍为绝对定位弹层。离线浏览器检查见 [脚本](scripts/check-ofm-mobile.mjs)，Android 真机验收单独记录。
 
 ## 手动 provider 匹配
 

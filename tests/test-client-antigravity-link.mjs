@@ -1,5 +1,6 @@
 // 客户端药丸联动：选中 dsh-tool-antigravity 的模型路由 google-antigravity 时，
-// 药丸归并到联动项 antigravity，取数走 Host 的 readLinked（不读凭据、不读设置、不进设置页）。
+// 药丸归并到联动项 antigravity，取数走 Host 的 readLinked（不读凭据、不占普通设置卡片）；
+// visibility.antigravity 独立控制取数与显隐。
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import assert from "node:assert/strict";
@@ -51,16 +52,18 @@ const linkedEntry = (over = {}) => ({
 	extras: [], lastSuccessAt: new FakeDate(clock).toISOString(), ...over
 });
 const linkedResult = entries => ({ updatedAt: new FakeDate(clock).toISOString(), entries });
+const settingsResult = (antigravity = true, entries = []) => ({ updatedAt: new FakeDate(clock).toISOString(), settings: { revision: "1", visibility: { antigravity }, hasKeys: {}, keyModes: {} }, configured: {}, entries });
 
-// ── [1] reader("antigravity") 走 readLinked：不读设置、不调 refresh ──────────
+// ── [1] reader("antigravity") 先读开关，再走 readLinked，不调普通 refresh ───
 {
 	const calls = [];
-	const store = api.createUsageStore((method, query) => { calls.push({ method, query }); return linkedResult([linkedEntry()]); });
+	const store = api.createUsageStore((method, query) => { calls.push({ method, query }); return method === "read" ? settingsResult() : linkedResult([linkedEntry()]); });
 	const reader = store.reader("antigravity", true);
 	const e = await reader();
 	await flush();
-	assert.deepEqual(calls.map(c => c.method), ["readLinked"], "联动项只打 readLinked，不触发 read 设置预读");
-	assert.deepEqual(JSON.parse(JSON.stringify(calls[0].query)), { providerIds: ["antigravity"], force: false });
+	assert.deepEqual(calls.map(c => c.method), ["read", "readLinked"], "首次先读独立开关，之后只打 readLinked");
+	assert.deepEqual(JSON.parse(JSON.stringify(calls[0].query)), { providerIds: [], force: false, commandCodeAccount: "" }, "首次只读设置，不取普通 provider 额度");
+	assert.deepEqual(JSON.parse(JSON.stringify(calls[1].query)), { providerIds: ["antigravity"], force: false });
 	assert.equal(e.state, "ok");
 	assert.equal(e.visible, true, "联动条目不套「无凭据默认收起」规则");
 	assert.equal(e.windows.length, 2);
@@ -72,7 +75,7 @@ const linkedResult = entries => ({ updatedAt: new FakeDate(clock).toISOString(),
 
 // ── [2] 未装提供方插件：Host 回 error 条目，药丸仍可见（给出缺席原因而非消失）──
 {
-	const store = api.createUsageStore(method => linkedResult([{
+	const store = api.createUsageStore(method => method === "read" ? settingsResult() : linkedResult([{
 		providerId: "antigravity", state: "error", coverage: "partial", freshness: "unknown", windows: [], extras: [],
 		error: "Antigravity 额度来自 Antigravity 提供方插件，但本机没有检测到可用通道：请安装并登录 dsh-tool-antigravity（antigravityAuth 服务）或 dsh-antigravity-acp（agyQuota 服务），重启 DSH 后这条会自动出现。"
 	}]));
@@ -98,9 +101,51 @@ const linkedResult = entries => ({ updatedAt: new FakeDate(clock).toISOString(),
 	store.dispose();
 }
 
+// 独立开关关闭：先读设置，不发 readLinked，reader 隐藏；开启后才查询。
+{
+	const calls = [];
+	const store = api.createUsageStore((method, query) => { calls.push({ method, query }); return method === "read" ? settingsResult(false) : linkedResult([linkedEntry()]); });
+	const e = await store.reader("antigravity", true)();
+	assert.equal(e.visible, false);
+	assert.deepEqual(calls.map(call => call.method), ["read"], "关闭时不发起联动取数");
+	store.dispose();
+}
+// 关闭后清除旧条目，并阻挡关闭前发出的迟到响应。
+{
+	let release;
+	const store = api.createUsageStore(method => method === "read" ? settingsResult() : method === "save" ? settingsResult(false) : new Promise(resolve => { release = resolve; }));
+	const pending = store.reader("antigravity", true)();
+	while (!release) await flush();
+	const saved = await store.save({ expectedRevision: "1", visibility: { antigravity: false } });
+	assert.equal(saved.settings.visibility.antigravity, false);
+	release(linkedResult([linkedEntry()])); await pending;
+	const current = await store.reader("antigravity", true)();
+	assert.equal(current.visible, false);
+	assert.ok(!store.getSnapshot().entries.some(e => e.providerId === "antigravity"), "关闭后旧额度立即移除，迟到响应不得复活");
+	store.dispose();
+}
+
+// 另一窗口关闭后 Host 回空列表：旧窗口移除额度，且不覆盖设置，重新开启后可恢复。
+{
+	let enabled = true;
+	const rpc = method => method === "read" || method === "save" ? settingsResult(enabled) : linkedResult(enabled ? [linkedEntry()] : []);
+	const viewing = api.createUsageStore(rpc), editing = api.createUsageStore(rpc);
+	const reader = viewing.reader("antigravity", true);
+	assert.equal((await reader()).visible, true);
+	enabled = false;
+	await editing.save({ expectedRevision: "1", visibility: { antigravity: false } });
+	assert.equal((await reader(true)).visible, false, "另一窗口关闭后的空响应必须隐藏旧药丸");
+	assert.equal(viewing.getSnapshot().settings.visibility.antigravity, true, "联动响应不覆盖本地设置快照");
+	assert.equal(viewing.getSnapshot().entries.find(e => e.providerId === "antigravity").windows.length, 0);
+	enabled = true;
+	await editing.save({ expectedRevision: "1", visibility: { antigravity: true } });
+	assert.equal((await reader(true)).visible, true, "后续轮询应能恢复远端重新开启的额度");
+	viewing.dispose(); editing.dispose();
+}
+
 // ── [4] 药丸入口：google-antigravity 路由 → antigravity 联动药丸 ────────────
 {
-	const usageStore = api.createUsageStore(() => linkedResult([linkedEntry()]));
+	const usageStore = api.createUsageStore(method => method === "read" ? settingsResult() : linkedResult([linkedEntry()]));
 	const readEntry = (id) => {
 		const fn = async () => usageStore.getSnapshot().entries.find(e => e.providerId === id) || { providerId: id, state: "loading", windows: [] };
 		fn.subscribe = () => () => {}; fn.activate = () => () => {};

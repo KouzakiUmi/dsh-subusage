@@ -1,6 +1,7 @@
 // 兄弟插件联动：dsh-antigravity-acp（`agyQuota` 服务）的额度并入 quota() 视图与
 // `subusage_quota` 工具报告。
-// 约束：联动项没有自己的凭据与检测开关；插件不在场时**不出现**该条目（不是「未配置」）；
+// 约束：联动项没有自己的凭据；Antigravity 由 visibility.antigravity 独立控制（默认开启）；
+// 插件不在场时**不出现**该条目（不是「未配置」）；
 // 它报的是剩余比例，对外必须换算成已用百分比；取数失败 / 超时只影响它自己那一条。
 import assert from "node:assert/strict";
 import { loadHostModule } from "./helpers.mjs";
@@ -83,7 +84,7 @@ function harness(agy, options = {}) {
 	const files = new Map();
 	const io = {
 		readFileSync(path) { if (!files.has(path)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); return files.get(path); },
-		mkdirSync() {}, writeFileSync(path, value) { files.set(path, value); }, chmodSync() {}, renameSync() {}
+		mkdirSync() {}, writeFileSync(path, value) { files.set(path, value); }, chmodSync() {}, renameSync(from, to) { files.set(to, files.get(from)); files.delete(from); }
 	};
 	const ctx = { get: name => name === "agyQuota" ? agy : undefined };
 	const service = new SubUsageService(ctx, {
@@ -93,6 +94,7 @@ function harness(agy, options = {}) {
 		fetch: async () => { throw new Error("测试不得发起网络请求"); },
 		linkedTimeoutMs: options.linkedTimeoutMs ?? 50
 	});
+	if (options.files) for (const [path, value] of options.files) files.set(path, value);
 	return { service, files };
 }
 {
@@ -144,6 +146,47 @@ function harness(agy, options = {}) {
 	const view = await service.quota({ providerIds: ["antigravity"] });
 	assert.equal(view.providers[0].state, "error");
 	assert.ok(view.providers[0].error.includes("超过"), "超时要给出可读原因");
+	service.dispose();
+}
+
+// 独立开关：默认开启；关闭后 quota/readLinked 都不调用兄弟插件，重载后保持，重新开启立即恢复。
+{
+	const calls = [];
+	const { service, files } = harness({ read: async () => { calls.push("read"); return SNAPSHOT; } });
+	let settings = await service.read({ providerIds: [], force: false });
+	assert.equal(settings.settings.visibility.antigravity, true, "旧配置缺省开启，保持升级前行为");
+	const initialRevision = settings.settings.revision;
+	settings = await service.save({ expectedRevision: initialRevision, visibility: { antigravity: false } });
+	assert.equal(settings.settings.visibility.antigravity, false);
+	assert.equal(JSON.parse(files.get("memory/config")).visibility.antigravity, false, "独立开关必须落盘");
+	assert.deepEqual((await service.quota({ providerIds: ["antigravity"] })).providers, [], "关闭后点名查询也不产出条目");
+	assert.deepEqual((await service.readLinked({ providerIds: ["antigravity"], force: true })).entries, [], "关闭后药丸通道不产出条目");
+	assert.equal(calls.length, 0, "关闭后不得调用提供方插件");
+	const reloadedHarness = harness({ read: async () => { calls.push("reloaded"); return SNAPSHOT; } }, { files });
+	const reloaded = reloadedHarness.service;
+	assert.deepEqual((await reloaded.quota({ providerIds: ["antigravity"] })).providers, [], "关闭状态跨实例持久化");
+	assert.equal(calls.length, 0);
+	settings = await reloaded.save({ expectedRevision: (await reloaded.read({ providerIds: [], force: false })).settings.revision, visibility: { antigravity: true } });
+	assert.equal(settings.settings.visibility.antigravity, true);
+	assert.equal((await reloaded.readLinked({ providerIds: ["antigravity"], force: true })).entries[0].state, "ok");
+	assert.deepEqual(calls, ["reloaded"], "重新开启只恢复 Antigravity 查询");
+	await assert.rejects(reloaded.save({ expectedRevision: settings.settings.revision, visibility: { antigravity: "yes" } }), /Invalid Antigravity switch/);
+	reloaded.dispose(); service.dispose();
+}
+// 关闭前已经在途的成功、缺席和失败响应不得重新带出条目。
+for (const outcome of ["success", "absent", "failure"]) {
+	let release;
+	const { service } = harness(undefined);
+	service.linkedSnapshot = () => new Promise((resolve, reject) => { release = () => {
+		if (outcome === "failure") reject(new Error("late provider failure"));
+		else resolve(outcome === "absent" ? null : { channel: "agyQuota", snapshot: SNAPSHOT });
+	}; });
+	const pending = service.readLinked({ providerIds: ["antigravity"], force: true });
+	while (!release) await Promise.resolve();
+	const settings = await service.read({ providerIds: [], force: false });
+	await service.save({ expectedRevision: settings.settings.revision, visibility: { antigravity: false } });
+	release();
+	assert.deepEqual((await pending).entries, []);
 	service.dispose();
 }
 

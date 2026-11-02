@@ -77,6 +77,9 @@ assert.deepEqual(linkedHost.parameters[0].codec.schema.parse(undefined), { provi
 assert.deepEqual(linkedHost.parameters[0].codec.schema.parse({ providerIds: ['antigravity', 'deepseek'], force: true }).providerIds, ['antigravity'], 'Host 过滤非联动 id');
 assert.throws(() => linkedHost.parameters[0].codec.schema.parse({ providerIds: [], force: 'no' }), 'Host 拒绝非法 force');
 assert.deepEqual(linkedClient.parameters[0].codec.schema.parse({ providerIds: ['trae-global'], force: true }).providerIds, ['trae-global']);
+for (const id of ['raccoon', 'loomy', 'qoder', 'qodercn', 'lobsterai', 'trae', 'cline', 'minimax', 'zcode', 'gemini'].map(channel => `ofm-${channel}`)) {
+ for (const contract of [linkedHost, linkedClient]) assert.equal(contract.parameters[0].codec.schema.parse({ providerIds: [id], force: false }).providerIds[0], id, `${id} 联动白名单双端同步`);
+}
 assert.throws(() => linkedClient.parameters[0].codec.schema.parse({ providerIds: ['deepseek'], force: false }), 'Client 出站请求拒绝非联动 id');
 const save = host.subUsageRemote.descriptors.find(d => d.method === 'save');
 const patch = save.parameters[0].codec.schema.parse({ providerId: 'kimi-coding', keyUpdate: { action: 'keep' } });
@@ -89,6 +92,8 @@ assert.throws(() => save.parameters[0].codec.schema.parse({ providerId: '' }), '
 // 火山个人版 / Team 组开关补丁两端 parser 必须保持一致。
 for (const contract of [host.subUsageRemote, mounted]) {
 	const codec = contract.descriptors.find(d => d.method === 'save').parameters[0].codec.schema;
+	assert.equal(codec.parse({ expectedRevision: 'r1', visibility: { antigravity: false } }).visibility.antigravity, false, 'Antigravity 独立开关补丁合法');
+	assert.throws(() => codec.parse({ expectedRevision: 'r1', visibility: { antigravity: 'yes' } }), 'Antigravity 非布尔必须拒绝');
 	assert.equal(codec.parse({ expectedRevision: 'r1', visibility: { ark: false } }).visibility.ark, false, '纯 ark 组开关补丁合法');
 	assert.equal(codec.parse({ expectedRevision: 'r1', visibility: { arkTeam: true } }).visibility.arkTeam, true, '纯 arkTeam 独立开关补丁合法');
 	assert.equal(codec.parse({ expectedRevision: 'r1', visibility: { hideWithoutApi: false, ark: true, arkTeam: false } }).visibility.ark, true, '混合可见性补丁合法');
