@@ -11,19 +11,22 @@
 - 代码直接维护在 `lib/`，修改后运行 `npm run check`，其中包括隔离回归与发布清单检查。隔离测试不替代真实账号或 GUI 验收。
 - 凭据与登录适配遵循各提供商既有来源和生命周期；药丸路由别名不得顺带更改查询端点或账号选择。
 
-## Antigravity / Trae 兄弟插件联动
+## Antigravity 与独立插件联动
 
 - 联动项不进 `PROVIDERS` / `PROVIDER_META` / `PROVIDER_ORDER`（没有凭据槽与普通设置卡片），登记在 Host 的 `LINKED_PROVIDERS` 与 Client 的 `PILL_LINKED_META`；改这几处表必须双端同步并更新 `tests/test-contract.mjs`。Antigravity 例外地有独立 `visibility.antigravity` 开关（默认开启），只占管理区顶部一个按钮，不进入普通 provider 列表。
 - **Antigravity 一条、两个提供方插件通道**：`channels: ["agyQuota", "antigravityAuth"]`。`agyQuota` 是 dsh-antigravity-acp 的 `read({force})` → `QuotaSnapshot`（带 plan + credits，优先）；`antigravityAuth` 是本机实际安装的 dsh-tool-antigravity 经 `ctx.provide` 暴露的服务，`usage(signal?, force?)` → `QuotaStatusView`（gemini / non-gemini 两组、5h / weekly 两窗）。`linkedSnapshot()` 只在「服务取不到 / 没有方法」时回落，服务在场但回失败快照**不**回落；归一化分别走 `normalizeAntigravity` / `normalizeAntigravityAuthView`，字段形状照抄对方类型声明，不编绝对值。`rate-limited` 是查询限流，不是额度耗尽。
-- 药丸（Antigravity 与 OFM，Trae 自有联动仍只进工具报告）走独立 Typert 方法 `subUsage/readLinked`：Client 路由 `google-antigravity` → 联动 id `antigravity`（`ROUTE_PROVIDER_ALIAS`），Host `readLinked()` 复用 `linkedProvider` 但结果只回 `{ updatedAt, entries }`，**不回 settings**，避免轮询顶掉设置快照；两端 codec（`SubUsageLinkedQuery` / `SubUsageLinkedResult`）与方法白名单必须同步。联动 id 在 Client 跳过普通 provider 的凭据 / 路由存在性过滤；只有 Antigravity 遵守 `visibility.antigravity`，关闭时不发 `readLinked`、移除旧条目并阻止迟到响应复活药丸。开启且未装插件时渲染缺席原因，不静默消失。
+- 联动药丸走独立 Typert 方法 `subUsage/readLinked`：Client 路由 `google-antigravity` → 联动 id `antigravity`（`ROUTE_PROVIDER_ALIAS`），独立 Trae / WorkBuddy / Raccoon / Loomy 与 OFM 也登记在联动表。Host 结果只回 `{ updatedAt, entries }`，**不回 settings**，避免轮询顶掉设置快照；两端 codec 与方法白名单必须同步。联动 id 跳过普通 provider 的凭据 / 路由存在性过滤；只有 Antigravity 遵守 `visibility.antigravity`，关闭时移除旧条目并阻止迟到响应复活药丸。开启且未装插件时显示缺席原因。
 - 点名联动查询的空 `entries` 表示移除该请求目标的旧额度；Client 仅接受当前请求代的移除信号，不覆盖设置快照，后续轮询可恢复其他窗口重新开启的联动。回归覆盖跨窗口关闭/恢复及关闭前在途成功、缺席和失败响应。
+- Antigravity 的模型分组是独立额度池：同池内取最紧窗口，跨池按实际报告的组数计数；部分池耗尽只作黄色提醒，全部已报告池耗尽才标红。药丸、横幅与悬浮说明共用分池结论，缓存/部分/失败状态优先保留数据质量提示。显示名将 Gemini / Claude-GPT / `gemini-argon` 的已知组名转为可读的中英文，原始 `groupLabel` 保留池身份，未知组名原样显示；不猜当前模型所属池、不补造缺席池。
 - 缺席语义：不点名的全量查询静默；点名（含 `google-antigravity` / `dsh-tool-antigravity` 等别名）回一条列出两个插件名的安装指引；`unauthenticated` 点名时给「去 dsh-tool-antigravity 完成 Google 授权（`/antigravity-auth login`）」指引。
 
 ## OFM 联动与手机药丸
 
-- 十个渠道以 `ofm-*` 登记在联动表，由 [ofm.js](lib/ofm.js) 经 Connection 的公开进程内 Fetch 分发只读调用 `usage.badge`；完整范围与版本证据见 [OFM 说明](docs/ofm.md)。不解析提供方凭据、不请求其上游、不调用登录、签到或设置方法。
-- 工具结果按账号展开，药丸用 `ofmAccounts` 保留各账号明细；不累加账号余额、不推断实际服务账号、不把余额快照当容量、不把包到期日当窗口重置。Cline 订阅窗口按账号 ID 匹配，独立成功数据可部分保留。
-- `minimax` 和 `trae` 已有不同来源，OFM 的对应渠道只按 `ofm-minimax` / `ofm-trae` 查询，不覆盖既有药丸匹配。其余八个渠道按已核实路由 ID 自动匹配。
+- 十个渠道以 `ofm-*` 登记，由 [ofm.js](lib/ofm.js) 经 Connection 的进程内 Fetch 调用 `usage.badge` 与 `account.list`；完整范围、鉴权来源及限制见 [联动说明](docs/ofm.md)。Host 可按索引引用检查凭据非空存在性，只回状态，引用名和秘密不出 Host；不自行登录、签到或写提供方设置。OFM `preference` 是显示偏好，不是账号模式，不能生成无依据的当前账号。
+- 工具按账号展开，药丸用 `ofmAccounts` / `linkedAccounts` 保留稳定 `accountId` 与独立额度；查看账号仅切换展示，不修改实际推理账号。凭据存在/记录有效期不能当上游鉴权成功。索引删除、停用或缺凭据不能复活旧额度；余额不跨账号累加，包到期不作窗口重置，Cline 窗口按账号 ID 匹配。
+- 独立 Trae / WorkBuddy 由 [connect-usage.js](lib/connect-usage.js) 经各自公开 GET 接口读取，按插件、区域和账号 ID 隔离。池行真实字段是 `accountId`，`current` 不与旧绑定的 `selected` 混用；Trae 池关闭不推固定，WorkBuddy 固定还需 `selectionExplicit`。企业 Trae 不读个人积分替代；WorkBuddy 批量只有总余额，明确选中状态矛盾时丢弃未知归属的完整包。
+- 独立 Raccoon / Loomy 由 [desktop-usage.js](lib/desktop-usage.js) 消费单当前账号 `/status`。Raccoon `probeKey` 丢弃后才缓存，Loomy 缓存不伪造账号归属/容量/请求采样时间。两种模型药丸仅在独立接口缺席时回落 OFM；工具分别报告真实来源，避免自动回落重复。`ofm-trae` / `ofm-minimax` 仍为独立查询 ID。
+- 独立读取缓存由 reader 统一维护，缺席不缓存，强制刷新有代次保护、卸载不回填。不要在 Host 再包一层无排序缓存。提供方 GET 可能自行镜像登录、续期或更新运行时账号池，文档须按实际生命周期说明。
 - DSH Go `panel` 网页岛中，药丸详情进入文档流向下展开，外层负责滚动；样式按岛标记自动生效并随 Client 卸载清理。桌面仍为绝对定位弹层。离线浏览器检查见 [脚本](scripts/check-ofm-mobile.mjs)，Android 真机验收单独记录。
 
 ## 手动 provider 匹配

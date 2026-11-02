@@ -160,7 +160,7 @@ function harness({ webServer, replies = {}, now } = {}) {
 	assert.ok(calls.some(c => c.url.endsWith("region=ai")));
 	// 60 秒缓存：连问两次不该把对方的额度接口打成靶子。
 	await service.quota({ providerIds: ["trae"] });
-	assert.equal(calls.length, 3, "缓存期内不再请求");
+	assert.equal(calls.filter(c => c.url.includes("region=cn")).length, 1, "已登录区域缓存期内不重复请求；缺席区域继续探测以支持插件恢复");
 	service.dispose();
 }
 {

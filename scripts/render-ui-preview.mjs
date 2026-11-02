@@ -66,7 +66,13 @@ const afpQuota = { ...entry('arkcli-agent-plan', 2.6, '5h'), extras: [{ kind: 'p
   { kind: 'month', percent: 0.3, status: 'ok', resetsAt: new PreviewDate(clock + 31 * 86400000).toISOString(), groupLabel: '文本 / 向量模型', detail: { used: 0.2587, limit: 100000, unit: 'AFP' } },
   { kind: 'day', percent: 0, status: 'ok', resetsAt: new PreviewDate(clock + 8 * 60000).toISOString(), groupLabel: '视觉 / 语音模型与 Harness', detail: { used: 0, limit: 50000, unit: 'AFP' } }
 ] };
-let quota = providerId === 'arkcli-agent-plan' ? afpQuota : previewQuota;
+const antigravityQuota = { ...entry('antigravity', 0), windows: [
+  { kind: '5h', percent: 0, status: 'ok', resetsAt: new PreviewDate(clock + 5 * 3600000).toISOString(), groupLabel: 'Gemini Models' },
+  { kind: 'week', percent: 33.8, status: 'ok', resetsAt: new PreviewDate(clock + 5 * 86400000).toISOString(), groupLabel: 'Gemini Models' },
+  { kind: 'week', percent: 100, status: 'rate-limited', resetsAt: new PreviewDate(clock + 86400000).toISOString(), groupLabel: 'Claude and GPT models' },
+  { kind: 'week', percent: 76.5, status: 'ok', resetsAt: new PreviewDate(clock + 3 * 86400000).toISOString(), groupLabel: 'gemini-argon' }
+] };
+let quota = providerId === 'arkcli-agent-plan' ? afpQuota : providerId === 'antigravity' ? antigravityQuota : previewQuota;
 // 业务语义离线验收：执行真实组件，不使用替代UI实现或真实计费接口。
 const scenario = process.argv[6] || '';
 if (scenario === 'paygo') quota = { ...entry(providerId, 100, 'week'), availability: 'paygo', availabilityReason: 'paid-credits', extras: [{ kind: 'balance', value: '50 credits' }] };
@@ -92,7 +98,7 @@ if (pillPreview && providerId === 'commandcode') {
   });
   await cc.load();
 }
-const pillLabel = providerId === 'commandcode' ? 'Command Code' : PROVIDER_META[providerId]?.label || providerId;
+const pillLabel = providerId === 'commandcode' ? 'Command Code' : providerId === 'antigravity' ? 'Antigravity' : PROVIDER_META[providerId]?.label || providerId;
 let tree = pillPreview ? UsagePill({ providerId, label: pillLabel, readEntry: () => {}, t: key => zh[key] || key, getLocale: () => 'zh-CN', cc }) : SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => result }, t: key => zh[key] || key, getLocale: () => 'zh-CN' });
 if (scenario === 'balance-gallery') {
   const samples = [

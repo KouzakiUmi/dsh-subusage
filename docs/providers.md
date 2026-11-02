@@ -254,5 +254,6 @@ Command Code 的凭据由提供方插件 `@mars-sea/dsh-commandcode-provider` �
 | 自建网关 | 用户自填的 LiteLLM proxy 地址（只去掉 `/v1` 这类版本段，其余路径原样保留） |
 | 复用宿主账号请求链 | `deepseek-account`：调用本机 `deepseekAccount` 服务，由 DSH 完成鉴权与余额请求；宿主服务可能按自身配置联网，本插件不另发 HTTP、不复制 token |
 | OFM 联动 | 经宿主 Connection 进程内分发到 `/api/channel-pack`，不使用网络端口；提供方按自己的配置查询上游 |
+| 独立插件联动 | 宿主 `webServer.getOrigin()` 上的 Trae / WorkBuddy 额度 GET 和 Raccoon / Loomy 状态 GET；提供方按自己的登录生命周期读取或续期 |
 
 除上面这些，插件不访问其他网络地址；MiMo 自动登录会额外打开官方平台页面，由你在该页面自行完成登录。

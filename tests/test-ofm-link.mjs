@@ -24,6 +24,33 @@ const sample = snapshot('raccoon', [row('a', '账号甲', 6600, [pack('奖励积
  assert.equal(normalizeOfm(snapshot('loomy', []), 'ofm-loomy', now), null);
 }
 {
+ const metadata = [
+  { id: 'a', nickname: '相同昵称', enabled: true, authStatus: 'present', authExpiresAt: '2026-11-10T00:00:00Z' },
+  { id: 'b', nickname: '相同昵称', enabled: true, authStatus: 'missing' },
+  { id: 'disabled', nickname: '已停用', enabled: false, authStatus: 'unknown' },
+  { id: 'new', nickname: '新账号', enabled: true, authStatus: 'unknown' }
+ ];
+ const result = normalizeOfm({ ...sample, accountMetadata: metadata, preference: 'auto' }, 'ofm-raccoon', now);
+ assert.deepEqual(result.ofmAccounts.map(a => a.accountId), ['a', 'b', 'disabled', 'new']);
+ assert.deepEqual(result.ofmAccounts.slice(0, 2).map(a => a.account), ['相同昵称', '相同昵称']);
+ assert.deepEqual(result.ofmAccounts.slice(0, 2).map(a => a.extras[0].value), ['6600 积分', '6300 积分'], '同名账号仍按ID关联额度');
+ assert.equal(result.ofmAccounts[1].authStatus, 'missing');
+ assert.equal(result.ofmAccounts[1].freshness, 'stale', '删除凭据后的提供方缓存不当成新鲜鉴权成功');
+ assert.equal(result.ofmAccounts[2].state, 'disabled');
+ assert.deepEqual(result.ofmAccounts[2].extras, []);
+ assert.equal(result.ofmAccounts[3].state, 'error', '新账号未出现在旧徽标里时不借其他账号额度');
+ assert(!result.ofmAccounts.some(a => 'accountMode' in a || 'accountActive' in a), '徽标auto不是账号选择模式');
+ const removed = normalizeOfm({ ...sample, accountMetadata: [metadata[0]] }, 'ofm-raccoon', now);
+ assert.deepEqual(removed.ofmAccounts.map(a => a.accountId), ['a'], '实时索引移除已经删除的缓存账号');
+ const hidden = normalizeOfm({ ...sample, accountMetadata: [metadata[2]] }, 'ofm-raccoon', now);
+ assert.equal(hidden.state, 'disabled');
+ const privateName = normalizeOfm(snapshot('loomy', [row('mail', 'alice@example.com', 1, [pack('积分', 1)])]), 'ofm-loomy', now);
+ assert.equal(privateName.account, 'a***@example.com');
+ const almost = normalizeOfm(snapshot('qoder', [row('a', '', 0.001, [pack('套餐', 0.001, 'credits', { total: 100 })])]), 'ofm-qoder', now);
+ assert.equal(almost.windows[0].status, 'ok', '非零余额四舍五入不能变成耗尽');
+ assert.equal(almost.windows[0].percent, 99.9);
+}
+{
  const q = normalizeOfm(snapshot('qodercn', [row('a', '', 453, [pack('资源包', 453, 'Credits', { total: 1200, used: 747, expiredTime: '2026-11-10T00:00:00Z' })])]), 'ofm-qodercn', now);
  assert.equal(q.windows[0].percent, 62.3);
  assert.equal(q.windows[0].detail.limit, 1200);
@@ -72,10 +99,11 @@ function connectionFixture(answer = provider => provider === 'raccoon' ? sample 
     const message = await request.json();
     assert.equal(message.type, 'client-request');
     assert.equal(message.method, 'channel-pack');
-    assert.equal(message.payload.method, 'usage.badge', '只允许此只读 RPC，不调用登录/签到/设置');
-    calls.push(message.payload.payload);
-    const value = await answer(message.payload.payload.provider);
+     assert(['usage.badge', 'account.list'].includes(message.payload.method), '只允许额度和账号枚举，不调用登录/签到/设置');
+     calls.push({ method: message.payload.method, ...message.payload.payload });
+      let value = await answer(message.payload.payload.provider, message.payload.method, message);
     if (value instanceof Response) return value;
+     if (message.payload.method === 'account.list' && value?.provider) value = { accounts: value.accounts.map(row => ({ id: row.accountId, provider: value.provider, nickname: row.nickname, credentialRef: `${value.provider.toUpperCase()}_ACCOUNT_${row.accountId.toUpperCase()}`, enabled: true })) };
     return Response.json({ type: 'server-response', rpcId: message.rpcId, result: { ok: true, value } });
    } };
   }
@@ -87,8 +115,9 @@ function connectionFixture(answer = provider => provider === 'raccoon' ? sample 
  const reader = new OfmReader({ get(name) { assert.equal(name, 'connection', '不读取凭据服务'); return f.connection; } });
  await Promise.all([reader.read('raccoon', false), reader.read('raccoon', false), reader.read('loomy', true)]);
  assert.equal(f.peers.length, 1, '全量并发首次读取只创建一个 Peer');
- assert.equal(f.calls.length, 2, '同渠道在途查询合并，不同渠道隔离');
- assert.deepEqual(f.calls.find(c => c.provider === 'loomy'), { provider: 'loomy', force: true });
+  assert.equal(f.calls.filter(c => c.method === 'usage.badge').length, 2, '同渠道在途查询合并，不同渠道隔离');
+  assert.equal(f.calls.filter(c => c.method === 'account.list').length, 2, '每个渠道独立核对账号索引');
+  assert.deepEqual(f.calls.find(c => c.provider === 'loomy' && c.method === 'usage.badge'), { method: 'usage.badge', provider: 'loomy', force: true });
  await reader.dispose(); assert(f.peers[0].disposed);
  await assert.rejects(reader.read('raccoon', false), /卸载/);
  const absent = new OfmReader({ get: () => undefined });
@@ -100,6 +129,60 @@ function connectionFixture(answer = provider => provider === 'raccoon' ? sample 
  const brokenReader = new OfmReader({ get: () => broken.connection });
  await assert.rejects(brokenReader.read('raccoon', false), error => !error.message.includes('UPSTREAM_SECRET'));
  await brokenReader.dispose();
+}
+{
+ const f = connectionFixture();
+ const reader = new OfmReader({ get: () => f.connection });
+ await Promise.all([reader.read('raccoon', false), reader.read('raccoon', true)]);
+ assert.deepEqual(f.calls.filter(c => c.method === 'usage.badge').map(c => c.force), [false, true], '手动刷新不合并进较早的普通请求');
+ await reader.dispose();
+}
+{
+ const inspected = [];
+ const f = connectionFixture((provider, method) => method === 'account.list' ? { accounts: [
+  { id: 'a', provider, nickname: '甲', enabled: true, credentialRef: 'RACCOON_ACCOUNT_A', expiresAt: now + 86400000, source: { secret: 'DO_NOT_FORWARD' }, phone: 'DO_NOT_FORWARD' },
+  { id: 'b', provider, nickname: '乙', enabled: true, credentialRef: 'RACCOON_ACCOUNT_B', access_token: 'DO_NOT_FORWARD' }
+ ] } : sample);
+ const reader = new OfmReader({ get: () => f.connection }, { inspectCredential: async ref => { inspected.push(ref); return ref.endsWith('_A') ? 'present' : 'missing'; } });
+ const read = await reader.read('raccoon', false);
+ assert.deepEqual(inspected, ['RACCOON_ACCOUNT_A', 'RACCOON_ACCOUNT_B']);
+ assert.deepEqual(read.accountMetadata.map(a => a.authStatus), ['present', 'missing']);
+ assert(!JSON.stringify(read).includes('DO_NOT_FORWARD'));
+ assert(!JSON.stringify(read).includes('RACCOON_ACCOUNT_'), '只在Host检查引用，不带入额度快照');
+ assert(!JSON.stringify(normalizeOfm(read, 'ofm-raccoon', now)).includes('credentialRef'));
+ await reader.dispose();
+ const fallback = connectionFixture((provider, method) => { if (method === 'account.list') throw new Error('METADATA_SECRET'); return sample; });
+ const legacy = new OfmReader({ get: () => fallback.connection });
+ const value = normalizeOfm(await legacy.read('raccoon', false), 'ofm-raccoon', now);
+ assert.equal(value.state, 'ok', '账号枚举接口不可用仍保留成功额度');
+  assert.equal(value.coverage, 'partial', '枚举失败明确标部分数据，不等同于旧版接口缺席');
+  assert(value.ofmAccounts.every(a => a.coverage === 'partial' && a.error.includes('账号索引读取失败')));
+ assert(value.ofmAccounts.every(a => a.authStatus === 'unknown'));
+ assert(!JSON.stringify(value).includes('METADATA_SECRET'));
+ await legacy.dispose();
+}
+{
+ const cases = [
+  ['接口缺席', () => new Response('', { status: 404 }), 'complete'],
+  ['HTTP503', () => new Response('PRIVATE_INDEX_ERROR', { status: 503 }), 'partial'],
+  ['损坏JSON', () => new Response('PRIVATE_INDEX_ERROR', { status: 200 }), 'partial'],
+  ['RPC失败', message => Response.json({ type: 'server-response', rpcId: message.rpcId, result: { ok: false, error: { message: 'PRIVATE_INDEX_ERROR' } } }), 'partial'],
+  ['RPC缺少value', message => Response.json({ type: 'server-response', rpcId: message.rpcId, result: { ok: true } }), 'partial'],
+  ['索引形状漂移', () => ({ accounts: [{ id: 'a', provider: 'other', token: 'PRIVATE_INDEX_ERROR' }] }), 'partial']
+ ];
+ for (const [name, indexResponse, coverage] of cases) {
+  const f = connectionFixture((provider, method, message) => method === 'account.list' ? indexResponse(message) : sample);
+  const reader = new OfmReader({ get: () => f.connection });
+  const result = normalizeOfm(await reader.read('raccoon', false), 'ofm-raccoon', now);
+  assert.equal(result.state, 'ok', `${name}不丢弃独立成功额度`);
+  assert.equal(result.coverage, coverage, name);
+  assert(result.ofmAccounts.every(account => account.coverage === coverage && account.authStatus === 'unknown'), name);
+  assert.deepEqual(result.ofmAccounts.map(account => account.extras[0].value), ['6600 积分', '6300 积分'], name);
+  assert.equal(result.freshness, 'fresh', '成功额度采样的时效与账号索引覆盖分别表述');
+  assert.equal(Boolean(result.error), coverage === 'partial', name);
+  assert(!JSON.stringify(result).includes('PRIVATE_INDEX_ERROR'));
+  await reader.dispose();
+ }
 }
 {
  const f = connectionFixture();

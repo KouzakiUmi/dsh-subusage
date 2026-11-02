@@ -12,6 +12,8 @@
 |---|---|
 | `lib/index.js` | 提供商适配、凭据解析、持久化、缓存与 Host RPC |
 | [lib/ofm.js](../lib/ofm.js) | OFM 进程内只读 RPC、逐账号额度与分桶归一化；沿用提供方缓存 |
+| [lib/connect-usage.js](../lib/connect-usage.js) | 独立 Trae / WorkBuddy 账号与区域隔离、额度归属和缓存排序 |
+| [lib/desktop-usage.js](../lib/desktop-usage.js) | 独立 Raccoon / Loomy 单当前状态、缓存时间与秘密白名单 |
 | `lib/volcengine.js` | 火山方舟 AK/SK 签名与 Coding / Agent Plan 窗口解析（纯函数、零依赖，可单独测试） |
 | `docs/provider-coverage.md` | 提供商覆盖与**不接入**的决策记录：已支持清单、评估后不做的厂商与理由、用户决策跳过的厂商 |
 | `lib/client.js` | Client 模块、共享 store、设置页与模型药丸；内含界面中英文文案 |
@@ -29,7 +31,16 @@
 
 OFM 的十渠道联动、宿主公开方法要求、账号与单位语义见 [接入说明](ofm.md)。它们不进入普通 provider 表，工具按账号返回，药丸经 `readLinked` 保留逐账号明细；OFM 不受 Antigravity 的独立开关影响。成功快照缓存由提供方负责，2.7.1 的 TTL 为 120 秒。
 
+独立插件经各自公开状态/额度 GET 读取，账号 ID 与区域不能混用；OFM 通过 `account.list` 获取索引、检查凭据引用非空存在性，再合并徽标额度。完整账号、手机号、token、引用名或 Raccoon `probeKey` 不进入远端结果。`authStatus` / `authExpiresAt` 只描述凭据元数据。客户端的账号选择只切换额度视图，提供方选号策略与登录生命周期保持由提供方管理。真实字段、兼容版本、内部副作用与回归入口统一维护在[联动说明](ofm.md)。
+
 DSH Go 的 `panel` 网页岛使用文档流展开详情，按内容撑高并由岛滚动。样式挂在 document head，属于 Client effect，卸载时移除。`node scripts/check-ofm-mobile.mjs` 读取兄弟 dsh-Go 的真实网页岛 CSS 做离线浏览器验收；结果与 Android 真机验证分别报告。
+
+### Antigravity 独立额度池
+
+- `groupLabel` 标识原始额度池；同池内以最紧窗口判断，跨池按实际报告的组数汇总。部分池耗尽为黄色提醒，全部已报告池耗尽才标红；缓存、部分数据与失败状态仍显示相应提示。
+- Client 的 `displayGroupLabel()` 仅转换已知名称：Gemini、Claude/GPT 与 `gemini-argon`，中英文同步，未知组名原样显示。Host 的池标识和取数通道保持一致。
+- `tests/test-client-antigravity-link.mjs` 从两个 Host 归一化入口到真实药丸组件覆盖分池计数、多窗口、同名非相邻窗口、可读名称、全部耗尽与缓存/失败回归。
+- `node scripts/render-ui-preview.mjs 360 antigravity dark pill` 生成截图所示的三池四窗离线样例；将 `dark` 换为 `light` 可核对浅色主题。预览使用虚构数据，与运行中 DSH 的安装验收分别记录。
 
 ### README 视觉与页面验收（0.13.0）
 

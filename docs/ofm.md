@@ -1,52 +1,78 @@
-# Our Free Model 额度联动
+# 独立插件与 Our Free Model 额度联动
 
-本插件通过提供方的 `usage.badge` 只读接口取得额度，复用 Our Free Model 的账号池、取数逻辑和缓存。登录、凭据和账号启停由提供方管理。兼容独立渠道插件的条件是它保留相同的 `/api/channel-pack` 接口与返回结构。
+本插件复用提供方已有的账号与额度接口。独立插件与 Our Free Model（OFM）是不同的数据来源；工具按来源、区域和账号分别报告，余额不跨账号相加。药丸可以在「全部账号」和指定账号之间切换查看，实际推理账号仍由提供方管理。
 
-## 渠道与显示范围
+## 独立插件
 
-| 渠道 | 查询 ID | 读数 | 药丸自动匹配的模型 provider |
+| 插件 | 查询 ID / 模型路由 | 读取接口 | 已落实范围 |
 |---|---|---|---|
-| 小浣熊 | `ofm-raccoon` | 可用积分、奖励/每日/会员/充值积分分项 | `raccoon` |
-| Loomy | `ofm-loomy` | 可用积分、永久积分与每日赠送 | `loomy` |
+| dsh-connect-trae 4.6.12 | `trae`、`trae-global`、`trae-enterprise` | `usage`；国内/国际多账号用 `account-status?accountId=…` | 国内积分、国际订阅按账号读取；企业版说明额度不可读，不查询个人积分替代 |
+| dsh-connect-workbuddy 5.17.0 | `workbuddy`、`workbuddy-global` | `usage`、`account-credits` | 当前账号完整积分包；其他账号仅总剩余积分，标为部分数据 |
+| dsh-raccoon-connect 0.2.4 | `raccoon` | `/plugins/dsh-raccoon-connect/status` | 单当前登录的积分与记录到期时间；没有公开账号池/稳定账号 ID |
+| dsh-loomy-connect 0.2.0 | `loomy` | `/plugins/dsh-loomy-connect/status` | 单当前登录，分别显示永久积分、每日赠送积分与缓存时间 |
+
+Trae 与 WorkBuddy 路径前缀为 `/plugins/dsh-connect-trae/`、`/plugins/dsh-connect-workbuddy/`。按各自公开区域参数查询，Trae 为 `cn` / `ai` / `enterprise`，WorkBuddy 为 `cn` / `global`。账号 ID 相同也不跨插件或区域复用读数。
+
+Raccoon / Loomy 药丸先探测独立接口；只有接口缺席时才回落到 OFM 同渠道，并显示实际来源标签。独立入口已经在场但未登录、失败或没有积分时，保留该来源的状态。工具的全量查询和厂商名查询分别报告实际来源，不把药丸回落结果重复登记成独立插件。可用 `dsh-raccoon-connect`、`dsh-loomy-connect` 精确点名独立来源，`ofm-raccoon` / `ofm-loomy` 精确点名 OFM。
+
+独立 Raccoon / Loomy 的公开接口只消费一个当前登录，无法像账号池一样枚举历史账号；OFM 对应渠道提供多账号数据。Loomy 的积分缓存没有账号 ID，显示时保留归属未知提示与原 `updatedAt`。Raccoon 没有积分采样时间，不能把请求时刻记作积分成功时间。
+
+## OFM 渠道
+
+| 渠道 | 查询 ID | 读数 | 药丸路由 |
+|---|---|---|---|
+| 小浣熊 | `ofm-raccoon` | 可用积分、奖励/每日/会员/充值分项 | `raccoon` 独立接口缺席时回落 |
+| Loomy | `ofm-loomy` | 可用积分、永久积分与每日赠送 | `loomy` 独立接口缺席时回落 |
 | Qoder 国际版 | `ofm-qoder` | 套餐额度、资源包余量与容量 | `qoder` |
 | Qoder 中国版 | `ofm-qodercn` | 套餐额度、资源包余量与容量 | `qodercn` |
 | LobsterAI | `ofm-lobsterai` | 提供方返回的积分/余额包 | `lobsterai` |
-| TRAE | `ofm-trae` | 提供方返回的积分/余额包 | 仅工具查询；保留原有 Trae 联动 |
+| TRAE | `ofm-trae` | 提供方返回的积分/余额包 | 独立查询 ID；模型 `trae*` 使用独立 Trae 接口 |
 | Cline | `ofm-cline` | Credits 与独立订阅窗口 | `cline` |
-| MiniMax Code | `ofm-minimax` | 提供方返回的 Token/额度包 | 仅工具查询；保留原有 MiniMax 订阅匹配 |
+| MiniMax Code | `ofm-minimax` | 提供方返回的 Token/额度包 | 独立查询 ID；保留原有 MiniMax 订阅匹配 |
 | ZCode | `ofm-zcode` | 按模型分桶的 Token 额度 | `zcode` |
 | Gemini | `ofm-gemini` | 按模型分组的剩余配额比例 | `gemini` |
 
-查询全部 OFM 渠道可使用 `subusage_quota({ providers: ["ofm"] })`；也可以点名 `小浣熊`、`loomy`、`qoder`，或表中的完整查询 ID。`qoder` 同时匹配国际版与中国版。`ofm-trae` 与原有 `trae`、`ofm-minimax` 与原有 `minimax` 是不同来源，分别报告。
+OFM 2.7.1 的十渠道不含 WorkBuddy。查询全部 OFM 渠道可传 `providers: ["ofm"]`，也支持 `our free model` / `our free models`。小浣熊别名兼容 `raccoon` / `racoon`，模型路由仍为 `raccoon`。
 
-这些联动项不增加本插件的凭据槽或普通提供商设置卡片，也不进入手动绑定的目标订阅列表。多账号药丸显示账号数量，展开后分别列出各账号的额度；工具结果一账号一条。余额和容量不会跨账号相加，也不推断实际调用时选中了哪个账号。
+这些联动没有本插件的凭据槽或普通提供商卡片。工具一账号一条；药丸保留稳定 `accountId`，同名账号也分别展示。切换查看账号不写提供方的固定账号、轮换顺序或登录设置。
 
-## 数据语义
+## 鉴权数据与生命周期
 
-- 仅有剩余积分的快照显示绝对量。小浣熊和 Loomy 的包结构将当前余额同时写入 `total`，因此不能用它推算历史已用比例。
-- Qoder、ZCode 与 Gemini 只有在提供方给出有效容量时才显示比例；总容量为零时不生成耗尽或充足百分比。多个模型池分别显示，Gemini 的百分比不相加为总余额。
-- Cline 的 Credits 和订阅窗口分别保留；某一接口失败时仍可显示另一接口的成功读数，并标为部分数据。订阅窗口按提供方账号 ID 匹配。
-- 包到期日显示为说明，只有订阅窗口明确提供重置时间时才写入 `resetsAt`。查询失败不转换为零余额。
-- 使用 OFM 自己的缓存（2.7.1 为成功快照 120 秒、全部失败快照 15 秒），手动刷新将 `force: true` 传给提供方。本插件合并同渠道的在途读取。
+- OFM 通过进程内 RPC `account.list({provider})` 读取账号索引，再以稳定 ID 合并 `usage.badge({provider,force})`。Host 可经现有凭据服务解析索引中的引用，仅将非空存在性转换为 `authStatus: present | missing | unknown`；引用名、凭据内容及 ZCode 索引中的手机号等字段不进入额度结果。
+- `authStatus` 是凭据存在性或提供方记录的登录有效期，不能证明上游接受了本次鉴权。`authExpiresAt` 是提供方记录，可能滞后或由提供方估算。账号枚举或凭据检查失败时记未知，成功额度可独立保留；索引 HTTP 失败、RPC 错误或响应漂移另标部分数据并提示索引读取失败，404 缺席保持旧版兼容。额度采样时效与账号索引覆盖分别表述；已知缺少凭据的缓存读数标为旧数据。
+- OFM `usage.badge.preference` 的 `auto | subscription | credits` 是显示口径，不能映射为账号模式。其公开 API 没有当前固定账号状态；实际选号按账号顺序检查启用状态、模型限流与凭据可解析性，不是 round robin。
+- Trae / WorkBuddy 的 `pool.enabled === true` 表示自动账号池，真实公开池行使用 `accountId`，`current` 标记可用于提供方当前选择。Trae 池关闭不能直接推断固定模式；WorkBuddy 还需 `selectionExplicit === true` 才确认固定。总览字段与明确选中账号冲突时，舍弃归属不明的完整积分包，保留独立按 ID 查询的余额。
+- Trae / WorkBuddy 使用提供方自己的登录解析与续期流程，不通过其 `transfer` 接口导出 access / refresh token。Raccoon 响应中的 `probeKey` 是操作授权秘密，归一化后才缓存，始终丢弃该字段。Loomy 普通轮询及手动额度重读均不携带会刷新模型目录的 `refresh=1`。
+- 接口请求限于额度 GET 与 OFM 的 `account.list` / `usage.badge`，不调用签到、账号增删、排序、切号或秘密导出。提供方内部仍可能镜像账号、续期并保存其既有登录态，或更新运行时账号池选择；额度只读不等于这些提供方接口完全没有内部副作用。
+
+## 数据语义与缓存
+
+- 只报告剩余积分的快照显示绝对量。小浣熊和 Loomy 的 OFM 包结构会把当前余额同时写入 `total`，不能据此推算历史已用比例。
+- Qoder、ZCode、Gemini 只有明确容量时才生成比例；容量零不造耗尽窗口，极小正余额也不因四舍五入变成耗尽。多模型池分别显示，百分比不相加为余额。
+- Cline 余额和订阅窗口按账号 ID 关联；独立成功数据可保留，失败或漂移的部分标为未知。
+- 包到期日是说明；只有明确窗口重置才写 `resetsAt`。WorkBuddy 公开 HTTP 包字段 `cycleRefreshMs` 来自内部 `refreshAtMs` 的投影；`expiringSoon` 显示为「即将到期」。批量账号余额没有积分包/重置明细，不套用当前账号数据。
+- OFM 沿用提供方缓存（2.7.1 成功 120 秒、全部失败 15 秒），独立插件桥接按插件与区域缓存 60 秒、合并在途读取。强制刷新绕过缓存并有响应排序保护；缺席不缓存，后续轮询可恢复；卸载后迟到结果不回填。
+- OFM 的 `usage.badge` 只接受渠道，不能真正缩小到单账号请求，且实现先查询全部账号余额再过滤停用账号。本插件可显示索引中的停用账号，但不能承诺提供方没有查询其上游。
 
 ## 宿主与实现
 
-取数走宿主 Connection 的进程内 Fetch 分发：`createPeer()` 与 `createSharedFetchHandler("/api")`，只发送 `usage.badge`。请求不经过浏览器或本机 HTTP 端口。宿主缺少这两个公开方法、提供方未启用或接口不存在时，全量查询静默缺席；点名查询显示原因。接口已在场但查询失败时报告失败。
+OFM 走宿主 Connection 的 `createPeer()` / `createSharedFetchHandler("/api")` 进程内分发，固定调用 `/api/channel-pack`。独立插件通过宿主 `webServer.getOrigin()` 的已注册状态路由访问，并遵循各接口的本机 Host / Origin 校验。各来源缺席与读取失败分别处理。
 
-宿主读取与归一化实现在 [ofm.js](../lib/ofm.js)，由 [Host](../lib/index.js) 接入 `quota()` 和 `readLinked()`；药丸取数只合并额度，不覆盖设置快照。
+实现分别在 [OFM 读取](../lib/ofm.js)、[Trae / WorkBuddy 读取](../lib/connect-usage.js)、[独立 Raccoon / Loomy 读取](../lib/desktop-usage.js)，由 [Host](../lib/index.js) 接入 `quota()` / `readLinked()`；[Client](../lib/client.js) 只接收白名单额度和账号元数据，不接收秘密。
 
 ## DSH Go 药丸
 
-DSH Go 的 `panel` 网页岛把插件限制在底部面板中。药丸详情在这种容器内改用普通文档流向下展开，让网页岛按内容增长并承担滚动；键盘压缩视口后仍能滚动到刷新按钮。样式跟随 HTML 上的网页岛标记生效，支持标记晚于组件挂载的情况。桌面端继续使用向上弹层。
-
-该适配仅作用于本插件的药丸，其他插件自行绘制的药丸不受影响。
+`panel` 网页岛中详情向下展开并进入文档流，由外层滚动；键盘缩小视口后仍能到达底部刷新按钮。样式跟随岛标记生效，桌面端保持向上弹层。
 
 ## 验证范围
 
-2026-11-02 核对 Our Free Model 2.7.1 的接口实现及本机 DSH 0.2.1-rc.5 的 Connection 实现。小浣熊、Loomy、Qoder 国际版与中国版已使用本地既有账号进行上游只读接口验证；凭据未写入源码或结果。其他渠道依据提供方实现和隔离回归，尚未逐家做真实账号验收。
+2026-11-02 核对 OFM 2.7.1、已安装独立 Trae 4.6.12 / WorkBuddy 5.17.0，以及独立 [Loomy 0.2.0 状态源码](https://github.com/gdrpzym/dsh-loomy-connect/blob/main/src/web-status.ts)和 [Raccoon 0.2.4 路由源码](https://github.com/zhlcba/dsh-raccoon-connect/blob/main/src/routes.ts)。独立 Raccoon / Loomy 的实际安装与在线兼容性尚未验证，不能由 OFM 内嵌实现推定。此前 OFM 小浣熊、Loomy、Qoder 国际/中国版曾完成上游真实账号只读核验；本次新增接线与鉴权字段采用隔离测试，并对本机既有登录记录作脱敏存在性核查，未执行真实登录/刷新/切号或上游鉴权验证。
 
-- [Host 回归](../tests/test-ofm-link.mjs)：固定只读方法、十渠道、账号隔离、分桶单位、缓存刷新参数、缺席/失败与卸载。
-- [Client 回归](../tests/test-client-ofm.mjs)：路由归并、与 Antigravity 开关隔离、逐账号明细和样式生命周期。
-- [离线浏览器检查](../scripts/check-ofm-mobile.mjs)：运行 `node scripts/check-ofm-mobile.mjs`。需要本机已有 Chrome，以及兄弟目录 `dsh-Go` 中的网页岛 CSS；脚本使用虚构账号，覆盖深浅主题、320/360/430px、滚动、键盘缩小视口和桌面定位。它不替代 Android 真机验收。
+- [OFM 回归](../tests/test-ofm-link.mjs)：账号索引、稳定 ID、凭据检查、元数据失败保留成功额度、字段脱敏。
+- [独立读取回归](../tests/test-connect-usage.mjs)：Trae / WorkBuddy 多账号、真实池字段、区域隔离、当前账号矛盾、缓存与生命周期。
+- [独立状态回归](../tests/test-desktop-usage.mjs)：当前账号、Loomy 缓存、Raccoon 秘密剔除。
+- [Host 接线回归](../tests/test-connect-link.mjs)：工具/药丸共源、缺席恢复、OFM 回落与来源去重。
+- [Client 回归](../tests/test-client-ofm.mjs)：账号切换查看、鉴权元数据、账号删除、部分失败与来源匹配。
+- [离线浏览器检查](../scripts/check-ofm-mobile.mjs)：虚构数据检查深浅主题、320/360/430px、滚动和桌面定位；不替代运行中 DSH 或 Android 真机验收。
 
-工作区修改完成与安装、重载、真机生效分别验证。
+源码完成、安装重载、真实账号在线调用分别记录。

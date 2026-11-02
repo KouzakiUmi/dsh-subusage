@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import assert from "node:assert/strict";
+import { loadHostModule } from "./helpers.mjs";
 
 const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
 let spec;
@@ -25,7 +26,7 @@ const react = {
 	useMemo: (fn, deps) => harness.memo(fn, deps),
 	useSyncExternalStore: (subscribe, getSnapshot) => getSnapshot()
 };
-vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, SubusagePillEntry, PILL_LINKED_META, parseLinkedQuery }; exports.apply = apply;"), {
+vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, SubusagePillEntry, UsagePill, UsageWindowList, computeStatus, displayGroupLabel, zh, en, PILL_LINKED_META, parseLinkedQuery }; exports.apply = apply;"), {
 	window: { localStorage: { getItem: () => null, setItem: () => {} }, __ModuleLoader__: { load: value => { spec = value; } } },
 	document, console, Date: FakeDate,
 	setInterval: () => 0, clearInterval: () => {}, setTimeout: (fn) => { fn?.(); return 0; }, clearTimeout: () => {}
@@ -175,4 +176,86 @@ const settingsResult = (antigravity = true, entries = []) => ({ updatedAt: new F
 	assert.throws(() => api.parseLinkedQuery({ providerIds: ["antigravity"], force: "yes" }), /Invalid dsh-subusage linked query/);
 }
 
-console.log("PASS 客户端药丸联动：google-antigravity 路由归并、readLinked 取数、缺席可见与普通 provider 回归");
+// 三个独立池、四个窗口：截图中的 Claude/GPT 耗尽只限制它所属的池。
+{
+	const { normalizeAntigravity, normalizeAntigravityAuthView } = await loadHostModule();
+	const resetGemini = "2026-11-06T00:00:00Z", resetClaude = "2026-11-02T00:00:00Z", resetArgon = "2026-11-04T00:00:00Z";
+	const entry = normalizeAntigravity({ status: "ok", updatedAt: new FakeDate(clock).toISOString(), groups: [
+		{ name: "Gemini Models", buckets: [{ window: "5h", remainingPct: 100 }, { window: "7d", remainingPct: 66.2, resetTime: resetGemini }] },
+		{ name: "Claude and GPT models", buckets: [{ window: "7d", remainingPct: 0, resetTime: resetClaude }] },
+		{ name: "gemini-argon", buckets: [{ window: "7d", remainingPct: 23.5, resetTime: resetArgon }] }
+	] });
+	const statusFor = (value, locale = api.zh, providerId = "antigravity") => api.computeStatus(value, { providerId, t: key => locale[key] || key, getLocale: () => locale === api.zh ? "zh" : "en" });
+	const textOf = node => node == null || typeof node === "boolean" ? "" : typeof node !== "object" ? String(node) : Array.isArray(node) ? node.map(textOf).join(" ") : (node.children || []).map(textOf).join(" ");
+	for (const [locale, short, title, names] of [
+		[api.zh, "1/3 池用尽", "部分额度池已用尽", ["Gemini 模型", "Claude 与 GPT 模型", "Gemini Argon 模型"]],
+		[api.en, "1/3 pools used up", "Some quota pools used up", ["Gemini models", "Claude and GPT models", "Gemini Argon models"]]
+	]) {
+		const status = statusFor(entry, locale);
+		assert.equal(status.key, "independent-pools");
+		assert.equal(status.color, "#eab308", "部分池耗尽用黄色提醒，不能把整个订阅标红");
+		assert.equal(status.short, short, "按池计数，不把 Gemini 的两个窗口当成两个池");
+		assert.equal(status.title, title);
+		const lines = status.sub.split("\n");
+		assert.equal(lines.length, 3);
+		for (let i = 0; i < names.length; i++) assert.ok(lines[i].includes(names[i]), `每个池的依据须带可读名称：${lines[i]}`);
+		assert.ok(lines[0].includes("66.2%") && lines[1].includes("0%") && lines[2].includes("23.5%"), "同池取最紧窗口，跨池各自保留比例");
+		assert.ok(lines.every(line => line.includes(locale === api.zh ? "后重置" : "resets in")), "每个池保留自己的重置时间");
+		const list = api.UsageWindowList({ windows: entry.windows, t: key => locale[key] || key, getLocale: () => "zh" });
+		for (const name of names) assert.ok(textOf(list).includes(name), "列表标题与横幅使用相同显示名");
+		assert.ok(!textOf(list).includes("gemini-argon"));
+	}
+	const healthy = { ...entry, windows: entry.windows.map(w => ({ ...w, percent: 10, status: "ok" })) };
+	assert.equal(statusFor(healthy).tinted, false);
+	assert.equal(statusFor(healthy).short, "");
+	assert.equal(statusFor(healthy).title, "各额度池独立计算");
+	const low = { ...healthy, windows: healthy.windows.map(w => w.groupLabel === "gemini-argon" ? { ...w, percent: 95 } : w) };
+	assert.equal(statusFor(low).short, "1/3 池偏少");
+	assert.equal(statusFor(low).title, "部分额度池余量偏低");
+	const almostEmpty = { ...healthy, windows: healthy.windows.map(w => ({ ...w, percent: 99.99 })) };
+	assert.equal(statusFor(almostEmpty).short, "3/3 池偏少", "显示舍入为 0% 仍不能把非零余量当成耗尽");
+	const allLimited = { ...entry, windows: entry.windows.map(w => ({ ...w, percent: 100, status: "rate-limited" })) };
+	assert.equal(statusFor(allLimited).color, "#ef4444");
+	assert.equal(statusFor(allLimited).short, "3/3 池用尽");
+	assert.equal(statusFor(allLimited).title, "已报告的额度池均已用尽");
+	assert.equal(statusFor({ ...allLimited, windows: allLimited.windows.map(w => ({ ...w, status: "ok" })) }).short, "3/3 池用尽", "百分比确认用尽时不依赖状态字段重复确认");
+	const mixedWithinPool = { ...entry, windows: entry.windows.map(w => w.groupLabel === "Gemini Models" && w.kind === "5h" ? { ...w, percent: 100, status: "rate-limited" } : w) };
+	assert.equal(statusFor(mixedWithinPool).short, "2/3 池用尽", "同池任一窗口耗尽限制该池，但另一池有余量仍不是全部耗尽");
+	const stale = { ...allLimited, state: "error", freshness: "stale", retainPrevious: true };
+	assert.equal(statusFor(stale).key, "degraded");
+	assert.equal(statusFor(stale).title, "缓存数据");
+	assert.equal(statusFor(stale).color, "#eab308", "旧读数不宣告全部池当前耗尽");
+	assert.equal(statusFor({ ...entry, coverage: "partial" }).title, api.zh.statusPartial);
+	assert.equal(statusFor({ ...allLimited, coverage: "partial" }).title, api.zh.statusPartial, "部分数据不能直接宣告全部额度池用尽");
+	assert.equal(statusFor({ ...entry, state: "error", windows: [], freshness: "unknown" }).key, "error");
+	assert.equal(statusFor(allLimited, api.zh, "kimi-coding").key, "blocked", "普通订阅仍按共享约束的最差窗判断");
+	assert.equal(statusFor({ ...entry, windows: [entry.windows[2]] }).short, "1/1 池用尽", "只计上游实际报告的池，不补造另外两池");
+	assert.equal(api.displayGroupLabel("Future pool", t), "Future pool", "未知池保留提供方名称，不误并到 Gemini");
+	const interleaved = { ...entry, windows: [entry.windows[0], entry.windows[2], entry.windows[1], entry.windows[3]] };
+	assert.equal(statusFor(interleaved).short, "1/3 池用尽", "非相邻同名窗口仍属于同一个池");
+
+	// 第二个通道只报告两池时，按实际池数计算并翻译其已有中文标签。
+	const authEntry = normalizeAntigravityAuthView({ state: "available", groups: [
+		{ group: "gemini", windows: [{ window: "5h", remainingFraction: 1 }, { window: "weekly", remainingFraction: 0.8 }] },
+		{ group: "non-gemini", windows: [{ window: "weekly", remainingFraction: 0 }] }
+	] });
+	assert.equal(statusFor(authEntry).short, "1/2 池用尽");
+	assert.ok(statusFor(authEntry, api.en).sub.includes("Claude and GPT models"));
+
+	// 执行真实药丸：折叠文案、悬浮说明与弹层横幅共享分池判断。
+	const hooks = new Hooks();
+	const props = { providerId: "antigravity", label: "Antigravity", readEntry: async () => entry, t, getLocale: () => "zh", cc: null };
+	hooks.render(api.UsagePill, props); await flush();
+	let tree = hooks.render(api.UsagePill, props);
+	const button = tree.children.find(node => node.type === "button");
+	assert.ok(textOf(button).includes("1/3 池用尽"));
+	assert.ok(button.props.title.includes("Gemini Argon 模型") && button.props.title.includes("23.5%"), "悬浮与无障碍说明覆盖各池，不只描述最差窗口");
+	button.props.onClick();
+	tree = hooks.render(api.UsagePill, props);
+	assert.ok(textOf(tree).includes("部分额度池已用尽"));
+	assert.ok(!textOf(tree).includes("最紧张"));
+	assert.ok(!textOf(tree).includes("额度已用尽"), "不能退回整个订阅耗尽的横幅");
+	for (const slot of hooks.slots) slot?.cleanup?.();
+}
+
+console.log("PASS 客户端 Antigravity 联动与独立额度池：分池限额、中英可读名称、缓存/失败、药丸/横幅/悬浮说明与普通订阅回归");

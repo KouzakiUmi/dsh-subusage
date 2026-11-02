@@ -23,7 +23,7 @@ class Hooks {
  dispose() { for (const slot of this.slots) slot?.cleanup?.(); }
 }
 const t = key => api.zh[key] ?? key;
-const account = (name, value) => ({ account: name, state: 'ok', windows: [], extras: [{ kind: 'balance', value: `${value} 积分` }], coverage: 'complete', freshness: 'fresh' });
+const account = (name, value) => ({ accountId: name, account: name, state: 'ok', windows: [], extras: [{ kind: 'balance', value: `${value} 积分` }], coverage: 'complete', freshness: 'fresh', authStatus: 'present' });
 export const ofmEntry = { providerId: 'ofm-raccoon', label: '小浣熊 · OFM', state: 'ok', windows: [], extras: [], coverage: 'complete', freshness: 'fresh', lastSuccessAt: new Date().toISOString(), ofmAccounts: [account('账号甲', 6600), account('账号乙', 6300)] };
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 function nodes(tree) { if (!tree || typeof tree !== 'object') return []; return [tree, ...tree.children.flatMap(nodes)]; }
@@ -55,7 +55,7 @@ export function html(tree) {
  assert.equal(entry.visible, true, '关闭 Antigravity 不得关闭 OFM');
  assert.equal(calls[1][0], 'readLinked');
  assert.equal(calls.filter(c => c[0] === 'refresh').length, 0);
- for (const [route, id] of [['raccoon', 'ofm-raccoon'], ['loomy', 'ofm-loomy'], ['qoder', 'ofm-qoder'], ['qodercn', 'ofm-qodercn'], ['gemini', 'ofm-gemini']]) {
+  for (const [route, id] of [['raccoon', 'raccoon'], ['loomy', 'loomy'], ['qoder', 'ofm-qoder'], ['qodercn', 'ofm-qodercn'], ['gemini', 'ofm-gemini'], ['trae', 'trae'], ['trae-global', 'trae-global'], ['workbuddy', 'workbuddy'], ['workbuddy-global', 'workbuddy-global']]) {
   const hooks = new Hooks(); const props = { store: { subscribe: () => () => {}, getSnapshot: () => ({ status: 'ready', current: { provider: route } }) }, usageStore, readEntry: id => usageStore.reader(id, true), t, getLocale: () => 'zh' };
   const tree = hooks.render(api.SubusagePillEntry, props); assert.equal(tree.props.providerId, id); hooks.dispose();
  }
@@ -72,4 +72,38 @@ export function html(tree) {
  assert(nodes(tree).some(n => n.props.className === 'dsh-subusage-dialog' && n.props.style.position === 'absolute'), '桌面弹层保持原来的定位');
  usageStore.dispose();
 }
-console.log('PASS OFM 客户端：路由、独立开关、联动取数、逐账号明细与 DSH Go 自适应样式');
+{
+ const hooks = new Hooks(); let entry = structuredClone(ofmEntry), notify;
+ entry.ofmAccounts[0].accountActive = true; entry.ofmAccounts[0].accountMode = 'auto';
+ entry.ofmAccounts[1].authStatus = 'missing'; entry.ofmAccounts[1].coverage = 'partial';
+ const reader = async () => entry; reader.subscribe = fn => { notify = fn; return () => { notify = null; }; }; reader.activate = () => () => {};
+ const props = { providerId: entry.providerId, label: entry.label, readEntry: reader, t, getLocale: () => 'zh', cc: null };
+ hooks.render(api.UsagePill, props); await flush();
+ let tree = hooks.render(api.UsagePill, props);
+ const toggle = () => nodes(tree).find(n => n.type === 'button' && n.props['aria-haspopup'] === 'dialog');
+ toggle().props.onClick(); tree = hooks.render(api.UsagePill, props);
+ assert(html(tree).includes('提供方当前账号') && html(tree).includes('账号池自动选择') && html(tree).includes('缺少凭据'));
+ const viewButton = label => nodes(tree).find(n => n.type === 'button' && n.children.some(child => child === label));
+ viewButton('账号甲').props.onClick(); tree = hooks.render(api.UsagePill, props);
+ assert(toggle().props.title.includes('账号甲') && toggle().props.title.includes('6600'));
+ assert(!html(tree).includes('6300'), '查看甲账号时不混入乙的余额');
+ viewButton('账号乙').props.onClick(); tree = hooks.render(api.UsagePill, props);
+ assert(toggle().props.title.includes('账号乙') && html(tree).includes('6300'));
+ assert(!html(tree).includes('6600'));
+ assert(html(tree).includes(api.zh.statusPartial) && html(tree).includes('缺少凭据'));
+ // 另一窗口移除选中账号后，旧选择不能继续复活旧余额。
+ entry = { ...entry, ofmAccounts: [entry.ofmAccounts[0]] }; notify(entry); tree = hooks.render(api.UsagePill, props);
+ assert(!html(tree).includes('6300'));
+ assert(html(tree).includes('6600'));
+ hooks.dispose(); assert.equal(notify, null);
+}
+{
+ // 独立插件使用相同账号查看组件；单个失败只影响它本身。
+ const row = { ...account('独立账号', 0), accountId: 'wb-1', accountActive: true, accountMode: 'fixed', authStatus: 'expired', authExpiresAt: '2026-11-01T00:00:00Z' };
+ const entry = { providerId: 'workbuddy', label: 'WorkBuddy', state: 'ok', windows: [], extras: [], coverage: 'partial', freshness: 'fresh', linkedAccounts: [row, { ...account('失效账号', 0), accountId: 'wb-2', state: 'error', extras: [], coverage: 'partial', freshness: 'unknown', authStatus: 'unknown', error: '账号额度暂不可读' }] };
+ const markup = html(await renderPill(entry));
+ assert(markup.includes('固定账号') && markup.includes('记录的登录态已到期') && markup.includes('提供方记录到期'));
+ assert(markup.includes('账号额度暂不可读') && markup.includes('鉴权状态待确认'));
+ assert(markup.includes('查看账号额度') && !markup.includes('NaN'));
+}
+console.log('PASS 联动账号客户端：OFM/独立路由、账号选择、当前/鉴权元数据、失败与删除隔离及 DSH Go 自适应样式');

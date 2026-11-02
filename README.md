@@ -106,12 +106,14 @@ OpenDesign 药丸按当前路由标注计费来源：套餐模型显示「使用
 |---|---|---|
 | [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity) | `antigravity` | 读取其 `antigravityAuth` 服务的 `usage()`（`QuotaStatusView`：Gemini 与 Claude/GPT 两组各带 5h / 周窗口的剩余比例）。**选中它的 `google-antigravity` 模型路由时，输入区药丸直接显示这份额度。** |
 | [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) | `antigravity` | 读取其 `agyQuota` 服务提供的额度快照（分组窗口 + 套餐名 + AI Credits），信息比 `antigravityAuth` 更全。 |
-| [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae) | `trae`、`trae-global`、`trae-enterprise` | 读取其本机只读用量接口；仅返回已登录且有可用报告的区域。 |
-| Our Free Model / 兼容的独立渠道插件 | 十个 `ofm-*` 入口 | 复用 `usage.badge`：小浣熊、Loomy、Qoder 国际/中国版、LobsterAI、TRAE、Cline、MiniMax Code、ZCode、Gemini；逐账号显示积分、额度包或窗口。[渠道、药丸与验证范围](docs/ofm.md) |
+| [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae) | `trae`、`trae-global`、`trae-enterprise` | 国内积分、国际订阅按账号分别读取；企业额度保持不可读说明。 |
+| [`dsh-connect-workbuddy`](https://github.com/dingminhua/dsh-connect-workbuddy) | `workbuddy`、`workbuddy-global` | 按区域与账号读取余额；完整积分包只归属已确认的当前账号。 |
+| [`dsh-raccoon-connect`](https://github.com/zhlcba/dsh-raccoon-connect)、[`dsh-loomy-connect`](https://github.com/gdrpzym/dsh-loomy-connect) | `raccoon`、`loomy` | 独立 `/status` 的单当前登录；药丸在接口缺席时回落 OFM。Loomy 保留本地积分缓存时间。 |
+| Our Free Model | 十个 `ofm-*` 入口 | 复用账号索引与 `usage.badge`：小浣熊、Loomy、Qoder 国际/中国版、LobsterAI、TRAE、Cline、MiniMax Code、ZCode、Gemini；逐账号显示积分、额度包与鉴权元数据。[范围与验证](docs/ofm.md) |
 
-Antigravity 在本机可能装了上面**两个提供方插件中的任意一个**（或都装、或都没装）：它们读的是同一份 Google Antigravity 配额，本插件只出一条 `antigravity`，`agyQuota` 在场时优先（带套餐名与 credits），否则回落到 `antigravityAuth`；两个都不在时该条目不出现。这些联动没有普通提供商设置卡片，也不在手动绑定的目标订阅列表中：登录、额度采集及账号管理仍由对应插件负责，本插件不读取它们的凭据。Antigravity 在「提供商管理」顶部另有一个独立开关，默认开启；关闭后停止额度查询并隐藏药丸，不影响模型路由或登录状态。Trae 联动目前仅出现在工具报告中。
+Antigravity 的两个提供方读取同一份 Google 配额，只出一条 `antigravity`：`agyQuota` 在场优先，否则回落 `antigravityAuth`。联动没有普通提供商凭据卡片，登录与账号管理由提供方负责。Antigravity 在管理区顶部另有独立开关，默认开启；关闭后停止查询并隐藏药丸。
 
-OFM 联动直接读取提供方已有的数据，查询全部可传 `providers: ["ofm"]`。小浣熊、Loomy、Qoder 等八个无名称冲突的模型路由会显示药丸；多账号展开后分别列出额度。OFM 的 TRAE / MiniMax Code 使用独立查询 ID，保留原有 Trae / MiniMax 匹配。在 DSH Go 底部面板中，本插件药丸改为向下展开并可滚动；[离线验收与限制](docs/ofm.md#dsh-go-药丸)。
+OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM 账号池支持在药丸里切换查看账号，保留各自余额、读取失败、凭据存在性和提供方记录的到期时间；当前账号/自动模式只使用明确的提供方字段，实际推理账号由提供方管理。独立 Raccoon / Loomy 只公开单当前登录，OFM 同渠道提供多账号。提供方状态 GET 可能自行续期或同步登录态，详情见[鉴权与生命周期](docs/ofm.md#鉴权数据与生命周期)。DSH Go 面板中药丸向下展开并可滚动；[离线验收](docs/ofm.md#dsh-go-药丸)。
 
 ## 也可以直接问 Agent
 
@@ -142,7 +144,7 @@ OFM 联动直接读取提供方已有的数据，查询全部可传 `providers: 
 
 ## 支持的数据 / Supported data
 
-共 **31 条 provider id**：新安装**有效默认开启 11 条、关闭 20 条**。另有 **14 条联动项**：Antigravity 一条、Trae 三块面板、[OFM 十个渠道](docs/ofm.md)。联动项没有自己的凭据槽或普通设置卡片，Antigravity 另有独立开关；数据取自本机提供方插件的服务或只读接口。清单取自 [Host](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 的组归一化为准：Ark 个人版两路默认开启，Team 两路由独立开关控制且默认关闭。展示顺序与短名取自 [Client](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
+共 **31 条 provider id**：新安装**有效默认开启 11 条、关闭 20 条**。另有 **18 条联动项**：Antigravity 一条、Trae 三块面板、WorkBuddy 两区域、独立 Raccoon / Loomy 两条及 [OFM 十个渠道](docs/ofm.md)。联动项没有自己的凭据槽或普通设置卡片，Antigravity 另有独立开关。清单取自 [Host](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 归一化为准：Ark 个人版两路默认开启，Team 两路独立控制且默认关闭。展示顺序与短名取自 [Client](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
 
 | 提供商 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|---|
@@ -423,7 +425,7 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 
 ## 额度查询 API
 
-**Agent 工具 `subusage_quota`**（模型可直接调用，只读：不写设置、不碰凭据）
+**Agent 工具 `subusage_quota`**（模型可直接调用，返回额度与状态，不返回秘密或修改设置）
 
 | 参数 | 类型 | 说明 |
 |---|---|---|
@@ -437,8 +439,8 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 - **点名的家原样返回，其余按「有没有数据」收起**：`providers: ["kimi"]` 时被点中的家即使没配凭据也照原样给出（用户问的正是「它为什么没数据」）；**不点名时**——以及名字一个都没认出来、走全量兜底时——省略检测已关闭、未配置凭据、以及接口没报告任何额度的条目，省略条数按**家**写进 `omitted`（同一家的多个 Command Code 账户只算一家），否则二十多条路由会把真正的数字淹掉。**读取失败的条目会保留**——那是「这次没读到」，不是「没配置」，省略掉只会把排障方向带偏；认不出的名字自己那行也保留。
 - **同一额度池的多个窗口在文本里并成一段**：池名（分组 / 预算 / 能力范围标注）只写一次，**相邻**同池窗口按上游顺序用 `/` 并列（不重排、不跨池拼段），例如 `Gemini Models · week 95.8% 剩余（重置 …） / 5h 96.6% 剩余（重置 …）`；跨池仍分开、交错下发的同池窗口不重排。数据结构不受影响（`windows[]` 仍是一窗口一条）。
 - **Command Code 按账户各回一条**：账户清单读自提供方插件的 `llm-commandcode` 设置，每条带 `account`（账户名）、`accountActive`（当前激活的那个）与 `accountMode`（`fixed` 固定账户 / `auto` 自动轮换），激活账户排在最前。「还剩多少」与「现在实际用哪个账户」一次问清。
-- **Trae 也是联动项**：本机运行 [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae) 时最多出现三条——`trae`（国内版积分：`period` 窗口的百分比是「已用积分 / 积分包合计」，余量与 Work / 通用两个桶、积分到期提醒放 extras）、`trae-global`（国际版订阅状态：档位、试用期、是否买了套餐）与 `trae-enterprise`（**只在真有企业版账号时出现**，且照实说「企业租户额度只能在企业控制台看」，绝不把个人积分挪到企业标题下）。数据来自该插件注册在本机 web 服务器上的只读路由 `/plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>`（它自己的卡片读同一条），本插件只做换算：不读取它的凭据、不自己请求 Trae 上游、不写设置；取数结果缓存 60 秒，`refresh: true` 绕过。厂商名 `trae` 命中三块面板（与 `zai` / `ark` 同口径），单块面板没登录时静默，点名某一块（如 `trae-global`）却没登录时才回说明。
-- **Antigravity 是联动项，不是本插件登记的 provider**：本机运行 [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity)（服务 `antigravityAuth.usage()`）或 [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp)（服务 `agyQuota.read()`）任一个时，报告里会多一条 `providerId` 为 `antigravity` 的条目（可传 `antigravity` / `agy` / `antigravity-acp` / `google-antigravity` / `dsh-tool-antigravity` 点名）。两个都在场时优先 `agyQuota`（信息更全：套餐名 + AI Credits），只装 dsh-tool-antigravity 时回落到 `antigravityAuth`；都不在场时顺带查询不出现这一行，点名时会回一条列出两个插件名的安装指引。本插件不读它们的凭据、不请求上游、不写设置。`windows[].percent` 同样是**已用**百分比（由官方下发的剩余比例 `remainingFraction` / `remainingPct` 换算），`groupLabel` 是分组（`antigravityAuth` 通道为「Gemini 模型」「Claude 与 GPT 模型」，`agyQuota` 通道保留对方分组显示名如 `Gemini Models`）。未登录时该通道返回 `unauthenticated`：全量查询静默，点名时给出「去 dsh-tool-antigravity 完成 Google 授权」的指引。
+- **独立 Trae / WorkBuddy 按区域、账号展开**：Trae 的 `trae` / `trae-global` / `trae-enterprise` 保留国内积分、国际订阅和企业不可读三种语义；多账号通过提供方的 `account-status` 独立读取。WorkBuddy 使用 `workbuddy` / `workbuddy-global`，批量接口只给账号总余额，完整积分包仅归属已确认的当前账号。两者复用提供方鉴权，60 秒缓存与强制刷新由同一 reader 管理；具体契约与内部登录态维护见[联动说明](docs/ofm.md)。
+- **Antigravity 是联动项，不是本插件登记的 provider**：本机运行 [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity)（服务 `antigravityAuth.usage()`）或 [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp)（服务 `agyQuota.read()`）任一个时，报告里会多一条 `providerId` 为 `antigravity` 的条目（可传 `antigravity` / `agy` / `antigravity-acp` / `google-antigravity` / `dsh-tool-antigravity` 点名）。两个都在场时优先 `agyQuota`（信息更全：套餐名 + AI Credits），只装 dsh-tool-antigravity 时回落到 `antigravityAuth`；都不在场时顺带查询不出现这一行，点名时会回一条列出两个插件名的安装指引。本插件不读它们的凭据、不请求上游、不写设置。`windows[].percent` 同样是**已用**百分比（由官方下发的剩余比例 `remainingFraction` / `remainingPct` 换算），`groupLabel` 是分组（`antigravityAuth` 通道为「Gemini 模型」「Claude 与 GPT 模型」，`agyQuota` 通道保留对方原始组名如 `Gemini Models`）。界面将已知组名显示为「Gemini 模型」「Claude 与 GPT 模型」「Gemini Argon 模型」（英文界面同步翻译）；每组是独立额度池，同池内取最紧窗口，跨池不互相限制。部分池用尽时显示如「1/3 池用尽」并作黄色提醒，只有全部已报告池耗尽才标红；横幅与悬浮说明分别列出各池的余量和重置依据。未登录时该通道返回 `unauthenticated`：全量查询静默，点名时给出「去 dsh-tool-antigravity 完成 Google 授权」的指引。
 
 **Host 服务**（Cordis `Service`，key 为 `subUsage`）：
 
@@ -448,19 +450,20 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 // view = {
 //   updatedAt,
 //   providers: [{ providerId, label, state, windows, extras, coverage?, freshness?, lastSuccessAt?, error?,
-//                 account?, accountActive?, accountMode?, availability?, availabilityReason? }]
+//                 account?, accountId?, accountActive?, accountMode?, authStatus?, authExpiresAt?,
+//                 availability?, availabilityReason? }]
 // }
 ```
 
 - `state`：`ok` | `no-key` | `no-cookie` | `error` | `disabled`
 - `windows[].percent` 是**已用**百分比（0–100）；`extras` 放余额与套餐名等补充项。`budgetScope` / `detail.scope` 区分多预算和能力范围
 - `availability?` 为 `included | paygo | blocked | unknown`，`availabilityReason?` 解释依据；读取成功、余额或健康百分比不能单独保证续用资格
-- `account` / `accountActive` / `accountMode` 只在多账户的 Command Code 上出现（见下）；此时同一条路由会有**多条**条目（每个账户一条，`providerId` 相同），消费方按 `account` 区分
+- Command Code 与联动账号可返回 `account`；稳定身份由联动的 `accountId` 区分，同名不合并。`accountActive` / `accountMode` 只在提供方明确报告时出现，`authStatus` / `authExpiresAt` 表示凭据元数据而非实时鉴权证明。多账号一账号一条，不能把相同 `providerId` 当作重复记录删除。
 - 视图**刻意精简**：不返回设置，也不返回 `keySource` / `apiDetected` / 继承变量名等内部状态，第三方消费者拿不到任何与 Key 相关的字段。多账户路由（Command Code）连错误文案里的**凭据引用名**也会换成账户标签（`Account 2`），内部 `apiKeyEnv` 只留在本机界面那条通道里（用户要靠它定位该往哪个 ref 写凭据）
 - 视图里**不出现值为 `undefined` 的字段**：字段缺席表示「这家没有报告」，而不是「报告了空」——带 `undefined` 的键会被调用方的 schema 校验判成型别错误
 - 单家读取失败只影响它自己的条目，其余照常返回
 - 与设置页共用同一份缓存（TTL 60 秒），频繁调用不会反复请求各家接口；多账户各按「路由 id + 账户引用名」占一份缓存，读全部账户不会互相驱逐
-- 联动项不占普通提供商设置卡片：Antigravity 有独立开关，关闭后 `quota()` 与药丸查询均不返回该项；Trae 没有开关。它们没有凭据编辑器；取数有 15 秒独立预算，请求带取消信号（随 `dispose()` 与预算自断）；对方报错时只产出它自己那条 `state: "error"`（`error` 里有截断后的脱敏原因），其它家照常返回。**默认的全量查询遇到超时静默**（不制造噪声，对方缓存会随后补上），**点名**的查询超时仍如实报——否则问「Trae 还剩多少」会得到像「没登录」的空结果。Antigravity 药丸走独立的 `subUsage/readLinked` 通道（结果不带 settings，不参与普通提供商的凭据与路由过滤；关闭独立开关时隐藏，未装插件时显示缺席原因）；Trae 目前只进工具报告
+- 联动没有普通凭据卡片；Antigravity 独立开关同时约束工具和药丸。每条联动有 15 秒预算和卸载取消，失败仅影响该来源；全量查询的超时静默，点名查询仍返回原因。所有联动药丸经 `subUsage/readLinked` 读取，结果不带 settings，避免额度轮询覆盖显示设置；接口缺席、未登录及失败分别处理。
 - `quota()` 本身**不过滤**条目（第三方可能正需要「这家没配」这个事实）；`subusage_quota` 工具的不点名调用才省略空条目
 
 ## Troubleshooting / 常见问题
