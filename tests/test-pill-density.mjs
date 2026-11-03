@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { api, renderPill } from './test-client-ofm.mjs';
 import { loadHostModule } from './helpers.mjs';
+import { READBACK_ENTRIES } from './test-linked-info.mjs';
 const host = await loadHostModule();
 
 /** 可见文本按行拆：收起状态的 <details> 只计 summary，内容不计。 */
@@ -14,6 +15,13 @@ function visibleLines(node, out = []) {
 	if (typeof node === 'string') { for (const line of node.split('\n')) if (line.trim()) out.push(line.trim()); return out; }
 	if (Array.isArray(node)) { for (const child of node) visibleLines(child, out); return out; }
 	const kids = node.children || [];
+	// 账号切换按钮是单行 flex（名称与金额均 nowrap），图标/名称/余额不能算成三行。
+	if (node.type === 'button' && typeof node.props?.['aria-pressed'] === 'boolean' && node.props?.style?.display === 'flex') {
+		const row = [];
+		for (const child of kids) visibleLines(child, row);
+		if (row.length) out.push(row.join(' · '));
+		return out;
+	}
 	if (node.type === 'details' && node.props?.open !== true) {
 		for (const child of kids) if (child?.type === 'summary') visibleLines(child, out);
 		return out;
@@ -94,6 +102,8 @@ const CASES = [
 			extras: []
 		}
 	},
+	...READBACK_ENTRIES.map(entry => ({ name: `${entry.label} 实读余额形态`, entry })),
+	{ name: '五账号余额', entry: { providerId: 'loomy', label: 'Loomy', state: 'ok', windows: [], extras: [], coverage: 'complete', freshness: 'fresh', linkedAccounts: [1, 2, 3, 4, 5].map(i => acct(`l${i}`, `账号${i}`, i * 100, 2)) } },
 	{ name: '读取失败', entry: { providerId: 'kimi-coding', state: 'error', error: '读不到额度，请检查登录状态后重试。', windows: [], extras: [], coverage: 'partial', freshness: 'unknown' } }
 ];
 
@@ -164,4 +174,4 @@ for (const { name, entry } of CASES) {
 }
 
 console.log('弹层密度核验：' + report.map(row => `${row.name} ${row.lines}行/${row.chars}字/${row.folds}折`).join(' · '));
-console.log('PASS 弹层信息密度：十一种形态收起状态均在上限内，关键金额与窗口保持可见');
+console.log(`PASS 弹层信息密度：${CASES.length}种形态收起状态均在上限内，关键金额与窗口保持可见`);

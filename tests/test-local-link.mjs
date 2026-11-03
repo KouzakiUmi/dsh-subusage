@@ -98,6 +98,62 @@ function harness({ accounts = [], credentials = {}, upstream, options = {} } = {
 }
 
 
+// 工具全量/别名查询按来源、渠道、账号去重；昵称相同不代表同一个账号。
+{
+	const { service } = harness({
+		accounts: [{ ref: 'A', accountId: 'a1', nickname: '同名账号' }, { ref: 'B', accountId: 'a2', nickname: '同名账号' }],
+		credentials: { A: { access_token: 't1' }, B: { access_token: 't2' } },
+		upstream: () => ({ code: 0, data: { available_points: 6354, topup_points: 6354 } }),
+	});
+	const result = await service.quota({ providerIds: ['raccoon', 'ofm-raccoon'], force: true });
+	assert.deepEqual(result.providers.map(row => row.accountId), ['a1', 'a2'], '同一批本机直取账号不能按独立入口和OFM再报两次');
+	assert(result.providers.every(row => row.providerId === 'raccoon'), '重复来源优先保留原生入口标签');
+	const ofm = await service.quota({ providerIds: ['ofm-raccoon'] });
+	assert.deepEqual(ofm.providers.map(row => row.providerId), ['ofm-raccoon', 'ofm-raccoon'], '单独点名OFM入口保持原ID');
+	assert(!JSON.stringify(result).includes('quotaSource'), '内部去重标记不进入公开报告');
+	service.dispose();
+}
+
+// 多账号总额度沿用完整直取池，不拼接不同 ID 域的 Connect 账号。
+{
+	const { service } = harness();
+	let localReads = 0, sourceReads = 0;
+	service.localRead = async () => { localReads++; return { accounts: [{ accountId: 'trae-local', balance: { total: 99, packages: [] } }] }; };
+	const source = async (plugin, endpoint, query) => {
+		sourceReads++;
+		assert.equal(plugin, 'trae');
+		if (endpoint === 'usage') return { status: 'signed-in', accountId: 'connect-a', accounts: [{ id: 'connect-a', accountName: '甲' }, { id: 'connect-b', accountName: '乙' }], pool: { enabled: true, accounts: [{ accountId: 'connect-a', current: false }, { accountId: 'connect-b', current: true }] } };
+		return { id: query.accountId, credits: { total: 200, consumed: query.accountId === 'connect-a' ? 100 : 50, available: query.accountId === 'connect-a' ? 100 : 150 } };
+	};
+	const current = await service.linkedProvider('trae', true, true, false, true, source);
+	assert.equal(localReads, 1, '页面与工具都使用完整直取池');
+	assert.equal(sourceReads, 0, '直取已有余额时不额外读不同账号域的页面来源');
+	assert.equal(current.linkedAccounts[0].accountId, 'trae-local');
+	assert.equal(current.linkedAccounts[0].extras.find(row => row.kind === 'balance').value, '99 credits');
+	const absent = await service.linkedProvider('trae', true, true, false, true, async () => undefined);
+	assert.equal(localReads, 2, '页面提供方缺席时仍能显示本机直取余额');
+	assert.equal(absent.linkedAccounts[0].accountId, 'trae-local');
+	service.dispose();
+}
+
+// ── [5] 账号索引解析（Host 层新增逻辑，此前被注入参数绕开） ─────────────────
+{
+	const { service } = harness();
+	const snapshot = { accounts: [{ accountId: 'a1', nickname: '同名账号', balance: { total: 100, packages: [] } }] };
+	service.linkedSnapshot = async id => id === 'raccoon' ? { channel: 'local', snapshot } : { channel: 'ofm', snapshot: { ...snapshot, provider: 'raccoon', generatedAt: NOW } };
+	const differentSources = await service.quota({ providerIds: ['raccoon', 'ofm-raccoon'] });
+	assert.equal(differentSources.providers.length, 2, '不同来源即使账号ID和余额相同，也没有证据删除其中一条');
+	service.linkedSnapshot = async () => ({ channel: 'local', snapshot: { accounts: [{ nickname: '同名账号', balance: { total: 100, packages: [] } }] } });
+	const withoutIdentity = await service.quota({ providerIds: ['raccoon', 'ofm-raccoon'] });
+	assert.equal(withoutIdentity.providers.length, 2, '账号没有稳定ID时不靠昵称或金额猜重复');
+	service.provider = async id => ({ providerId: id, label: id, state: 'no-key', windows: [], extras: [] });
+	service.linkedSnapshot = async id => ['raccoon', 'ofm-raccoon', 'loomy', 'ofm-loomy', 'trae', 'ofm-trae'].includes(id) ? { channel: 'local', snapshot } : null;
+	const all = await service.quota();
+	for (const providerId of ['raccoon', 'loomy', 'trae']) assert.equal(all.providers.filter(row => row.providerId === providerId).length, 1, `${providerId} 全量查询只保留一份同源账号`);
+	assert(!all.providers.some(row => ['ofm-raccoon', 'ofm-loomy', 'ofm-trae'].includes(row.providerId)), '全量查询的同源OFM别名不重复');
+	service.dispose();
+}
+
 // ── [5] 账号索引解析（Host 层新增逻辑，此前被注入参数绕开） ─────────────────
 {
 	const index = { accounts: [

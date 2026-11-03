@@ -17,7 +17,7 @@ vm.runInNewContext(source.replace('exports.apply = apply;', 'exports.__test = { 
 export let pluginFetch = null;
 export const setPluginFetch = value => { pluginFetch = value; };
 export const api = spec.factory(() => react).__test;
-class Hooks {
+export class Hooks {
  slots = []; index = 0; queue = [];
  state(initial) { const i = this.index++; this.slots[i] ??= { value: typeof initial === 'function' ? initial() : initial }; return [this.slots[i].value, v => { this.slots[i].value = typeof v === 'function' ? v(this.slots[i].value) : v; }]; }
  ref(value) { return this.slots[this.index++] ??= { current: value }; }
@@ -31,7 +31,7 @@ const t = key => api.zh[key] ?? key;
 const account = (name, value) => ({ accountId: name, account: name, state: 'ok', windows: [], extras: [{ kind: 'balance', value: `${value} 积分` }], coverage: 'complete', freshness: 'fresh', authStatus: 'present' });
 export const ofmEntry = { providerId: 'ofm-raccoon', label: '小浣熊 · OFM', state: 'ok', windows: [], extras: [], coverage: 'complete', freshness: 'fresh', lastSuccessAt: new Date().toISOString(), ofmAccounts: [account('账号甲', 6600), account('账号乙', 6300)] };
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
-function nodes(tree) { if (!tree || typeof tree !== 'object') return []; return [tree, ...tree.children.flatMap(nodes)]; }
+export function nodes(tree) { if (!tree || typeof tree !== 'object') return []; return [tree, ...tree.children.flatMap(nodes)]; }
 export async function renderPill(entry = ofmEntry) {
  const hooks = new Hooks();
  const reader = async () => entry; reader.subscribe = () => () => {}; reader.activate = () => () => {};
@@ -65,11 +65,11 @@ export function html(tree) {
   const tree = hooks.render(api.SubusagePillEntry, props); assert.equal(tree.props.providerId, id); hooks.dispose();
  }
  const status = api.computeStatus(ofmEntry, { providerId: 'ofm-raccoon', t, getLocale: () => 'zh' });
- assert.equal(status.key, 'accounts'); assert.equal(status.short, '2 个账号', '无法确认当前账号时不跨账号累加余额');
- assert.equal(status.title, api.zh.ofmAccountQuota, '横幅不重复账号数，账号余额由下方逐行展示');
+  assert.equal(status.key, 'accounts'); assert.equal(status.short, '总 12900 积分', '多账号药丸按用户选择显示同单位总积分');
+  assert.equal(status.title, '总额度 · 12900 积分', '合计明确标注为总额度');
  const tree = await renderPill(); const markup = html(tree);
  assert(markup.includes('账号甲') && markup.includes('6600 积分') && markup.includes('账号乙') && markup.includes('6300 积分'));
- assert(!markup.includes('12900'), '弹层逐账号列出，不把合计重复成一行');
+  assert(!html(nodes(tree).find(n => n.props.role === 'group')).includes('12900'), '账号列表仍只列各自余额，不把合计重复成一个账号');
  let mountedStyle, removed = false;
  const unmountStyles = api.mountPillStyles({ head: { appendChild: style => { mountedStyle = style; } }, createElement: name => { assert.equal(name, 'style'); return { remove: () => { removed = true; } }; } });
  assert.equal(mountedStyle.textContent, api.PILL_ISLAND_CSS);
@@ -126,13 +126,14 @@ export function html(tree) {
  // 账号行本身是切换按钮（照 Command Code 账户区），名字在子树里而不是直接 children。
  const viewButton = label => nodes(tree).find(n => n.type === 'button' && JSON.stringify(n).includes(JSON.stringify(label)));
  viewButton('账号甲').props.onClick(); tree = hooks.render(api.UsagePill, props);
- assert(toggle().props.title.includes('账号甲') && toggle().props.title.includes('6600'));
+  assert(toggle().props.title.includes('12900'), '查看账号甲时药丸保持账号总额');
  // 账号全部平铺：选中甲不会把乙从列表里拿掉，二者都可直接点选切换。
  assert(html(tree).includes('账号甲') && html(tree).includes('账号乙'), '选中一个账号时另一个仍可见、可切换');
  assert(viewButton('账号甲').props['aria-pressed'] === true && viewButton('账号乙').props['aria-pressed'] === false);
  assert.equal(viewButton('账号甲').props.title, '全部账号', '选中后再次点击的入口明确回到全部账号');
  viewButton('账号乙').props.onClick(); tree = hooks.render(api.UsagePill, props);
- assert(toggle().props.title.includes('账号乙') && toggle().props.title.includes('6300'));
+  assert(toggle().props.title.includes('12900') && !toggle().props.title.includes('账号乙'), '查看其它账号不把药丸从总额切成单账号');
+  assert(html(tree).includes('余额 6300 积分'), '其它账号的详情只在弹层显示');
  assert(viewButton('账号乙').props['aria-pressed'] === true && viewButton('账号甲').props['aria-pressed'] === false);
  // 再点已选中的账号取消选择，回到默认视图（药丸不再指向乙）。
  viewButton('账号乙').props.onClick(); tree = hooks.render(api.UsagePill, props);
@@ -192,7 +193,7 @@ export function html(tree) {
   assert(collapsed.includes('6600 积分') && collapsed.includes('6300 积分'), '每个账号的余额都要在收起列表可见');
   const listFold = nodes(picked).find(n => n.type === 'details' && nodes(n).some(x => x.type === 'summary' && String(x.children?.[0] ?? '').includes('其他账号')));
  assert.equal(listFold, undefined, '不再把其余账号折叠掉');
-  assert.ok(nodes(picked).filter(n => n.type === 'details').length > 0, '选中账号的逐条明细仍有折叠');
+   assert.equal(nodes(picked).filter(n => n.type === 'details').length, 1, '选中账号的逐条明细只保留一份折叠，不在列表和正文重复');
 }
 {
  // 页面代取通道：宿主说缺哪个 URL，页面 fetch 回来，宿主归一化。

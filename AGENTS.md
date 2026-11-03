@@ -24,7 +24,7 @@
 ## OFM 联动与手机药丸
 
 - 十个渠道以 `ofm-*` 登记，由 [ofm.js](lib/ofm.js) 经 Connection 的进程内 Fetch 调用 `usage.badge` 与 `account.list`；完整范围、鉴权来源及限制见 [联动说明](docs/ofm.md)。Host 可按索引引用检查凭据非空存在性，只回状态，引用名和秘密不出 Host；不自行登录、签到或写提供方设置。OFM `preference` 是显示偏好，不是账号模式，不能生成无依据的当前账号。
-- 工具按账号展开，药丸用 `ofmAccounts` / `linkedAccounts` 保留稳定 `accountId` 与独立额度；查看账号仅切换展示，不修改实际推理账号。凭据存在/记录有效期不能当上游鉴权成功。索引删除、停用或缺凭据不能复活旧额度；余额不跨账号累加，包到期不作窗口重置，Cline 窗口按账号 ID 匹配。
+- 工具按账号展开，药丸用 `ofmAccounts` / `linkedAccounts` 保留稳定 `accountId` 与独立额度；纯余额多账号按用户选择在 Client 显示同单位总额度，原始结果仍逐账号独立，查看账号只改变弹层，不修改实际推理账号。凭据存在/记录有效期不能当上游鉴权成功。索引删除、停用或缺凭据不能复活旧额度；不同单位不合计，包到期不作窗口重置，Cline 窗口按账号 ID 匹配。
 - 独立 Trae / WorkBuddy 由 [connect-usage.js](lib/connect-usage.js) 经各自公开 GET 接口读取，按插件、区域和账号 ID 隔离。池行真实字段是 `accountId`，`current` 不与旧绑定的 `selected` 混用；Trae 池关闭不推固定，WorkBuddy 固定还需 `selectionExplicit`。企业 Trae 不读个人积分替代；WorkBuddy 批量只有总余额，明确选中状态矛盾时丢弃未知归属的完整包。
 - 独立 Raccoon / Loomy 由 [desktop-usage.js](lib/desktop-usage.js) 消费单当前账号 `/status`。Raccoon `probeKey` 丢弃后才缓存，Loomy 缓存不伪造账号归属/容量/请求采样时间。两种模型药丸仅在独立接口缺席时回落 OFM；工具分别报告真实来源，避免自动回落重复。`ofm-trae` / `ofm-minimax` 仍为独立查询 ID。
 - 独立读取缓存由 reader 统一维护，缺席不缓存，强制刷新有代次保护、卸载不回填。不要在 Host 再包一层无排序缓存。提供方 GET 可能自行镜像登录、续期或更新运行时账号池，文档须按实际生命周期说明。
@@ -44,11 +44,11 @@
 
 - 目标：Raccoon / Loomy / Qoder / Qoder 中国版 / ZCode / Trae 六个渠道，优先由本插件**自己**读本机凭据、自己调上游只读额度接口，而不是转发 OFM 或兄弟插件的 HTTP 路由。实现见 [local-usage.js](lib/local-usage.js)。
 - 凭据来源三条：① 账号池渠道走 `ctx.get("credentials").resolve(ref)`，ref 取自 `$DSH_HOME/channel-pack/state.json` 的 `accounts[].credentialRef`；② **不要自己解析 `.credentials.yaml`**（那是同一份数据的脆弱副本）；③ Trae 的凭据由 [trae-auth.js](lib/trae-auth.js) 解密，读取必须走注入的 `io.readFileSync` 而不是 `node:fs`，否则隔离测试会真读本机凭据并向上游发请求。**全部账号在账号池 `$DSH_HOME/.trae-auth.<region>.json`（v2 `{version, credentials:[...]}`）里；客户端 `storage.json` 只有「当前登录」那一个**——只读 `storage.json` 会漏掉其他账号。两处字段名不同（池是 `accessToken`/`accountName`/`expiresAtMs`，客户端是 `token`/`account.username`/`expiredAt`）。
-- 顺序：`linkedSnapshot()` 里直取优先。**全部账号都读不到就返回 `undefined`**（没凭据 / 已过期 / 上游拒绝），静默让位给原有来源链；只要有一个账号读到就照实返回，失败的行各自带原因。上游应答成功但没下发数字（企业版账号）算「可达」，要显示原因而不是装作缺席——两者不能混为一谈。读失败不落缓存，用户重新登录后下一轮立即恢复。
+- 顺序：`linkedSnapshot()` 里直取优先，页面药丸与工具共用完整账号池；不同来源 ID 域不按昵称拼接。**全部账号都读不到就返回 `undefined`**（没凭据 / 已过期 / 上游拒绝），静默让位给原有来源链；只要有一个账号读到就照实返回，失败的行各自带原因。上游应答成功但没下发数字（企业版账号）算「可达」，要显示原因而不是装作缺席——两者不能混为一谈。读失败不落缓存，用户重新登录后下一轮立即恢复。
 - **只读两条铁律**：① 不替用户刷新 token——EAC 会周期性轮换 `refresh_token`，两边同时持刷新权会把对方顶下线；② 不碰任何写接口（Loomy 每日签到、ZCode 领取），打开面板不该变成意外签到。
 - 各家契约差异必须逐家核对，不可套用：Raccoon 用 `Bearer` + `X-Org-Code`（组织码缺失只能读个人池）；Loomy 只认 `token` 头且成功码是字符串 `"000000"`；Qoder 用 `security_oauth_token` 优先 + `Cosy-ClientType: 10`，企业版 `displayMode === "enterprise"` 不下发数字；ZCode 用 `zcode_jwt` + 必需 `X-Device-Mid`，单位是 token 不是积分；Trae 用 `Cloud-IDE-JWT` + POST `web_user_ent_usage`，剩余按 `credits_limit - credits_amount` 算。两处易错：ZCode 的 `balances: []` 是「0 个桶」的合法形态（如实显示 0），只有字段整体缺失才算形状变化；Trae 的逐包额度要 `product_extra.package_extra` 优先、包名只认 `display_desc`（`package_name` 是产品名，会让几个包同名）。Trae 还只支持中国版账号（凭据自带 `region`），非 CN 不发请求。
 - Trae 那一层是**复刻客户端私有格式**：密文布局、四张 64 字节盐常量与 `aes` / `aes-private` 两种头都照抄已装的 `dsh-connect-trae`。客户端大版本换格式时解密会失败，此时必须返回 `undefined` 让直取回退，**不要试图猜新格式**。`~/.trae-cn/trae-jwt-token` 是 CLI 的另一族 JWT（401 / code 1001），不要拿它兜底。
-- 已知取舍（有意保留，不要当成遗漏去「修」）：① `linkedSteps` 的 60 秒页面代取缓存在直取之上仍会各算一份，最坏陈旧度接近 120 秒；② `ofm-trae` 的直取实际读的是 Trae **中国版**桌面客户端，标签仍显示「TRAE · OFM」，`trae-global` / `trae-enterprise` 不走直取；③ 上游 `code` 与注入依赖的 `error.message` 会进公开文案，新模块本身不往结果、缓存或日志里放 token。
+- 已知取舍（有意保留，不要当成遗漏去「修」）：① `linkedSteps` 的 60 秒页面代取缓存在直取之上仍会各算一份，最坏陈旧度接近 120 秒；② `ofm-trae` 的直取实际读的是 Trae **中国版**桌面客户端，查询 ID 保持不变、显示名按真实直取来源标为 Trae，`trae-global` / `trae-enterprise` 不走直取；③ 上游 `code` 与注入依赖的 `error.message` 会进公开文案，新模块本身不往结果、缓存或日志里放 token。
 - 未做的渠道要写明原因：Cline / LobsterAI 本机没有任何凭据；MiniMax 的 token 只有约 4.5 小时且自刷新可能与 MiniMax Code 的 `auth.lock` / `generation` 抢权（按用户决定本轮不做，要做就得先定「不刷新、过期即提示重登」这条线）。
 
 ## 手动 provider 匹配
@@ -91,6 +91,7 @@
 - **MiMo 两条登录通道的按钮规则**：扫码（`channel: "qr"`）是推荐的主按钮，浏览器登录是次按钮，手机引擎（无浏览器）只有扫码；两者共用组件级任务状态，二维码 / 浏览器进度 / 失败提示只在发起它的通道下渲染，取消入口只有一个，任一进行中另一个按钮禁用；用量面板快捷条同构，扫码入口要展开编辑器（二维码在那里显示）。Host 开始任一登录时取消另一个进行中的任务。
 - **MiMo 自动续期**：只有扫码登录会保存续期材料（`xiaomi.renewal` = `userId` + `passToken` + `deviceId`，与 Cookie 同在 0600 的 `~/.dsh/dsh-subusage.json`，公开设置只暴露 `autoRenew` / `renewExpiresAt`）。Cookie 距到期不足 10 分钟、已过期或被上游拒绝时由 `mimoRenewIfDue()` 取数前静默续期；材料只跟着它换出的 Cookie 走——手动 / 浏览器登录与清除凭据一律丢弃，扫码的第 4 个回调实参是 `passToken` 有效期、不能给 Cookie 计时封顶。`passToken` 被拒不重试（等用户重新扫码），网络 / 形状类失败按 1 / 10 分钟重试；登录任务进行中不续期。有续期材料时 Client 不显示 Cookie 倒计时（`cookieRenewable`），续期失败才提示重新扫码（`renewFailed`）。续期协议未用真实账号长期验证，不得在文档里写成已实机验证。细节见 [开发文档](docs/development.md)，回归见 `tests/test-mimo-renew.mjs`。
 - 登录前保留未保存草稿保护、组件级重复启动保护及最新设置 revision 校验。切换编辑器时，恢复状态请求不能覆盖新启动的任务；卸载只清理界面轮询，不取消 Host 登录任务。
+- MiMo 扫码各阶段返回的 Cookie 按名称合并、后值覆盖前值；保存续期材料使用实际换票时的最新 `passToken` / `deviceId`，设备信息不只取首次响应。额度缓存命中时重新计算 Cookie 有效期与可续期状态，避免旧标记误触发或掩盖登录警告。
 - 回归覆盖编辑器停在非登录提供商、OpenDesign 与 MiMo 三种状态下的快捷重新登录，以及重复点击和迟到 idle 状态。
 
 ## 验收与维护
@@ -99,7 +100,8 @@
 - 手动匹配回归覆盖多路由、重复绑定拒绝、保存重读、关闭恢复自动匹配、手动覆盖内置别名及下拉候选去重。
 - 订阅检测与异步刷新必须保留原有请求排序和缓存隔离；新增字段应防止旧响应覆盖新设置。`manualMatching` / `providerMappings` 不参与查询设置一致性哈希，保存显示映射不得作废在途额度；完整设置 revision 仍包含它们。
 - 用户文档区分路由匹配、凭据复用和只读额度联动，不把源码核对或桩测试表述为实机兼容验证。
-- **弹层与工具报告有密度上限**：收起状态只保留「结论 + 窗口 + 关键金额」，说明类逐条内容折进 `details`。多账号按 Command Code 账户区的做法：**账号全部平铺**，一行一个账号（状态点 + 名字 + 余额或窗口余量），点行即切换查看对象（再点取消）；只有选中的账号才展开它的说明明细，未选中时不挂「其他说明」折叠。横幅不重复账号数；余额归属明确时给当前账号，否则提示按账号查看，不跨账号合计。新增 provider 或联动形态必须同时加进 [test-pill-density.mjs](tests/test-pill-density.mjs) 的形态表，守住「弹层 ≤ 14 行、单家报告一行 ≤ 220 字符」；只靠某一家截图验收不够。
-- **新增药丸不得另起收起样式**：有窗口就画 Command Code 同款余量条，健康不多写文字；多账号顶层无窗口时使用账号窗口绘制。OpenDesign 计费来源放悬浮说明与弹层，Antigravity 分池横幅沿用统一尺寸，不为新功能增加常驻标签或特殊横幅。
+- **弹层与工具报告有密度上限**：收起状态只保留「结论 + 窗口 + 关键金额」，说明类逐条内容折进 `details`。多账号按 Command Code 账户区的做法：**账号全部平铺**，一行一个账号（状态点 + 名字 + 余额或窗口余量），点行即切换查看对象（再点取消）；只有选中的账号才展开它的说明明细，未选中时不挂「其他说明」折叠。横幅不重复账号数；纯余额多账号按单位合计，部分失败/旧缓存/缺数字时明确标为已读小计与覆盖数量。新增 provider 或联动形态必须同时加进 [test-pill-density.mjs](tests/test-pill-density.mjs) 的形态表，守住「弹层 ≤ 14 行、单家报告一行 ≤ 220 字符」；单行 flex 账号按钮按实际排版计一行，只靠某一家截图验收不够。
+- **新增药丸不得另起收起样式**：有窗口就画 Command Code 同款余量条，健康不多写文字，多账号使用代表账号自己的窗口，百分比不相加。纯余额多账号按用户选择显示同单位总积分/余额，不同单位分别合计；单账号直接显示自身余额。其它账号点开查看，查看只改变弹层，药丸保持总览，也不修改实际推理账号。失败/旧缓存/缺数字时给已读小计与覆盖数量，没有可读余额时不补造总计 0；余额告警按单位合计数值判定，单个账号为 0 不把正常合计标成耗尽。账号列表一行一个账号及独立余额，同名账号补序号，单账号不重复列表，说明只由正文展示一次。OpenDesign 计费来源放悬浮说明与弹层，Antigravity 分池横幅沿用统一尺寸，不为新功能增加常驻标签或特殊横幅。
+- 工具查询只在已确认相同来源、渠道与稳定 `accountId` 时折叠联动别名的重复行，优先保留原生入口标签；点名单个 OFM ID 保持原 ID。同名不同账号、不同来源/区域或缺少稳定身份的行保留，不能凭昵称和金额猜测去重。
 - **积分包必须先归一化再展示**：[credit-packages.js](lib/credit-packages.js) 隐藏用尽与能确认已过期的包，按今天 / 3 天内 / 临时 / 周期套餐 / 永久分组；只在单账号、同单位内聚合，紧急组保留最早到期时间。已有窗口的包只补紧急提醒；无法确认语义的到期字段不猜。
 - 变更说明先记入未发布条目；安装、版本发布与源码推送分别处理。

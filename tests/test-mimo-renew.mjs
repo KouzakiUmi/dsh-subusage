@@ -243,4 +243,26 @@ const read = async h => (await h.service.refresh({ providerIds: [M], force: true
 	assert.equal(view.entries[0].cookieRenewable, undefined);
 }
 
+// 2l. 额度缓存命中也要重新判断两类凭据，不能由旧标记决定 Cookie 是否告警。
+{
+	const h = harness({ renewal: { ...RENEWAL, expiresAt: T0 + MIN / 2 }, renewHandler: okRenew() });
+	await read(h);
+	const cached = h.service.cache.get(M);
+	const apiCalls = h.calls.api.length;
+	assert.equal(cached.entry.cookieRenewable, true);
+	h.tick(MIN / 2 + 1);
+	const expired = await h.service.provider(M, h.service.load(), false);
+	assert.equal(expired.cookieRenewable, undefined, "续期材料到期后不能沿用缓存中的可续期标记");
+	assert.equal(h.calls.api.length, apiCalls, "更新登录状态不重复读取套餐与余额");
+	const valid = harness({ renewHandler: okRenew() });
+	await read(valid);
+	const validApiCalls = valid.calls.api.length;
+	delete valid.service.cache.get(M).entry.cookieRenewable;
+	valid.service.cache.get(M).entry.cookieExpiresAt = new Date(T0 - MIN).toISOString();
+	const restored = await valid.service.provider(M, valid.service.load(), false);
+	assert.equal(restored.cookieRenewable, true, "有有效续期材料时补回标记，隐藏旧 Cookie 告警");
+	assert.equal(restored.cookieExpiresAt, new Date(T0 + DAY).toISOString());
+	assert.equal(valid.calls.api.length, validApiCalls);
+}
+
 console.log("PASS MiMo 静默续期：协议与错误分类、到期前续期、被拒重试、失败提示与重试节奏、材料随 Cookie 走、登录互斥");

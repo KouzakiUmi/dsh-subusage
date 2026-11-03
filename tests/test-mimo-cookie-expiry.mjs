@@ -177,6 +177,12 @@ assert.ok(text(blocked).includes("Used up") && !text(blocked).includes("Cookie e
 const popup = renderPill({ ...quota, ...inMs(90 * 60 * 1000) }, true);
 assert.ok(text(popup).includes("Cookie expires in 1 h") && text(popup).includes("Expires "), "弹层常驻显示剩余时间与到期时刻；90 分钟向下取整为 1 小时，不夸大成 2 小时");
 assert.ok(!text(renderPill(quota, true)).includes("Expires "), "无计时记录时弹层不编造到期时间");
+for (const left of [90 * 60 * 1000, -60 * 1000]) {
+	const renewable = { ...quota, ...inMs(left), cookieRenewable: true };
+	assert.equal(cookieExpiry(renewable, t), null, "扫码续期材料有效时，Cookie 临近到期或过期都不告警");
+	assert.equal(text(renderPill(renewable)).trim(), "", "自动续期不产生药丸告警文案");
+	assert.ok(!text(renderPill(renewable, true)).includes("Cookie expire"), "弹层也不显示需人工处理的 Cookie 到期提示");
+}
 
 // 倒计时只用于展示：官方接口已判定凭据失效时，主文案必须仍是失败原因，
 // 不能让“还有 2 小时到期”掩盖需要立刻重新登录的信号。

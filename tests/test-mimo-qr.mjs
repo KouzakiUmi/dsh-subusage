@@ -203,7 +203,7 @@ await expectError("网络失败", async () => { throw new TypeError("fetch faile
 
 // M5 回归：换票 Cookie 必须同时含第 1 步的 deviceId 与长轮询下发的 passToken。
 {
-	// 第 1 步没下发 deviceId：不保存续期材料（自造设备号小米不认），但登录本身照常成功。
+	// 所有阶段都没下发 deviceId：不保存续期材料（不自造设备号），但登录本身照常成功。
 	let seen;
 	const login = new MimoQrLogin({
 		error: (code, message) => Object.assign(new Error(message), { code }),
@@ -249,6 +249,39 @@ await expectError("网络失败", async () => { throw new TypeError("fetch faile
 	assert.equal(login.status().state, "success");
 	assert.match(seenCookie, /deviceId=DEV1/, "换票必须带上第 1 步下发的 deviceId");
 	assert.match(seenCookie, /passToken=PT/, "换票也必须带上扫码得到的 passToken");
+	login.dispose();
+}
+
+// 设备信息可能晚于首次 serviceLogin 下发；换票与保存必须共用最新的那份材料。
+for (const stage of ["loginUrl", "poll", "rotated"]) {
+	let committed, exchanged;
+	const login = new MimoQrLogin({
+		error: (code, message) => Object.assign(new Error(message), { code }),
+		capture: () => "cap", verify: async () => ({ balanceOk: true, coverage: "complete", windows: [] }),
+		commit: (cookie, captured, verified, expiresAt, renewal) => { committed = renewal; return {}; },
+		reconcileResult: result => result
+	}, {
+		now: () => NOW, timeoutMs: 300000,
+		fetch: async (url, init) => {
+			if (url.includes("/pass/serviceLogin")) return mkOk(STAGE1, { sc: stage === "rotated" ? ["deviceId=OLD; Path=/"] : [] });
+			if (url.includes("/longPolling")) return mkOk(STAGE2, { sc: stage === "loginUrl" ? ["deviceId=LATE; Path=/"] : [] });
+			if (url.includes("qr.png")) { if (stage === "loginUrl") assert.match(init.headers.Cookie, /deviceId=LATE/); return mkOk("", { ct: "image/png" }); }
+			if (url.includes("lp/s")) {
+				if (stage === "loginUrl") assert.match(init.headers.Cookie, /deviceId=LATE/);
+				return mkOk(RAW, { sc: ["passToken=V1:LATEST; Max-Age=2592000", "userId=900000001; Path=/", ...(stage !== "loginUrl" ? ["deviceId=LATE; Path=/"] : [])] });
+			}
+			if (url.includes("/sts")) { exchanged = init.headers.Cookie; return mkOk("", { sc: ["api-platform_serviceToken=TOK; Path=/"] }); }
+			throw new Error("unexpected " + url);
+		}
+	});
+	login.start({ expectedRevision: "rev-1" });
+	for (let i = 0; i < 300 && !["success", "error"].includes(login.status().state); i++) await new Promise(r => setTimeout(r, 5));
+	assert.equal(login.status().state, "success", stage);
+	assert.deepEqual(committed, { userId: "900000001", passToken: "V1:LATEST", deviceId: "LATE", expiresAt: NOW + 2592000 * 1000 }, `${stage} 下发的材料不能丢失`);
+	assert.match(exchanged, /deviceId=LATE/);
+	assert.match(exchanged, /passToken=V1:LATEST/);
+	assert.equal((exchanged.match(/deviceId=/g) || []).length, 1, "设备标识更新后不能发送重复 Cookie");
+	assert.equal((exchanged.match(/passToken=/g) || []).length, 1, "续期令牌以最新响应为准");
 	login.dispose();
 }
 
