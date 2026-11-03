@@ -84,23 +84,33 @@ export function html(tree) {
   ...ofmEntry,
   ofmAccounts: [
    { ...account('账号甲', 0), windows: [{ kind: '5h', percent: 20, status: 'ok' }], extras: [] },
-   { ...account('账号乙', 0), windows: [{ kind: '5h', percent: 40, status: 'ok' }], extras: [] }
+   { ...account('账号乙', 0), windows: [{ kind: '5h', percent: 40, status: 'ok' }, { kind: 'week', percent: 30, status: 'ok' }], extras: [] }
   ]
  };
  const status = api.computeStatus(windowed, { providerId: 'ofm-raccoon', t, getLocale: () => 'zh' });
  assert.equal(status.short, '', '健康多账号药丸不额外写百分比');
  assert.equal(status.tinted, false);
- assert.equal(status.pillWindows.length, 2, '顶层没有窗口时仍使用账号窗口画药丸');
+ assert.equal(status.pillWindows.length, 2, '顶层没有窗口时仍使用代表账号自己的窗口画药丸');
+ assert(status.sub.includes('账号乙'), '悬浮说明与横幅指出余量条属于哪个账号');
  const tree = await renderPill(windowed);
  const toggle = tree.children.find(node => node.type === 'button' && node.props['aria-haspopup'] === 'dialog');
  assert.equal(toggle.children.length, 1, '健康药丸只有余量条，没有第二段文字');
- assert.equal(toggle.children[0].children.length, 2, '两个账号窗口各有一根余量条');
+ assert.equal(toggle.children[0].children.length, 2, '只画最紧账号的两窗，不混入另一账号的窗口');
  const markup = html(tree);
  assert(markup.includes('余 80%') && markup.includes('余 60%'), '账号行显示各自窗口余量，而不是暂无数据');
  const low = { ...windowed, ofmAccounts: windowed.ofmAccounts.map((row, index) => index ? row : { ...row, windows: [{ kind: '5h', percent: 80, status: 'ok' }] }) };
  const lowStatus = api.computeStatus(low, { providerId: 'ofm-raccoon', t, getLocale: () => 'zh' });
  assert.ok(lowStatus.short.includes(api.zh.badgeHigh) && !lowStatus.short.includes('余 '), '偏少时追加档位词，不回到健康百分比文案');
  assert.equal(lowStatus.tinted, true);
+ const partial = { ...windowed, ofmAccounts: windowed.ofmAccounts.map((row, index) => index ? row : { ...row, coverage: 'partial', error: '订阅窗口暂不可读' }) };
+ const partialStatus = api.computeStatus(partial, { providerId: 'ofm-raccoon', t, getLocale: () => 'zh' });
+ assert.equal(partialStatus.short, api.zh.statusPartial, '单个账号部分失败时汇总药丸不能继续全绿');
+ assert.equal(partialStatus.color, '#eab308');
+ const exhausted = { ...windowed, freshness: 'stale', retainPrevious: true, ofmAccounts: windowed.ofmAccounts.map((row, index) => index ? { ...row, windows: [{ kind: '5h', percent: 100, status: 'rate-limited' }, row.windows[1]] } : row) };
+ const exhaustedStatus = api.computeStatus(exhausted, { providerId: 'ofm-raccoon', t, getLocale: () => 'zh' });
+ assert.equal(exhaustedStatus.title, api.zh.statusExhausted, '额度耗尽优先于缓存提示');
+ assert.equal(exhaustedStatus.color, '#ef4444');
+ assert(exhaustedStatus.short.includes(api.zh.pillLimited) && !exhaustedStatus.short.includes(api.zh.statusCache));
 }
 {
  const hooks = new Hooks(); let entry = structuredClone(ofmEntry), notify;
@@ -120,6 +130,7 @@ export function html(tree) {
  // 账号全部平铺：选中甲不会把乙从列表里拿掉，二者都可直接点选切换。
  assert(html(tree).includes('账号甲') && html(tree).includes('账号乙'), '选中一个账号时另一个仍可见、可切换');
  assert(viewButton('账号甲').props['aria-pressed'] === true && viewButton('账号乙').props['aria-pressed'] === false);
+ assert.equal(viewButton('账号甲').props.title, '全部账号', '选中后再次点击的入口明确回到全部账号');
  viewButton('账号乙').props.onClick(); tree = hooks.render(api.UsagePill, props);
  assert(toggle().props.title.includes('账号乙') && toggle().props.title.includes('6300'));
  assert(viewButton('账号乙').props['aria-pressed'] === true && viewButton('账号甲').props['aria-pressed'] === false);

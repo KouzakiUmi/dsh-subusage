@@ -74,6 +74,14 @@ const sample = snapshot('raccoon', [row('a', '账号甲', 6600, [pack('奖励积
  }
  const mixed = normalizeOfm(snapshot('lobsterai', [row('a', '', 10, [pack('积分', 4, '积分'), pack('余额', 6, 'USD')])]), 'ofm-lobsterai', now);
  assert(!mixed.extras.some(x => x.kind === 'balance'), '不同单位的 total 不作为余额展示');
+ const synonyms = normalizeOfm(snapshot('raccoon', [row('a', '', 20, [pack('奖励 A', 10, 'credit'), pack('奖励 B', 10, 'credits')])]), 'ofm-raccoon', now);
+ assert.equal(synonyms.extras.find(x => x.kind === 'balance')?.value, '20 credits', 'credit / credits 是同义单位，不再误隐藏总余额');
+ assert.equal(synonyms.extras.filter(x => x.kind === 'note' && x.value.includes('临时额度合计')).length, 1, '同义单位在积分包摘要里也合并');
+ const zero = normalizeOfm(snapshot('raccoon', [row('a', '', 0, [])]), 'ofm-raccoon', now);
+ assert.equal(zero.state, 'ok');
+ assert.equal(zero.extras.find(x => x.kind === 'balance')?.value, '0', '没有包明细时仍展示真实 0，不编造单位或报成无数据');
+ const token = normalizeOfm(snapshot('zcode', [row('a', '', 50, [pack('GLM', 50, 'tokens', { total: 100 })])]), 'ofm-zcode', now);
+ assert.equal(token.windows[0].detail.unit, 'token', 'tokens 归一为展示单位 token');
 }
 {
  const cline = normalizeOfm(snapshot('cline', [{ accountId: 'a', nickname: '甲', balance: null, error: 'UPSTREAM_SECRET' }], { subscription: { kind: 'windows', accounts: [{ accountId: 'a', ok: true, windows: [{ type: 'weekly', percentUsed: 25, resetsAt: '2026-11-08T00:00:00Z' }] }] } }), 'ofm-cline', now);
