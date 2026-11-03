@@ -35,4 +35,10 @@ assert.equal(kind(mimo({ cookieExpiresAt: new Date(now + 5 * 60 * 60 * 1000).toI
 assert.equal(kind(mimo({ cookieExpiresAt: "not-a-date" }), "xiaomi-token-plan-cn", t), null, "计时不可解析时不编造提醒");
 assert.equal(kind(mimo({}), "xiaomi-token-plan-cn", t), null, "无计时记录且读取正常时不打扰");
 
+// 自动续期：有续期材料时 Cookie 由 Host 到期前自动换新，倒计时不打扰；只有续期失败才要求重新扫码。
+assert.equal(kind(mimo({ cookieRenewable: true, cookieExpiresAt: new Date(now + 10 * 60 * 1000).toISOString() }), "xiaomi-token-plan-cn", t), null, "可自动续期时临近到期不提示");
+assert.equal(kind(mimo({ cookieRenewable: true, cookieExpiresAt: new Date(now - 60000).toISOString() }), "xiaomi-token-plan-cn", t), null, "可自动续期时本地计时到点也不报过期（Host 读取时会续）");
+assert.equal(kind(mimo({ state: "error", errorCode: "subusage/mimo-renew-failed", renewFailed: true, cookieRenewable: true }), "xiaomi-token-plan-cn", t), "mimo-renew-failed", "续期失败要求重新扫码");
+assert.equal(kind(mimo({ state: "error", errorCode: "subusage/mimo-renew-network", retryable: true, cookieRenewable: true }), "xiaomi-token-plan-cn", t), null, "网络类续期失败会自动重试，不要求用户操作");
+
 console.log("行动条判定：缺凭据 / 凭据被拒 / Cookie 过期与临近到期 / 正常状态不打扰 —— 全部通过 ✅");

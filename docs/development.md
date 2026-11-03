@@ -13,6 +13,7 @@
 | `lib/index.js` | 提供商适配、凭据解析、持久化、缓存与 Host RPC |
 | [lib/ofm.js](../lib/ofm.js) | OFM 进程内只读 RPC、逐账号额度与分桶归一化；沿用提供方缓存 |
 | [lib/connect-usage.js](../lib/connect-usage.js) | 独立 Trae / WorkBuddy 账号与区域隔离、额度归属和缓存排序 |
+| [lib/credit-packages.js](../lib/credit-packages.js) | 积分包有效性与到期分组；单账号、同单位聚合，过滤用尽与已过期项 |
 | [lib/desktop-usage.js](../lib/desktop-usage.js) | 独立 Raccoon / Loomy 单当前状态、缓存时间与秘密白名单 |
 | `lib/volcengine.js` | 火山方舟 AK/SK 签名与 Coding / Agent Plan 窗口解析（纯函数、零依赖，可单独测试） |
 | `docs/provider-coverage.md` | 提供商覆盖与**不接入**的决策记录：已支持清单、评估后不做的厂商与理由、用户决策跳过的厂商 |
@@ -29,6 +30,8 @@
 
 ### OFM 与 DSH Go
 
+**兄弟插件的 HTTP 路由只能由页面代取**：DSH 连接层 `admit()` 要求浏览器 cookie，宿主进程发的本机请求一律 403，所以 `trae-route` / `workbuddy-route` / `desktop-route` 三类改由渲染进程同源 `fetch` 原始响应，再经 Typert `subUsage/linkedStep`（`{ providerId, responses }` → `{ missing | entry | absent }`）回给 Host 归一化；404 仍按「插件没装」、未登录仍不出条目，宿主无 `linkedStep` 时自动退回原路径。回归见 `tests/test-linked-client-fetch.mjs`。
+
 OFM 的十渠道联动、宿主公开方法要求、账号与单位语义见 [接入说明](ofm.md)。它们不进入普通 provider 表，工具按账号返回，药丸经 `readLinked` 保留逐账号明细；OFM 不受 Antigravity 的独立开关影响。成功快照缓存由提供方负责，2.7.1 的 TTL 为 120 秒。
 
 独立插件经各自公开状态/额度 GET 读取，账号 ID 与区域不能混用；OFM 通过 `account.list` 获取索引、检查凭据引用非空存在性，再合并徽标额度。完整账号、手机号、token、引用名或 Raccoon `probeKey` 不进入远端结果。`authStatus` / `authExpiresAt` 只描述凭据元数据。客户端的账号选择只切换额度视图，提供方选号策略与登录生命周期保持由提供方管理。真实字段、兼容版本、内部副作用与回归入口统一维护在[联动说明](ofm.md)。
@@ -38,6 +41,7 @@ DSH Go 的 `panel` 网页岛使用文档流展开详情，按内容撑高并由�
 ### Antigravity 独立额度池
 
 - `groupLabel` 标识原始额度池；同池内以最紧窗口判断，跨池按实际报告的组数汇总。部分池耗尽为黄色提醒，全部已报告池耗尽才标红；缓存、部分数据与失败状态仍显示相应提示。
+- `statusBanner()` 对分池状态采用紧凑单行结论，不重复 `computeStatus().sub` 的逐池百分比和重置摘要；这些详情保留在窗口卡片及药丸悬浮/无障碍说明。读取失败、缓存提示和其他订阅的状态依据继续正常展示。
 - Client 的 `displayGroupLabel()` 仅转换已知名称：Gemini、Claude/GPT 与 `gemini-argon`，中英文同步，未知组名原样显示。Host 的池标识和取数通道保持一致。
 - `tests/test-client-antigravity-link.mjs` 从两个 Host 归一化入口到真实药丸组件覆盖分池计数、多窗口、同名非相邻窗口、可读名称、全部耗尽与缓存/失败回归。
 - `node scripts/render-ui-preview.mjs 360 antigravity dark pill` 生成截图所示的三池四窗离线样例；将 `dark` 换为 `light` 可核对浅色主题。预览使用虚构数据，与运行中 DSH 的安装验收分别记录。
@@ -176,6 +180,8 @@ Host 与 Client 均声明 `read / refresh / save` 及 MiMo / OpenDesign **各三
 - 火山方舟（Host 现存 **4 条路由**：arkcli 的 `arkcli-agent-plan` / `arkcli-coding-plan` / `arkcli-agent-plan-team` / `arkcli-coding-plan-team`）：provider id 与官方 CLI `arkcli helper` 写入的路由**逐字一致**；路由未安装时 `configured` 为 false，但 Ark **不按推理路由收起**（额度是账号级管控面订阅，详见 providerVisible），条目仍可配置。旧插件 `@volcengine/ark-plan-api` 的两个国内 id（`ark-coding-plan-cn` / `ark-agent-plan-cn`）已从 Host 移除，Client 的 `ROUTE_PROVIDER_ALIAS` 仍把它们归并到对应 arkcli 路由，装旧插件的用户选中那些模型时药丸照常出现；BytePlus（`ark-coding-plan-byteplus`）已整条移除，不归并。额度走管控面 OpenAPI：`POST https://open.volcengineapi.com/?Action=X&Version=2024-01-01`，Action 与 Version 放在 query 串并参与签名。签名是火山通用 HMAC-SHA256 V4：CanonicalHeaders 块尾换行后与 SignedHeaders 行之间**有一个空行**；Credential 首段是 **8 位日期**（不是完整 X-Date）；`host` 必须与实际请求域名一致；query 用 RFC3986 严格转义（`! ' ( ) *` 必须转义）。凭据是 IAM 的 AK/SK 配对，与这些路由的推理 API Key（`ARKCLI_*_API_KEY`）是两套；4 条共用 `settings.volc`，继承变量为 `VOLC_ACCESSKEY` / `VOLC_SECRETKEY`。**企业版/团队版走两步**：`ListSeatInfos`（带 `volcScene`）取 SeatID，再 `GetSeatAFPUsage` 或 `GetSeatInfoUsage`；多个席位只读第一个但如实标注总数。AK 与 SK 必须**同源配对**，`source` 只取 `credentials` / `env` / `manual` / `none` 之一，禁止跨来源拼接（否则 401 且看不出根因）。补丁形如 `volc: { accessKeyId | secretAccessKey: { action, value } }`，两个字段各自 keep/replace/clear：`replace` 不接受空串（SK 不回显，空串不是清空指令），`clear` 写空字符串而**不是 delete**（`publicSettings` 依赖字段存在）。共享凭据变化要让全部 `credentialKind === "volc"` 的条目一起失效，不能只失效当前标签页。
 - 火山方舟窗口语义：Coding Plan 的 `Result.QuotaUsage[].Level ∈ {session, weekly, monthly}`、`Percent` 是**已用百分数 0–100**（不套用「≤1 视为小数」规则，否则 0.39% 会被放大成 39%）、`ResetTimestamp` 是**秒**；Agent Plan 的 `AFPFiveHour/AFPDaily/AFPWeekly/AFPMonthly` 里 `Quota`/`Used` 是字符串绝对值、`ResetTime` 是**毫秒**、`Quota=0` 表示该窗口不适用（不产出行、不当 0%）；接口不返回 Coding Plan 的绝对量，`Cap` 字段未在任何来源证实存在，因此不产出 detail。**AFP 的四个窗口属于两条额度线**：5 小时 / 周 / 月走文本 / 向量模型，`AFPDaily` **只覆盖视觉 / 语音模型与 Harness**（官方「套餐概览 → 额度刷新规则」），所以日配额高于周配额是正常口径而不是算错；解析器给每条窗口产出 `groupLabel`，界面按它插分组标题并把日限额排在最后，前端拿不到该字段时**不会**退化成任何提示（见第 4 节关于 Host 装配丢字段的约定）。**HTTP 200 且窗口为空是「未订阅」而不是 0% 用量**，界面显式说明。错误按业务信封 `ResponseMetadata.Error.Code` 分三类：401 类（`SignatureDoesNotMatch` / `InvalidAccessKey` 等）提示需要 AK/SK 而非推理 Key，403 类（`AccessDenied` / `OperationDenied` / 欠费）提示权限与订阅，`InvalidActionOrVersion` 提示接口可能已变更。
 - MiMo 会话 Cookie 自签发起 24 小时有效。Host 在凭据写入的同一刻记录 `xiaomi.loginAt` / `xiaomi.expiresAt`（毫秒，清除凭据时归零），并把 `cookieExpiresAt` 挂到该厂商的每条 entry 上；自动登录经 `MimoLogin` 回调传入浏览器观测到的 Cookie 过期时刻，取 `min(24h 上限, 观测值)`——该回调必须透传第 4 个实参，少声明形参会静默退化成 24 小时上限。计时只在真正写入凭据（`cookieUpdate` 为 `replace`）时重置，`keep` 不得续满倒计时。解析存储只接受安全整数正数，损坏字段按未记录处理。Client 侧到期档位由 `cookieExpiry()` 单点判定：>2h 正常、≤2h 提醒、≤30min 紧急、已过期。**倒计时只用于展示**：归零不改凭据可用性，真实失效仍由官方接口返回决定；接口已判定凭据失效（`state: "error"`）时倒计时不得抢占主文案，但「已过期」本身仍优先，因为它就是重新登录的行动项。Client 合并/失效条目时保留 `cookieExpiresAt`，否则保存或登录后倒计时会短暂消失；但凭据被 `clear` / `replace` 时必须丢弃旧值，否则已删除的 Cookie 仍显示过期倒计时。
+- **MiMo 自动续期**：扫码登录经 `MimoQrLogin` 的 `commit(cookie, captured, verified, passTokenExpiresAt, renewal)` 第 5 个实参把续期材料 `{ userId, passToken, deviceId, expiresAt? }` 交给 Host，`commitMimoLogin` 经 `persist(…, cookieCap, renewal)` 落到 `xiaomi.renewal`；扫码的第 4 个实参是 `passToken` 有效期，**不得**当作 Cookie 24 小时计时的上限。`persist` 在 `cookieUpdate` 为 `replace` 时只采用显式传入的续期材料、否则删除（手动 / 浏览器登录的 Cookie 可能属于别的账号），`clear` 同样删除；`parseStored` 对形状不符的材料丢弃，Cookie 为空时不保留。续期入口是 `mimoRenewIfDue(settings, reason)`（`due`：距到期 ≤ 10 分钟或已过期；`rejected`：上游 401/403），经 `renewMimoSession()`（`lib/mimo-qr.js`：`serviceLogin` 取换票参数 → `clientSign` 换票，与扫码共用 `exchangeServiceToken`，错误分 `auth` / `login-protocol` / `login-network` 三类、消息固定中文）。同一时刻一次换票（`mimoRenewing`）；换票期间设置被改写（材料哈希变化）则丢弃结果；登录任务进行中不续期；`auth` 失败按续期材料记在内存里不再重试，网络 / 形状类失败按 1 / 10 分钟重试。续期用 `persist(…, silent)` 写盘（不失效缓存），并把前后查询哈希记入 `renewalLedger`，`refresh()` 的 `settingsStable()` 据此不把续期当作「读取期间配置已改变」。Cookie 已过期且续期失败时 `provider()` 不再请求上游，直接回 `subusage/mimo-renew-failed`（`renewFailed: true`，需重新扫码）或 `subusage/mimo-renew-network`（可重试）。entry 上 `cookieRenewable: true` 表示有可用续期材料，Client 的 `cookieExpiry()` 对它返回 null（不显示倒计时）；公开设置 `xiaomi.autoRenew` / `renewExpiresAt` 不含任何凭据。回归见 `tests/test-mimo-renew.mjs`。
+- **MiMo 登录按钮**：扫码与浏览器登录是两个 Host 登录器，共用 Client 的组件级任务状态，用 `login.channel`（`"qr"` / 无）区分归属；二维码、浏览器进度与失败提示只在发起它的通道下渲染，取消按钮只有一个，任一进行中另一个登录按钮禁用。扫码是主按钮，浏览器登录是次按钮（手机引擎无浏览器时只有扫码）；用量面板快捷条同构，扫码入口会展开编辑器以显示二维码。Host 开始任一登录时取消另一个进行中的任务（多窗口兜底）。
 
 ## 5. 凭据与 MiMo
 

@@ -50,7 +50,7 @@ OFM 2.7.1 的十渠道不含 WorkBuddy。查询全部 OFM 渠道可传 `provider
 - 只报告剩余积分的快照显示绝对量。小浣熊和 Loomy 的 OFM 包结构会把当前余额同时写入 `total`，不能据此推算历史已用比例。
 - Qoder、ZCode、Gemini 只有明确容量时才生成比例；容量零不造耗尽窗口，极小正余额也不因四舍五入变成耗尽。多模型池分别显示，百分比不相加为余额。
 - Cline 余额和订阅窗口按账号 ID 关联；独立成功数据可保留，失败或漂移的部分标为未知。
-- 包到期日是说明；只有明确窗口重置才写 `resetsAt`。WorkBuddy 公开 HTTP 包字段 `cycleRefreshMs` 来自内部 `refreshAtMs` 的投影；`expiringSoon` 显示为「即将到期」。批量账号余额没有积分包/重置明细，不套用当前账号数据。
+- 包到期日是说明；只有明确窗口重置才写 `resetsAt`。积分包由 [credit-packages.js](../lib/credit-packages.js) 隐藏用尽/已过期项，并按今天、3 天内、临时、周期套餐与永久额度聚合；同账号同单位才合计，已有窗口的包只补紧急提醒。WorkBuddy 公开 HTTP 包字段 `cycleRefreshMs` 来自内部 `refreshAtMs` 的投影；只有缺少逐包日期时才保留上游 `expiringSoon` 聚合提醒。批量账号余额没有积分包/重置明细，不套用当前账号数据。
 - OFM 沿用提供方缓存（2.7.1 成功 120 秒、全部失败 15 秒），独立插件桥接按插件与区域缓存 60 秒、合并在途读取。强制刷新绕过缓存并有响应排序保护；缺席不缓存，后续轮询可恢复；卸载后迟到结果不回填。
 - OFM 的 `usage.badge` 只接受渠道，不能真正缩小到单账号请求，且实现先查询全部账号余额再过滤停用账号。本插件可显示索引中的停用账号，但不能承诺提供方没有查询其上游。
 
@@ -58,7 +58,7 @@ OFM 2.7.1 的十渠道不含 WorkBuddy。查询全部 OFM 渠道可传 `provider
 
 OFM 走宿主 Connection 的 `createPeer()` / `createSharedFetchHandler("/api")` 进程内分发，固定调用 `/api/channel-pack`。独立插件通过宿主 `webServer.getOrigin()` 的已注册状态路由访问，并遵循各接口的本机 Host / Origin 校验。各来源缺席与读取失败分别处理。
 
-实现分别在 [OFM 读取](../lib/ofm.js)、[Trae / WorkBuddy 读取](../lib/connect-usage.js)、[独立 Raccoon / Loomy 读取](../lib/desktop-usage.js)，由 [Host](../lib/index.js) 接入 `quota()` / `readLinked()`；[Client](../lib/client.js) 只接收白名单额度和账号元数据，不接收秘密。
+实现分别在 [OFM 读取](../lib/ofm.js)、[Trae / WorkBuddy 读取](../lib/connect-usage.js)、[独立 Raccoon / Loomy 读取](../lib/desktop-usage.js)，由 [Host](../lib/index.js) 接入 `quota()` / `readLinked()`；积分分组共用 [credit-packages.js](../lib/credit-packages.js)。[Client](../lib/client.js) 只接收白名单额度和账号元数据，不接收秘密。
 
 ## DSH Go 药丸
 

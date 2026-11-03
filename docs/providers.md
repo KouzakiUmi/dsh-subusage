@@ -150,6 +150,18 @@ provider id 必须与注册这些路由的插件**逐字一致**（arkcli 官方
 
 到期只是**提醒**：插件不会因为倒计时归零就停用 Cookie，是否真的失效仍以官方接口返回为准。官方已判定凭据失效时，药丸显示的是失效原因而非剩余时间（唯一例外是「已过期」本身）。若浏览器报告的 Cookie 过期时间早于 24 小时，以更早者为准；旧版本保存的 Cookie 没有计时记录，界面会明确说明「未记录登录时间」。
 
+#### 自动续期（仅扫码登录）
+
+「小米扫码登录」除了换到 24 小时的控制台 Cookie，还会保存小米账号的续期凭据（`userId` + `passToken` + `deviceId`，`passToken` 约一个月有效），一并写入 `~/.dsh/dsh-subusage.json` 的 `xiaomi.renewal`（与 Cookie 同一份 0600 文件）。有续期凭据时：
+
+- 取数前发现 Cookie 距到期不足 10 分钟（或已过期），Host 用续期凭据静默换一张新 Cookie（先 `serviceLogin?sid=api-platform&_json=true` 取换票参数，再走与扫码相同的 `clientSign` 换票），重新计时并写回；上游提前拒绝 Cookie（401/403）时也会换新后重读一次。同一时刻只有一次换票。
+- 此时药丸与设置页**不再显示 Cookie 倒计时**；设置页显示「自动续期已开启，登录有效至 …」（`passToken` 的有效期）。
+- 续期失败才提示：`passToken` 被小米撤销或已到期 → 用量面板出现「自动续期失败，登录已失效，请重新扫码登录」，在重新扫码前不再重复请求小米；网络 / 接口形状异常 → 显示原因并按 1 分钟 / 10 分钟间隔自动重试，不要求用户操作。Cookie 还没过期时续期失败不影响读取。
+- 浏览器登录、手动粘贴 Cookie 与清除凭据都会丢弃续期凭据（粘贴的 Cookie 可能属于另一个账号，不能用旧账号的凭据续它），此后回到上面的 24 小时到期提醒；设置页写明「未开启自动续期」。
+- 浏览器登录或扫码任务进行中不续期；开始其中一种登录会取消另一种进行中的任务。
+
+上述续期协议按扫码流程与小米通用 SSO 的行为实现并经隔离测试覆盖，**尚未用真实账号长期验证**；`passToken` 的真实有效期与是否被轮换以小米实际下发为准。
+
 ### OpenDesign 凭据
 
 OpenDesign（open-design.ai，Powerformer）的订阅额度走**控制台接口**（`amr-api.open-design.ai`），鉴权是**浏览器登录会话 Cookie**。它与 `sk-` 开头的模型 API Key 是两套：那把 Key 只换模型响应（`amr-link.open-design.ai` 的 `/v1/models`、`/v1/chat/completions`）；对 `amr-link` 的 `/v1/credits`、`/v1/usage`、`/v1/balance` 等路径做过**无凭据探测**、一律 404，带 Key 时是否另有端点**未验证**，因此本插件不用 `sk-` Key 查额度。
@@ -224,7 +236,7 @@ GET /plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>
 
 本插件从 Cordis 的 `webServer` 服务取回环 origin（`getOrigin()`，如 `http://127.0.0.1:3080`），带上自己的 `Origin` 头请求这条路由——对方只校验 loopback，所以这个头既能过校验，也不依赖「没有 Origin 头」这种默认行为。**不读它的凭据、不自己请求 Trae 上游、不写设置**：登录态、设备号、token 刷新与并发都由它负责，本插件只换算它的答案。
 
-- `region=cn` → `trae`：积分制。响应里的 `credits.total / consumed / available` 是积分包的**合计上限 / 已用 / 余量**（绝对值），所以 `period` 窗口的 `percent` = `consumed / total`，`detail` 带 `used / limit / remaining`（单位 `credits`）。**`total = 0` 时不给百分比**，只报余量。余量进 `balance`；Work 积分 / 通用积分两个桶与积分包到期提醒（对方四档：已过期 / 24 小时 / 3 天 / 7 天）进 `note`。
+- `region=cn` → `trae`：积分制。响应里的 `credits.total / consumed / available` 是积分包的**合计上限 / 已用 / 余量**（绝对值），所以 `period` 窗口的 `percent` = `consumed / total`，`detail` 带 `used / limit / remaining`（单位 `credits`）。**`total = 0` 时不给百分比**，只报余量。余量进 `balance`；Work / 通用两个桶与归一化积分分组进 `note`。逐包数据在场时隐藏过期/用尽项并按到期紧急度与用途聚合；旧聚合响应只保留 24 小时 / 3 天内提醒，不展示已过期或 7 天档。
 - `region=ai` → `trae-global`：订阅制，**没有积分字段**（对方文档如此），只有 `payStatus`：档位（`payIdentityStr`，如 `Free` / `Pro`）进 `plan`，试用期与「未订阅付费套餐」进 `note`。
 - `region=enterprise` → `trae-enterprise`：**只在真有企业版账号时才算一块面板**（`accounts[].enterprise`）。企业租户额度对方自己也读不到（所有租户额度端点 404），所以只写一条说明；**绝不把个人积分挪到企业标题下**——那会让人以为租户余额就那么点。
 - 通道语义：HTTP **404 = 插件没装**（静默缺席）；其它非 2xx、非 JSON、带 `{ error }` 信封或超时，才折叠成该条目自己的 `state: "error"`。取数结果缓存 **60 秒**，`refresh: true` 绕过。

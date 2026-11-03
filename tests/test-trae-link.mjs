@@ -48,14 +48,20 @@ const CN = {
 	assert.equal(entry.windows[0].detail.limit, 2050);
 	assert.equal(entry.windows[0].detail.remaining, 527.15);
 	assert.equal(entry.windows[0].detail.unit, "credits");
-	// extras：余量、Work/通用两个桶、到期提醒（按对方四档口径逐档列出非零项）。
+	// extras：余量、Work/通用两个桶；过期/用尽包及较远的逐包日期不占说明行。
 	const balance = entry.extras.find(x => x.kind === "balance");
 	assert.equal(balance.value, "527.15 credits");
 	const notes = entry.extras.filter(x => x.kind === "note").map(x => x.value);
 	assert.ok(notes.some(x => x.includes("Work 积分 75") && x.includes("通用积分 452.15")), "两个积分桶都要照实报");
-	const expiryNote = notes.find(x => x.includes("积分到期提醒"));
-	assert.ok(expiryNote.includes("已过期：30 credits") && expiryNote.includes("7 天内：75 credits"), "到期提醒按四档逐项");
-	assert.ok(!expiryNote.includes("24 小时内"), "空档不写");
+	assert.ok(!notes.some(x => x.includes("已过期") || x.includes("7 天内") || x.includes("基础额度：") || x.includes("Work 额度：")));
+	const fallback = normalizeTrae({ ...CN, credits: { ...CN.credits, accounts: [], expiry: {
+		within24h: { total: 10, packs: 1, earliestExpiresAtMs: 1793000000000 },
+		within3d: { total: 20, packs: 1, earliestExpiresAtMs: 1793000000000 },
+		within7d: { total: 75, packs: 1 }, expired: { total: 30, packs: 1 },
+	} } }, "trae");
+	const fallbackNotes = fallback.extras.filter(x => x.kind === "note").map(x => x.value);
+	assert.ok(fallbackNotes.some(x => x.startsWith("24 小时内到期：10 credits")) && fallbackNotes.some(x => x.startsWith("3 天内到期：20 credits")), "旧聚合响应只保留紧急有效提醒");
+	assert.ok(!fallbackNotes.some(x => x.includes("已过期") || x.includes("7 天内")));
 	assert.equal(entry.extras.filter(x => x.kind === "account").length, 0, "只有一个账号时不重复账号名");
 }
 

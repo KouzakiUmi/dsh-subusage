@@ -69,8 +69,8 @@ function harness({ mobile = true } = {}) {
 			assert.match(cookie, /userId=900000001/);
 			return { balanceOk: true, usageError: null, coverage: "complete", windows: [{ kind: "month" }] };
 		},
-		commit: (cookie, captured, verified, expiresAt) => {
-			committed = { cookie, captured, verified, expiresAt };
+		commit: (cookie, captured, verified, expiresAt, renewal) => {
+			committed = { cookie, captured, verified, expiresAt, renewal };
 			return { revision: "rev-1", settings: {}, entries: [] };
 		},
 		reconcileResult: result => result
@@ -92,6 +92,8 @@ assert.equal(done.state, "success", "完整链路应走到 success");
 assert.equal(done.message.includes("扫码登录成功"), true);
 assert.equal(run.committed.captured, "captured-material", "commit 收到的是 start 时捕获的 revision 材料");
 assert.equal(run.committed.expiresAt, NOW + 2592000 * 1000, "passToken 一个月有效期来自 Max-Age");
+// 续期材料：userId + passToken + deviceId（第 1 步下发）+ passToken 有效期，随 commit 交给 Host 保存。
+assert.deepEqual(run.committed.renewal, { userId: "900000001", passToken: "V1:pwRO", deviceId: "dev1", expiresAt: NOW + 2592000 * 1000 }, "扫码成功必须把续期材料交给 Host");
 // 凭据绝不进公开状态。
 assert.equal(JSON.stringify(done).includes("passToken"), false, "公开状态不得包含 passToken");
 assert.equal(JSON.stringify(done).includes("TOK"), false, "公开状态不得包含 serviceToken");
@@ -198,6 +200,31 @@ await expectError("未下发 serviceToken", async url => {
 	return mkOk("", { sc: ["userId=1; Path=/"] });
 }, "subusage/auth");
 await expectError("网络失败", async () => { throw new TypeError("fetch failed"); }, "subusage/login-network");
+
+// M5 回归：换票 Cookie 必须同时含第 1 步的 deviceId 与长轮询下发的 passToken。
+{
+	// 第 1 步没下发 deviceId：不保存续期材料（自造设备号小米不认），但登录本身照常成功。
+	let seen;
+	const login = new MimoQrLogin({
+		error: (code, message) => Object.assign(new Error(message), { code }),
+		capture: () => "cap", verify: async () => ({ balanceOk: true, coverage: "complete", windows: [] }),
+		commit: (cookie, captured, verified, expiresAt, renewal) => { seen = { renewal }; return { revision: "r" }; }, reconcileResult: result => result
+	}, {
+		now: () => NOW, timeoutMs: 300000,
+		fetch: async (url) => {
+			if (url.includes("/pass/serviceLogin")) return mkOk(STAGE1);
+			if (url.includes("/longPolling")) return mkOk(STAGE2);
+			if (url.includes("qr.png")) return mkOk("", { ct: "image/png" });
+			if (url.includes("lp/s")) return mkOk(`&&&START&&&{"code":0,"userId":1,"nonce":1234567890123456789,"ssecurity":"SS","location":"https://platform.xiaomimimo.com/sts?t=1","passToken":"PT"}`);
+			return mkOk("", { sc: ["api-platform_serviceToken=TOK; Path=/", "userId=1; Path=/"] });
+		}
+	});
+	login.start({ expectedRevision: "rev-1" });
+	for (let i = 0; i < 300 && !["success", "error"].includes(login.status().state); i++) await new Promise(r => setTimeout(r, 5));
+	assert.equal(login.status().state, "success");
+	assert.equal(seen.renewal, undefined, "没有 deviceId 时不保存续期材料");
+	login.dispose();
+}
 
 // M5 回归：换票 Cookie 必须同时含第 1 步的 deviceId 与长轮询下发的 passToken。
 {

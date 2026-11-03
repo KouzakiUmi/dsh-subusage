@@ -41,7 +41,19 @@ function shape(contract) {
   }));
 }
 assert.deepEqual(shape(mounted), shape(host.subUsageRemote), '两端 method、wire、codec 必须一致');
-assert.deepEqual(JSON.parse(JSON.stringify(mounted.descriptors.map(d => d.method).sort())), ['cancelMimoLogin', 'cancelMimoQrLogin', 'cancelOpenDesignLogin', 'getMimoLoginStatus', 'getMimoQrStatus', 'getOpenDesignLoginStatus', 'read', 'readLinked', 'refresh', 'save', 'startMimoLogin', 'startMimoQrLogin', 'startOpenDesignLogin']);
+// 页面代取的 id 集合：Host 由 via 派生、Client 由 PILL_LINKED_META.clientFetch 派生，
+// 两张表各自漂移时药丸会静默走错通道（该渠道回退到宿主直取后继续 403，或者反过来被判成不支持）。
+let testSpec;
+vm.runInNewContext(readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8').replace('exports.apply = apply;', 'exports.__test = { PILL_LINKED_META }; exports.apply = apply;'), {
+  ...sandbox, window: { __ModuleLoader__: { load: value => { testSpec = value; } } }
+});
+const clientLinkedMeta = testSpec.factory(() => react).__test.PILL_LINKED_META;
+assert.deepEqual(
+  Object.keys(clientLinkedMeta).filter(id => clientLinkedMeta[id].clientFetch === true).sort(),
+  host.CLIENT_FETCH_LINKED_IDS.slice().sort(),
+  '两端「页面代取」的 provider id 集合必须一致'
+);
+assert.deepEqual(JSON.parse(JSON.stringify(mounted.descriptors.map(d => d.method).sort())), ['cancelMimoLogin', 'cancelMimoQrLogin', 'cancelOpenDesignLogin', 'getMimoLoginStatus', 'getMimoQrStatus', 'getOpenDesignLoginStatus', 'linkedStep', 'read', 'readLinked', 'refresh', 'save', 'startMimoLogin', 'startMimoQrLogin', 'startOpenDesignLogin']);
 const start = host.subUsageRemote.descriptors.find(d => d.method === 'startMimoLogin');
 const cancel = host.subUsageRemote.descriptors.find(d => d.method === 'cancelMimoLogin');
 assert.equal(start.parameters[0].codec.schema.parse({ expectedRevision: 'current-revision' }).expectedRevision, 'current-revision');

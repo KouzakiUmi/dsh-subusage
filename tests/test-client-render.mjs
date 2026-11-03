@@ -105,6 +105,32 @@ for (const open of [false, true]) {
 // 既无窗口也无余额（或只有套餐名）时才回落到明确占位。
 assert.ok(JSON.stringify(renderPill({ state: "ok", windows: [], extras: [] })).includes("noUsageData"), "空额度必须显示明确占位");
 assert.ok(JSON.stringify(renderPill({ state: "ok", windows: [], extras: [{ kind: "plan", value: "Pro" }] })).includes("noUsageData"), "只有套餐名也要占位");
+// 补充项：金额留在正文，积分包与到期这类逐条说明折进 details（默认收起，summary 只报条数）。
+const manyNotes = {
+  state: "ok", windows: [{ kind: "sub", percent: 20, status: "ok" }],
+  extras: [
+    { kind: "balance", value: "10 CNY" },
+    { kind: "note", value: "包A：40 积分" },
+    { kind: "note", value: "包A 到期：2026-12-01" },
+    { kind: "note", value: "包B：5 积分" }
+  ]
+};
+const manyTree = renderPill(manyNotes, true);
+/** 收起状态的 details 内容不算可见：用户不点开就看不到。 */
+function visibleWithoutCollapsed(node) {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node !== 'object') return String(node);
+  if (Array.isArray(node)) return node.map(visibleWithoutCollapsed).join(' ');
+  const kids = node.children || [];
+  if (node.type === 'details' && node.props?.open !== true) return kids.filter(c => c?.type === 'summary').map(visibleWithoutCollapsed).join(' ');
+  return kids.map(visibleWithoutCollapsed).join(' ');
+}
+const collapsed = visibleWithoutCollapsed(manyTree);
+assert.ok(collapsed.includes('10 CNY'), '余额留在正文，不进折叠');
+assert.ok(collapsed.includes('extrasMore'), '折叠摘要只报条数');
+assert.ok(!collapsed.includes('包A 到期'), '收起时不在药丸里显示到期时间');
+assert.ok(!collapsed.includes('包A：40 积分'), '收起时不逐条列积分包');
+assert.ok(JSON.stringify(manyTree).includes('包A 到期'), '展开后仍能逐条看到明细');
 const normal = { state: "ok", windows: [{ kind: "sub", percent: 25, status: "ok" }], extras: [] };
 assert.ok(JSON.stringify(renderPill(normal)).includes("pillRemaining"));
 assert.equal(renderPill({ ...normal, visible: false }), null, "隐藏药丸不渲染额度或提示");
@@ -175,7 +201,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   // 原有 30 个开关 + 手动匹配与 Antigravity 联动开关。
   assert.equal(all.filter(n => n.props?.role === "switch").length, 32, "普通提供商、Ark Team、手动匹配与 Antigravity 开关均可见");
   if (provider === "xiaomi-token-plan-cn") {
-    assert.ok(visibleText(section).includes("登录并自动导入")); assert.ok(visibleText(section).includes("手动导入"));
+    assert.ok(visibleText(section).includes("小米扫码登录")); assert.ok(visibleText(section).includes("浏览器登录并导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));
   } else if (provider === "commandcode") {
     assert.ok(visibleText(section).includes("commandcodeManaged"), "Command Code 只读说明");
@@ -194,6 +220,60 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   } else assert.equal(all.filter((n) => typeof n.props?.["aria-pressed"] === "boolean").length, 2);
 }
 
+// MiMo 的扫码与浏览器登录共用一份任务状态：进度 / 二维码 / 失败提示只在发起它的通道下出现，
+// 取消入口只有一个，另一条登录按钮在任务进行中禁用（不会出现两套进度或两条互相矛盾的失败文案）。
+{
+  const MIMO = "xiaomi-token-plan-cn";
+  const mimoSettings = { ...settings, xiaomi: { hasCookie: false } };
+  const mimoStore = { subscribe: () => () => {}, getSnapshot: () => ({ settings: mimoSettings, configured: {}, entries: [] }) };
+  const sectionWith = (login) => {
+    stateValues = [MIMO, plugin.__test.draftFor(mimoSettings, MIMO), false, false, false, null, null, { providerId: MIMO, ...login }, true, MIMO]; stateIndex = 0;
+    const section = plugin.__test.SubusageSection({ usageStore: mimoStore, t: (key) => key, getLocale: () => "zh" });
+    return { section, text: visibleText(section), buttons: flattenNodes(section).filter((n) => n.type === "button") };
+  };
+  const labelOf = (button) => JSON.stringify(button.children);
+  const find = (view, part) => view.buttons.filter((b) => labelOf(b).includes(part));
+  // 空闲：扫码是主按钮，浏览器登录是次按钮，没有取消按钮。
+  const idle = sectionWith({ jobId: null, state: "idle" });
+  assert.equal(find(idle, "小米扫码登录").length, 1); assert.equal(find(idle, "浏览器登录并导入").length, 1);
+  assert.notEqual(find(idle, "小米扫码登录")[0].props.style.background, find(idle, "浏览器登录并导入")[0].props.style.background, "扫码与浏览器登录不能同为主按钮");
+  assert.equal(find(idle, "取消").length, 0);
+  // 扫码进行中：只有二维码，没有浏览器进度；一个「取消扫码」；两个登录按钮都禁用。
+  const qr = sectionWith({ jobId: "j-qr", state: "waiting", channel: "qr", qr: "data:image/png;base64,AA==" });
+  assert.ok(qr.text.includes("扫码登录进行中"), "扫码按钮显示进行中");
+  assert.ok(!qr.text.includes("请在浏览器中完成登录"), "扫码任务下不得出现浏览器登录进度");
+  assert.equal(find(qr, "取消扫码").length, 1); assert.equal(find(qr, "取消登录").length, 0, "取消入口只有一个");
+  assert.ok(flattenNodes(qr.section).some((n) => n.type === "img"), "二维码出现");
+  assert.equal(find(qr, "扫码登录进行中")[0].props.disabled, true); assert.equal(find(qr, "浏览器登录并导入")[0].props.disabled, true, "扫码进行中浏览器登录按钮禁用");
+  // 浏览器登录进行中：只有浏览器进度，没有二维码区；扫码按钮禁用。
+  const browser = sectionWith({ jobId: "j-br", state: "waiting" });
+  assert.ok(browser.text.includes("请在浏览器中完成登录"));
+  assert.ok(!flattenNodes(browser.section).some((n) => n.type === "img"), "浏览器任务下不出现二维码");
+  assert.equal(find(browser, "取消登录").length, 1); assert.equal(find(browser, "取消扫码").length, 0);
+  assert.equal(find(browser, "小米扫码登录")[0].props.disabled, true, "浏览器登录进行中扫码按钮禁用");
+  // 失败提示归属：扫码失败只说扫码，浏览器失败只说浏览器。
+  const qrFail = sectionWith({ jobId: "j1", state: "error", channel: "qr", message: "二维码已过期，请重新获取" });
+  assert.ok(qrFail.text.includes("二维码已过期") && !qrFail.text.includes("浏览器登录失败"), "扫码失败不显示浏览器失败文案");
+  const browserFail = sectionWith({ jobId: "j2", state: "error", message: "launch failed" });
+  assert.ok(browserFail.text.includes("浏览器登录失败") && !browserFail.text.includes("扫码登录未完成"), "浏览器失败不显示扫码失败文案");
+  // 桌面主机的快捷条：扫码主按钮 + 浏览器次按钮；手机引擎（无浏览器）只给扫码。
+  const needLogin = { providerId: MIMO, label: "MiMo", state: "no-cookie", windows: [], extras: [], coverage: "partial", freshness: "unknown", lastAttemptAt: "2026-10-09T00:00:00.000Z" };
+  const quick = (host) => { stateValues = [MIMO]; stateIndex = 0; const snap = { settings: { ...mimoSettings, visibility: { hideWithoutApi: false, providers: Object.fromEntries(plugin.__test.PROVIDER_ORDER.map((id) => [id, id === MIMO])) } }, configured: {}, entries: [needLogin], ...(host ? { host } : {}) }; return flattenNodes(plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => snap }, t: (key) => key, getLocale: () => "zh" })).filter((n) => n.type === "button").map(labelOf); };
+  const desktop = quick(null), mobile = quick({ browserLogin: false });
+  assert.ok(desktop.some((l) => l.includes("小米扫码登录")) && desktop.some((l) => l.includes("浏览器登录")));
+  assert.ok(mobile.some((l) => l.includes("小米扫码登录")) && !mobile.some((l) => l.includes("浏览器登录")), "没有浏览器时不给浏览器登录入口");
+  // 自动续期：设置页写明已开启与登录有效期；续期失败给「重新扫码」行动条。
+  const renewSettings = { ...mimoSettings, xiaomi: { hasCookie: true, loginAt: "2026-10-09T00:00:00.000Z", expiresAt: "2026-10-10T00:00:00.000Z", autoRenew: true, renewExpiresAt: "2026-11-09T00:00:00.000Z" } };
+  stateValues = [MIMO, plugin.__test.draftFor(renewSettings, MIMO), false, false, false, null, null, { jobId: null, state: "idle" }, true, MIMO]; stateIndex = 0;
+  const renewText = visibleText(plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => ({ settings: renewSettings, configured: {}, entries: [] }) }, t: (key) => key, getLocale: () => "zh" }));
+  assert.ok(renewText.includes("mimoAutoRenew"), "设置页说明自动续期已开启（t 桩返回键名）");
+  assert.ok(!renewText.includes("mimoNoAutoRenew"));
+  const failedEntry = { ...needLogin, state: "error", errorCode: "subusage/mimo-renew-failed", error: "小米登录已失效，自动续期失败，请重新扫码登录", renewFailed: true, cookieRenewable: true };
+  stateValues = [MIMO]; stateIndex = 0;
+  const failedView = visibleText(plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => ({ settings: { ...renewSettings, visibility: { hideWithoutApi: false, providers: Object.fromEntries(plugin.__test.PROVIDER_ORDER.map((id) => [id, id === MIMO])) } }, configured: {}, entries: [failedEntry] }) }, t: (key) => key, getLocale: () => "zh" }));
+  assert.ok(failedView.includes("自动续期失败，登录已失效，请重新扫码登录") && failedView.includes("重新扫码登录"), "续期失败时行动条给出重新扫码的提示与按钮");
+}
+
 // 用量面板内联行动条：MiMo Cookie 失效时，修复入口就在当前卡片上（不必去下面的管理区找）。
 {
   const mimoEntry = { providerId: "xiaomi-token-plan-cn", label: "MiMo", state: "no-cookie", windows: [], extras: [], coverage: "partial", freshness: "unknown", lastAttemptAt: "2026-10-09T00:00:00.000Z" };
@@ -206,7 +286,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   };
   const section = sectionFor(mimoEntry), txt = visibleText(section);
   assert.ok(txt.includes("需要登录 MiMo"), "面板内给出行动提示");
-  assert.ok(txt.includes("登录并自动导入"), "面板内直接给登录按钮");
+  assert.ok(txt.includes("小米扫码登录") && txt.includes("浏览器登录"), "面板内直接给扫码与浏览器两个登录入口");
   assert.ok(txt.includes("手动填写"), "保留手动入口");
   assert.ok(flattenNodes(section).some(n => n.props?.["aria-label"] === "建议操作"), "行动条带无障碍名");
   // 正常状态不得出现行动条，否则就是噪音。

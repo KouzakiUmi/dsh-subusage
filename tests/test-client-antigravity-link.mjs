@@ -26,7 +26,7 @@ const react = {
 	useMemo: (fn, deps) => harness.memo(fn, deps),
 	useSyncExternalStore: (subscribe, getSnapshot) => getSnapshot()
 };
-vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, SubusagePillEntry, UsagePill, UsageWindowList, computeStatus, displayGroupLabel, zh, en, PILL_LINKED_META, parseLinkedQuery }; exports.apply = apply;"), {
+vm.runInNewContext(source.replace("exports.apply = apply;", "exports.__test = { createUsageStore, SubusagePillEntry, UsagePill, UsageWindowList, computeStatus, statusBanner, displayGroupLabel, zh, en, PILL_LINKED_META, parseLinkedQuery }; exports.apply = apply;"), {
 	window: { localStorage: { getItem: () => null, setItem: () => {} }, __ModuleLoader__: { load: value => { spec = value; } } },
 	document, console, Date: FakeDate,
 	setInterval: () => 0, clearInterval: () => {}, setTimeout: (fn) => { fn?.(); return 0; }, clearTimeout: () => {}
@@ -186,7 +186,7 @@ const settingsResult = (antigravity = true, entries = []) => ({ updatedAt: new F
 		{ name: "gemini-argon", buckets: [{ window: "7d", remainingPct: 23.5, resetTime: resetArgon }] }
 	] });
 	const statusFor = (value, locale = api.zh, providerId = "antigravity") => api.computeStatus(value, { providerId, t: key => locale[key] || key, getLocale: () => locale === api.zh ? "zh" : "en" });
-	const textOf = node => node == null || typeof node === "boolean" ? "" : typeof node !== "object" ? String(node) : Array.isArray(node) ? node.map(textOf).join(" ") : (node.children || []).map(textOf).join(" ");
+	const textOf = node => node == null || typeof node === "boolean" ? "" : typeof node !== "object" ? String(node) : Array.isArray(node) ? node.map(textOf).join(" ") : typeof node.type === "function" ? textOf(node.type({ ...node.props, children: node.children })) : (node.children || []).map(textOf).join(" ");
 	for (const [locale, short, title, names] of [
 		[api.zh, "1/3 池用尽", "部分额度池已用尽", ["Gemini 模型", "Claude 与 GPT 模型", "Gemini Argon 模型"]],
 		[api.en, "1/3 pools used up", "Some quota pools used up", ["Gemini models", "Claude and GPT models", "Gemini Argon models"]]
@@ -201,6 +201,11 @@ const settingsResult = (antigravity = true, entries = []) => ({ updatedAt: new F
 		for (let i = 0; i < names.length; i++) assert.ok(lines[i].includes(names[i]), `每个池的依据须带可读名称：${lines[i]}`);
 		assert.ok(lines[0].includes("66.2%") && lines[1].includes("0%") && lines[2].includes("23.5%"), "同池取最紧窗口，跨池各自保留比例");
 		assert.ok(lines.every(line => line.includes(locale === api.zh ? "后重置" : "resets in")), "每个池保留自己的重置时间");
+		const banner = api.statusBanner(status);
+		assert.ok(textOf(banner).includes(title));
+		assert.ok(!textOf(banner).includes("%") && !textOf(banner).includes(names[0]), "横幅只给结论，不重复下方逐池数字和名称");
+		assert.equal(banner.children[1].children.length, 1, "分池横幅不再渲染多行摘要");
+		assert.equal(banner.props.style.padding, "12px 14px", "分池横幅与 Command Code 使用同一尺寸，不另造紧凑样式");
 		const list = api.UsageWindowList({ windows: entry.windows, t: key => locale[key] || key, getLocale: () => "zh" });
 		for (const name of names) assert.ok(textOf(list).includes(name), "列表标题与横幅使用相同显示名");
 		assert.ok(!textOf(list).includes("gemini-argon"));
@@ -255,6 +260,17 @@ const settingsResult = (antigravity = true, entries = []) => ({ updatedAt: new F
 	assert.ok(textOf(tree).includes("部分额度池已用尽"));
 	assert.ok(!textOf(tree).includes("最紧张"));
 	assert.ok(!textOf(tree).includes("额度已用尽"), "不能退回整个订阅耗尽的横幅");
+	const dialog = tree.children.find(node => node.props?.role === "dialog");
+	const banner = dialog.children.find(node => node.props?.role === "status");
+	assert.equal(textOf(banner).trim(), "⚠ 部分额度池已用尽");
+	assert.equal(banner.props.style.borderRadius, 12, "药丸弹层横幅保持统一圆角");
+	assert.ok(!textOf(banner).includes("66.2%") && !textOf(banner).includes("后重置"));
+	assert.equal(textOf(dialog).split("Gemini 模型").length - 1, 1, "池名仅在额度列表出现一次");
+	assert.equal(textOf(dialog).split("66.2%").length - 1, 1, "余量仅在额度卡片出现一次");
+	const staleBanner = api.statusBanner(statusFor(stale));
+	assert.ok(textOf(staleBanner).includes(api.zh.statusCache), "缓存提示保持可见");
+	const ordinary = statusFor(allLimited, api.zh, "kimi-coding");
+	assert.ok(textOf(api.statusBanner(ordinary)).includes(ordinary.sub), "普通订阅的状态依据不受影响");
 	for (const slot of hooks.slots) slot?.cleanup?.();
 }
 

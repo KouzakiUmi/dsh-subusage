@@ -242,13 +242,14 @@ test("Trae checkin 只保留真实只读 Web 契约字段", async () => {
  assert.deepEqual(result.accountReadings[0].checkin, checkin);
 });
 
-test("WB 极小正余额不会四舍五入成耗尽，只有零余额显示100%", () => {
+test("WB 极小正余额不会四舍五入成耗尽，用尽包不再显示", () => {
  const snapshot = { plugin: "workbuddy", status: "signed-in", generatedAt: NOW, accountReadings: [{ id: "a", credits: { total: 0.00001, packages: [{ packageName: "tiny", monthly: true, size: 100, remain: 0.00001, cycleRefreshMs: NOW + 1000 }, { packageName: "empty", monthly: true, size: 100, remain: 0 }] } }] };
  const entry = normalizeWorkBuddy(snapshot, "workbuddy", NOW);
  assert.equal(entry.windows[0].percent, 99.9);
  assert.equal(entry.windows[0].status, "ok");
- assert.equal(entry.windows[1].percent, 100);
- assert.equal(entry.windows[1].status, "rate-limited");
+ assert.equal(entry.windows.length, 1);
+ assert.equal(entry.windows[0].groupLabel, "tiny");
+ assert(!JSON.stringify(entry.extras).includes("empty"));
 });
 
 test("WB 总览刷新失败不污染独立读取成功的其他账号", async () => {
@@ -331,8 +332,9 @@ test("WB旧rawusage安全回退只给匹配当前账号完整包，其他账号�
  assert.equal(entry.linkedAccounts[0].windows.length, 1);
  assert.equal(entry.linkedAccounts[1].state, "error");
  assert.equal(entry.linkedAccounts[1].accountActive, true);
- assert.ok(entry.linkedAccounts[0].extras.some(row => row.value === "即将到期：5 credits"));
- assert.ok(!JSON.stringify(entry).includes("3 天内到期"));
+ assert.ok(entry.linkedAccounts[0].extras.some(row => row.value.startsWith("3 天内到期：20 credits")), "逐包到期按分组聚合");
+ assert.ok(!entry.linkedAccounts[0].extras.some(row => row.value === "即将到期：5 credits"), "已有逐包分组时不重复上游聚合提醒");
+ assert.ok(!JSON.stringify(entry).includes("最早的积分包到期"), "不再为逐包日期另加说明行");
  const single = normalizeWorkBuddy(signed({ accounts: [], generatedAt: NOW, credits: credit() }), "workbuddy", NOW);
  assert.equal(single.linkedAccounts.length, 1);
  assert.equal(single.windows.length, 1);

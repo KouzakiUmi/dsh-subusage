@@ -17,7 +17,9 @@ const sample = snapshot('raccoon', [row('a', '账号甲', 6600, [pack('奖励积
  assert.equal(result.ofmAccounts.length, 2);
  assert.deepEqual(result.ofmAccounts.map(a => a.extras[0].value), ['6600 积分', '6300 积分']);
  assert(result.ofmAccounts.every(a => a.windows.length === 0), '余额快照不编造总容量/百分比');
- assert(result.ofmAccounts[0].extras.some(x => x.value.includes('每日积分：600')));
+ assert(result.ofmAccounts[0].extras.some(x => x.value === '周期 / 套餐额度：600 积分'));
+ assert(result.ofmAccounts[0].extras.some(x => x.value === '临时额度合计：6000 积分'));
+ assert(result.ofmAccounts[0].extras.every(x => !x.value.includes('每日积分：') && !x.value.includes('奖励积分：')), '不再逐包列成长清单');
  assert(result.ofmAccounts.every(a => a.extras.every(x => Object.keys(x).sort().join(',') === 'kind,value')), 'extras 遵守工具输出白名单');
  assert.equal(normalizeOfm({ ...sample, generatedAt: now - 300000 }, 'ofm-raccoon', now).freshness, 'stale');
  assert.throws(() => normalizeOfm(sample, 'ofm-loomy', now), /形状/);
@@ -55,10 +57,13 @@ const sample = snapshot('raccoon', [row('a', '账号甲', 6600, [pack('奖励积
  assert.equal(q.windows[0].percent, 62.3);
  assert.equal(q.windows[0].detail.limit, 1200);
  assert(!('resetsAt' in q.windows[0]), '包到期时间不是重置时间');
- assert(q.extras.some(x => x.value.includes('到期')));
+ assert(!q.extras.some(x => x.value.includes('到期')), '较远的逐包到期日不占说明行');
  const empty = normalizeOfm(snapshot('qoder', [row('a', '', 0, [pack('套餐额度', 0, 'Credits')])]), 'ofm-qoder', now);
  assert.equal(empty.windows.length, 0, '0 总容量不造 100% 剩余或耗尽窗口');
  assert(!('availability' in empty), '额度读数不推断全部模型可用性');
+ const expired = normalizeOfm(snapshot('qoder', [row('a', '', 0, [pack('已过期', 20, 'Credits', { total: 100, expiredTime: '2026-11-01T00:00:00Z' }), pack('用尽', 0, 'Credits', { total: 100 })])]), 'ofm-qoder', now);
+ assert.equal(expired.windows.length, 0, '已过期与用尽包不生成额度窗口');
+ assert(!JSON.stringify(expired.extras).includes('已过期') && !JSON.stringify(expired.extras).includes('用尽'), '已过期与用尽包不占说明行');
 }
 {
  for (const provider of ['gemini', 'zcode']) {

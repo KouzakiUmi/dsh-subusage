@@ -110,8 +110,13 @@ OpenDesign 药丸按当前路由标注计费来源：套餐模型显示「使用
 | [`dsh-connect-workbuddy`](https://github.com/dingminhua/dsh-connect-workbuddy) | `workbuddy`、`workbuddy-global` | 按区域与账号读取余额；完整积分包只归属已确认的当前账号。 |
 | [`dsh-raccoon-connect`](https://github.com/zhlcba/dsh-raccoon-connect)、[`dsh-loomy-connect`](https://github.com/gdrpzym/dsh-loomy-connect) | `raccoon`、`loomy` | 独立 `/status` 的单当前登录；药丸在接口缺席时回落 OFM。Loomy 保留本地积分缓存时间。 |
 | Our Free Model | 十个 `ofm-*` 入口 | 复用账号索引与 `usage.badge`：小浣熊、Loomy、Qoder 国际/中国版、LobsterAI、TRAE、Cline、MiniMax Code、ZCode、Gemini；逐账号显示积分、额度包与鉴权元数据。[范围与验证](docs/ofm.md) |
+| EAC 三渠道（`dsh-eac-router`） | `raccoon`、`loomy`、`ofm-qodercn` 的回退来源 | 读它挂在 `/api/eac-router` 的只读 `credits.balances`。**不新增并列条目**：独立插件与 OFM 都缺席时，药丸才回退到 EAC；全量报告与工具查询不回落。 |
 
 Antigravity 的两个提供方读取同一份 Google 配额，只出一条 `antigravity`：`agyQuota` 在场优先，否则回落 `antigravityAuth`。联动没有普通提供商凭据卡片，登录与账号管理由提供方负责。Antigravity 在管理区顶部另有独立开关，默认开启；关闭后停止查询并隐藏药丸。
+
+EAC 三渠道读的是 Loomy / Raccoon / Qoder 中国版的同一批账号，所以三个渠道不会各出两条：`raccoon` / `loomy` 的顺序是**独立 connect 插件 → Our Free Model → EAC**，`ofm-qodercn` 是 **OFM → EAC**。EAC 未安装或后端未就绪时按「这轮没有这条通道」处理；它只报余额与积分包，未公开的时间单位不做换算。
+
+积分包统一显示为分组摘要：已用尽与能确认已过期的包隐藏，其余按今天到期、3 天内到期、临时额度、周期/套餐与永久额度聚合。不同账号、不同单位不混合计算。
 
 OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM 账号池支持在药丸里切换查看账号，保留各自余额、读取失败、凭据存在性和提供方记录的到期时间；当前账号/自动模式只使用明确的提供方字段，实际推理账号由提供方管理。独立 Raccoon / Loomy 只公开单当前登录，OFM 同渠道提供多账号。提供方状态 GET 可能自行续期或同步登录态，详情见[鉴权与生命周期](docs/ofm.md#鉴权数据与生命周期)。DSH Go 面板中药丸向下展开并可滚动；[离线验收](docs/ofm.md#dsh-go-药丸)。
 
@@ -178,7 +183,6 @@ OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM
 | ZenMux | `zenmux` | 5 小时 / 周窗口 + PAYG 余额 | **Management API Key** | 关 |
 | LiteLLM | `litellm` | Key / 用户 / 团队预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
 | OpenDesign | `opendesign` | Design Plan 5 小时 / 7 天窗口 + 套餐余额（订阅额度）、总额度（钱包合计 = 订阅 + 充值） | **控制台会话 Cookie**（不是模型调用的 sk- Key） | 关 |
-| APIGOTO | `apigoto` | 订阅窗口（`window_sec` 定档）+ 套餐内剩余金额 + 套餐到期倒计时 | Bearer，与推理同一把 Key | 关 |
 
 - 各家的**窗口语义、明细字段与单位换算**（例如 ZenMux / Ollama 的 0–1 小数、Novita 的 1/10000 USD、Kimi 随套餐变化的窗口集合）见 [提供商清单与额度语义](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md)。
 - 评估过但**不接入**的厂商与理由见 [提供商覆盖与取舍](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/provider-coverage.md)（含已由用户决策跳过的 Anthropic）。
@@ -440,7 +444,7 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 - **同一额度池的多个窗口在文本里并成一段**：池名（分组 / 预算 / 能力范围标注）只写一次，**相邻**同池窗口按上游顺序用 `/` 并列（不重排、不跨池拼段），例如 `Gemini Models · week 95.8% 剩余（重置 …） / 5h 96.6% 剩余（重置 …）`；跨池仍分开、交错下发的同池窗口不重排。数据结构不受影响（`windows[]` 仍是一窗口一条）。
 - **Command Code 按账户各回一条**：账户清单读自提供方插件的 `llm-commandcode` 设置，每条带 `account`（账户名）、`accountActive`（当前激活的那个）与 `accountMode`（`fixed` 固定账户 / `auto` 自动轮换），激活账户排在最前。「还剩多少」与「现在实际用哪个账户」一次问清。
 - **独立 Trae / WorkBuddy 按区域、账号展开**：Trae 的 `trae` / `trae-global` / `trae-enterprise` 保留国内积分、国际订阅和企业不可读三种语义；多账号通过提供方的 `account-status` 独立读取。WorkBuddy 使用 `workbuddy` / `workbuddy-global`，批量接口只给账号总余额，完整积分包仅归属已确认的当前账号。两者复用提供方鉴权，60 秒缓存与强制刷新由同一 reader 管理；具体契约与内部登录态维护见[联动说明](docs/ofm.md)。
-- **Antigravity 是联动项，不是本插件登记的 provider**：本机运行 [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity)（服务 `antigravityAuth.usage()`）或 [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp)（服务 `agyQuota.read()`）任一个时，报告里会多一条 `providerId` 为 `antigravity` 的条目（可传 `antigravity` / `agy` / `antigravity-acp` / `google-antigravity` / `dsh-tool-antigravity` 点名）。两个都在场时优先 `agyQuota`（信息更全：套餐名 + AI Credits），只装 dsh-tool-antigravity 时回落到 `antigravityAuth`；都不在场时顺带查询不出现这一行，点名时会回一条列出两个插件名的安装指引。本插件不读它们的凭据、不请求上游、不写设置。`windows[].percent` 同样是**已用**百分比（由官方下发的剩余比例 `remainingFraction` / `remainingPct` 换算），`groupLabel` 是分组（`antigravityAuth` 通道为「Gemini 模型」「Claude 与 GPT 模型」，`agyQuota` 通道保留对方原始组名如 `Gemini Models`）。界面将已知组名显示为「Gemini 模型」「Claude 与 GPT 模型」「Gemini Argon 模型」（英文界面同步翻译）；每组是独立额度池，同池内取最紧窗口，跨池不互相限制。部分池用尽时显示如「1/3 池用尽」并作黄色提醒，只有全部已报告池耗尽才标红；横幅与悬浮说明分别列出各池的余量和重置依据。未登录时该通道返回 `unauthenticated`：全量查询静默，点名时给出「去 dsh-tool-antigravity 完成 Google 授权」的指引。
+- **Antigravity 是联动项，不是本插件登记的 provider**：本机运行 [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity)（服务 `antigravityAuth.usage()`）或 [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp)（服务 `agyQuota.read()`）任一个时，报告里会多一条 `providerId` 为 `antigravity` 的条目（可传 `antigravity` / `agy` / `antigravity-acp` / `google-antigravity` / `dsh-tool-antigravity` 点名）。两个都在场时优先 `agyQuota`（信息更全：套餐名 + AI Credits），只装 dsh-tool-antigravity 时回落到 `antigravityAuth`；都不在场时顺带查询不出现这一行，点名时会回一条列出两个插件名的安装指引。本插件不读它们的凭据、不请求上游、不写设置。`windows[].percent` 同样是**已用**百分比（由官方下发的剩余比例 `remainingFraction` / `remainingPct` 换算），`groupLabel` 是分组（`antigravityAuth` 通道为「Gemini 模型」「Claude 与 GPT 模型」，`agyQuota` 通道保留对方原始组名如 `Gemini Models`）。界面将已知组名显示为「Gemini 模型」「Claude 与 GPT 模型」「Gemini Argon 模型」（英文界面同步翻译）；每组是独立额度池，同池内取最紧窗口，跨池不互相限制。部分池用尽时显示如「1/3 池用尽」并作黄色提醒，只有全部已报告池耗尽才标红；顶部横幅仅保留一句状态结论，各池余量和重置时间集中显示在下方卡片，悬浮说明保留完整摘要。未登录时该通道返回 `unauthenticated`：全量查询静默，点名时给出「去 dsh-tool-antigravity 完成 Google 授权」的指引。
 
 **Host 服务**（Cordis `Service`，key 为 `subUsage`）：
 
@@ -477,7 +481,7 @@ const view = await service.quota({ providerIds: ["deepseek"], force: false });
 | 提示「已保存」但仍是「无凭据」 | 凭据编辑要点「**保存设置**」才提交（提供商开关才是立即保存）；确认后若仍为空，把界面文案反馈上来 |
 | 某家读取失败，其他家正常 | 单家失败只影响自己的条目。按文案分类处理：认证类（401 / 凭据被拒）换对应产品与区域的凭据；权限 / 未订阅类（403）检查账号权限与套餐；限流类等待退避后重试 |
 | 显示认证失效 | 检查是否用了对应产品 / 区域的订阅 Key；MiMo 重新登录或导入 Cookie，OpenDesign 更新控制台会话 Cookie。认证错误不按「部分数据」展示，旧额度不会当作有效数据保留 |
-| MiMo Cookie 过期 | 会话 Cookie 自签发起 24 小时有效。药丸与设置页会在 2 小时内 / 30 分钟内分别变黄、变橙，到期显示「Cookie 已过期，请重新登录」；重新登录或重新导入即重新计时。倒计时只是提醒，真实失效以官方接口返回为准 |
+| MiMo Cookie 过期 | 会话 Cookie 自签发起 24 小时有效。**用「小米扫码登录」的会自动续期**（Cookie 临近到期时 Host 用保存的续期凭据换新，约一个月内无需再扫码，设置页显示「自动续期已开启」；续期失败才提示「请重新扫码登录」）。浏览器登录 / 手动粘贴的 Cookie 不能自动续期：药丸与设置页会在 2 小时内 / 30 分钟内分别变黄、变橙，到期显示「Cookie 已过期，请重新登录」；重新登录或重新导入即重新计时。倒计时只是提醒，真实失效以官方接口返回为准 |
 | 药丸显示「未记录登录时间」 | 凭据由旧版本保存，没有计时元数据；重新登录或重新导入一次后开始计时 |
 | Kimi 缺少 7 天窗口，或提示结构错误 | 窗口集合按套餐体系下发：老套餐（节奏命名，如 Allegro）为 5 小时 + 7 天，新套餐（Go / Plus 命名）为 5 小时 + 月度总额。0.8.3 起按实际下发的窗口解析，不再要求 7 天窗口；升级后仍报 `Invalid Kimi usage response` 即为未识别的字段结构，插件不会猜测额度，可回报该响应 |
 | 显示缓存、部分数据或额度未知 | 查看更新时间和错误说明；缓存来自之前的成功读取，部分数据不保证有可用额度，余额也不等于订阅余量 |

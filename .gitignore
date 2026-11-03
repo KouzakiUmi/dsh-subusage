@@ -15,3 +15,4 @@ graphflow-out/
 acl-report-*.jsonl
 acl-backup-*.json
 acl-backup-*.ps1
+.tmp-test/

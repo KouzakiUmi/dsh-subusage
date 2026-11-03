@@ -67,8 +67,13 @@ function render(element, entry, open = false) {
  states = [{ entry, updatedAt: Date.now() }, null, null, false, open]; stateIndex = 0;
  return element.type(element.props);
 }
-assert.ok(text(render(plan, normal)).includes('使用套餐额度'), '收起药丸直接可见标注');
-assert.ok(text(render(paid, normal)).includes('使用余额'));
+const collapsedPlan = render(plan, normal), collapsedPaid = render(paid, normal);
+assert.ok(!text(collapsedPlan).includes('使用套餐额度'), '健康药丸只画余量条，不叠加计费来源文字');
+assert.ok(!text(collapsedPaid).includes('使用余额'));
+assert.ok(collapsedPlan.children[0].props.title.includes('使用套餐额度'), '悬浮与无障碍说明保留计费来源');
+assert.ok(collapsedPaid.children[0].props.title.includes('使用余额'));
+assert.ok(text(render(plan, normal, true)).includes('使用套餐额度'), '弹层保留完整计费说明');
+assert.ok(text(render(paid, normal, true)).includes('使用余额'));
 const exhausted = { ...normal, windows: normal.windows.map(w => ({ ...w, percent: 100, status: 'rate-limited' })) };
 assert.ok(text(render(plan, exhausted, true)).includes('继续使用此套餐模型会消耗余额'));
 assert.ok(text(render(plan, exhausted, true)).includes('重置'), '弹层保留套餐重置说明');
