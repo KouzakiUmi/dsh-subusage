@@ -25,7 +25,7 @@
 
 - 十个渠道以 `ofm-*` 登记，由 [ofm.js](lib/ofm.js) 经 Connection 的进程内 Fetch 调用 `usage.badge` 与 `account.list`；完整范围、鉴权来源及限制见 [联动说明](docs/ofm.md)。Host 可按索引引用检查凭据非空存在性，只回状态，引用名和秘密不出 Host；不自行登录、签到或写提供方设置。OFM `preference` 是显示偏好，不是账号模式，不能生成无依据的当前账号。
 - 工具按账号展开，药丸用 `ofmAccounts` / `linkedAccounts` 保留稳定 `accountId` 与独立额度；纯余额多账号按用户选择在 Client 显示同单位总额度，原始结果仍逐账号独立，查看账号只改变弹层，不修改实际推理账号。凭据存在/记录有效期不能当上游鉴权成功。索引删除、停用或缺凭据不能复活旧额度；不同单位不合计，包到期不作窗口重置，Cline 窗口按账号 ID 匹配。
-- 独立 Trae / WorkBuddy 由 [connect-usage.js](lib/connect-usage.js) 经各自公开 GET 接口读取，按插件、区域和账号 ID 隔离。池行真实字段是 `accountId`，`current` 不与旧绑定的 `selected` 混用；Trae 池关闭不推固定，WorkBuddy 固定还需 `selectionExplicit`。企业 Trae 不读个人积分替代；WorkBuddy 批量只有总余额，明确选中状态矛盾时丢弃未知归属的完整包。
+- 独立 Trae / WorkBuddy 由 [connect-usage.js](lib/connect-usage.js) 经各自公开 GET 接口读取，按插件、区域和账号 ID 隔离。池行真实字段是 `accountId`，`current` 不与旧绑定的 `selected` 混用；Trae 池关闭不推固定，WorkBuddy 固定还需 `selectionExplicit`。企业 Trae 不读个人积分替代；WorkBuddy 批量只有总余额时仍视已读余额完整，缺少可选的积分包明细另记说明；真实账号余额缺失/刷新失败仍为部分或旧数据，明确选中状态矛盾时丢弃未知归属的完整包。
 - 独立 Raccoon / Loomy 由 [desktop-usage.js](lib/desktop-usage.js) 消费单当前账号 `/status`。Raccoon `probeKey` 丢弃后才缓存，Loomy 缓存不伪造账号归属/容量/请求采样时间。两种模型药丸仅在独立接口缺席时回落 OFM；工具分别报告真实来源，避免自动回落重复。`ofm-trae` / `ofm-minimax` 仍为独立查询 ID。
 - 独立读取缓存由 reader 统一维护，缺席不缓存，强制刷新有代次保护、卸载不回填。不要在 Host 再包一层无排序缓存。提供方 GET 可能自行镜像登录、续期或更新运行时账号池，文档须按实际生命周期说明。
 - DSH Go `panel` 网页岛中，药丸详情进入文档流向下展开，外层负责滚动；样式按岛标记自动生效并随 Client 卸载清理。桌面仍为绝对定位弹层。离线浏览器检查见 [脚本](scripts/check-ofm-mobile.mjs)，Android 真机验收单独记录。
@@ -37,7 +37,7 @@
 - **不新增并列条目**：三处读的是同一批账号，`LINKED_PROVIDERS` 里只加 `eac` 回退字段——`raccoon` / `loomy` 走「独立 connect 插件 → Our Free Model → EAC」，`ofm-qodercn` 走「OFM → EAC」。顺序由 `linkedSnapshot` 决定，现有来源在场时不得请求 EAC。
 - 回落只在 `readLinked`（药丸，`allowSourceFallback = true`）发生；`quota()` 与工具的全量/点名查询保持既有请求量，不额外放大。
 - 缺席语义：404（未安装）= 通道不存在；`eac-router/not-ready`（后端未启动）= 本期没有这条通道；两者都返回 `undefined`，不顶红卡片，点名时给「先装哪个独立插件」的说明。其它 `ok:false` 算真实失败并透出上游原因。
-- 归一化在 [eac-usage.js](lib/eac-usage.js)：只读 `balance.total` 与 `packages`，单位照抄包上报的 `unit`，不猜 `total` 单位、不换算 EAC 未公开的 `expiresAt` 数字时间单位；明确可解析的日期字符串才进入 [credit-packages.js](lib/credit-packages.js) 的到期分组。缓存 60 秒、有代次保护、卸载不回填。
+- 归一化在 [eac-usage.js](lib/eac-usage.js)：只读 `balance.total` 与 `packages`，`credit(s)` / `token(s)` 只按已知同义词归一化；仅当各包单位明确一致、或本机直取已明确携带余额单位时给总额标单位。包为空仍保留真实余额和覆盖状态，不编造 `credits`，混合单位也不套用第一个包的单位。真实账号失败/刷新失败保留降级，不换算 EAC 未公开的 `expiresAt` 数字时间单位；明确可解析的日期字符串才进入 [credit-packages.js](lib/credit-packages.js) 的到期分组。缓存 60 秒、有代次保护、卸载不回填。
 - 回归见 [test-eac-link.mjs](tests/test-eac-link.mjs)：归一化、回退顺序、请求体（`credits.balances` / `provider`）、缺席与未就绪、真实失败、缓存。
 
 ## 本机直取（不经兄弟插件）
@@ -46,7 +46,7 @@
 - 凭据来源三条：① 账号池渠道走 `ctx.get("credentials").resolve(ref)`，ref 取自 `$DSH_HOME/channel-pack/state.json` 的 `accounts[].credentialRef`；② **不要自己解析 `.credentials.yaml`**（那是同一份数据的脆弱副本）；③ Trae 的凭据由 [trae-auth.js](lib/trae-auth.js) 解密，读取必须走注入的 `io.readFileSync` 而不是 `node:fs`，否则隔离测试会真读本机凭据并向上游发请求。**全部账号在账号池 `$DSH_HOME/.trae-auth.<region>.json`（v2 `{version, credentials:[...]}`）里；客户端 `storage.json` 只有「当前登录」那一个**——只读 `storage.json` 会漏掉其他账号。两处字段名不同（池是 `accessToken`/`accountName`/`expiresAtMs`，客户端是 `token`/`account.username`/`expiredAt`）。
 - 顺序：`linkedSnapshot()` 里直取优先，页面药丸与工具共用完整账号池；不同来源 ID 域不按昵称拼接。**全部账号都读不到就返回 `undefined`**（没凭据 / 已过期 / 上游拒绝），静默让位给原有来源链；只要有一个账号读到就照实返回，失败的行各自带原因。上游应答成功但没下发数字（企业版账号）算「可达」，要显示原因而不是装作缺席——两者不能混为一谈。读失败不落缓存，用户重新登录后下一轮立即恢复。
 - **只读两条铁律**：① 不替用户刷新 token——EAC 会周期性轮换 `refresh_token`，两边同时持刷新权会把对方顶下线；② 不碰任何写接口（Loomy 每日签到、ZCode 领取），打开面板不该变成意外签到。
-- 各家契约差异必须逐家核对，不可套用：Raccoon 用 `Bearer` + `X-Org-Code`（组织码缺失只能读个人池）；Loomy 只认 `token` 头且成功码是字符串 `"000000"`；Qoder 用 `security_oauth_token` 优先 + `Cosy-ClientType: 10`，企业版 `displayMode === "enterprise"` 不下发数字；ZCode 用 `zcode_jwt` + 必需 `X-Device-Mid`，单位是 token 不是积分；Trae 用 `Cloud-IDE-JWT` + POST `web_user_ent_usage`，剩余按 `credits_limit - credits_amount` 算。两处易错：ZCode 的 `balances: []` 是「0 个桶」的合法形态（如实显示 0），只有字段整体缺失才算形状变化；Trae 的逐包额度要 `product_extra.package_extra` 优先、包名只认 `display_desc`（`package_name` 是产品名，会让几个包同名）。Trae 还只支持中国版账号（凭据自带 `region`），非 CN 不发请求。
+- 各家契约差异必须逐家核对，不可套用：Raccoon 用 `Bearer` + `X-Org-Code`（组织码缺失只能读个人池）；Loomy 只认 `token` 头且成功码是字符串 `"000000"`，缺官方可用总量且每日分项未知时不把永久积分冒充总积分；Qoder 用 `security_oauth_token` 优先 + `Cosy-ClientType: 10`，企业版 `displayMode === "enterprise"` 不下发数字；ZCode 用 `zcode_jwt` + 必需 `X-Device-Mid`，单位是 token 不是积分；Trae 用 `Cloud-IDE-JWT` + POST `web_user_ent_usage`，剩余按 `credits_limit - credits_amount` 算，汇总与包都没数字时不补造 0。两处易错：ZCode 的 `balances: []` 是「0 个桶」的合法形态（如实显示 0 token），只有字段整体缺失才算形状变化；Trae 的逐包额度要 `product_extra.package_extra` 优先、包名只认 `display_desc`（`package_name` 是产品名，会让几个包同名）。Trae 还只支持中国版账号（凭据自带 `region`），非 CN 不发请求。
 - Trae 那一层是**复刻客户端私有格式**：密文布局、四张 64 字节盐常量与 `aes` / `aes-private` 两种头都照抄已装的 `dsh-connect-trae`。客户端大版本换格式时解密会失败，此时必须返回 `undefined` 让直取回退，**不要试图猜新格式**。`~/.trae-cn/trae-jwt-token` 是 CLI 的另一族 JWT（401 / code 1001），不要拿它兜底。
 - 已知取舍（有意保留，不要当成遗漏去「修」）：① `linkedSteps` 的 60 秒页面代取缓存在直取之上仍会各算一份，最坏陈旧度接近 120 秒；② `ofm-trae` 的直取实际读的是 Trae **中国版**桌面客户端，查询 ID 保持不变、显示名按真实直取来源标为 Trae，`trae-global` / `trae-enterprise` 不走直取；③ 上游 `code` 与注入依赖的 `error.message` 会进公开文案，新模块本身不往结果、缓存或日志里放 token。
 - 未做的渠道要写明原因：Cline / LobsterAI 本机没有任何凭据；MiniMax 的 token 只有约 4.5 小时且自刷新可能与 MiniMax Code 的 `auth.lock` / `generation` 抢权（按用户决定本轮不做，要做就得先定「不刷新、过期即提示重登」这条线）。
@@ -101,7 +101,7 @@
 - 订阅检测与异步刷新必须保留原有请求排序和缓存隔离；新增字段应防止旧响应覆盖新设置。`manualMatching` / `providerMappings` 不参与查询设置一致性哈希，保存显示映射不得作废在途额度；完整设置 revision 仍包含它们。
 - 用户文档区分路由匹配、凭据复用和只读额度联动，不把源码核对或桩测试表述为实机兼容验证。
 - **弹层与工具报告有密度上限**：收起状态只保留「结论 + 窗口 + 关键金额」，说明类逐条内容折进 `details`。多账号按 Command Code 账户区的做法：**账号全部平铺**，一行一个账号（状态点 + 名字 + 余额或窗口余量），点行即切换查看对象（再点取消）；只有选中的账号才展开它的说明明细，未选中时不挂「其他说明」折叠。横幅不重复账号数；纯余额多账号按单位合计，部分失败/旧缓存/缺数字时明确标为已读小计与覆盖数量。新增 provider 或联动形态必须同时加进 [test-pill-density.mjs](tests/test-pill-density.mjs) 的形态表，守住「弹层 ≤ 14 行、单家报告一行 ≤ 220 字符」；单行 flex 账号按钮按实际排版计一行，只靠某一家截图验收不够。
-- **新增药丸不得另起收起样式**：有窗口就画 Command Code 同款余量条，健康不多写文字，多账号使用代表账号自己的窗口，百分比不相加。纯余额多账号按用户选择显示同单位总积分/余额，不同单位分别合计；单账号直接显示自身余额。其它账号点开查看，查看只改变弹层，药丸保持总览，也不修改实际推理账号。失败/旧缓存/缺数字时给已读小计与覆盖数量，没有可读余额时不补造总计 0；余额告警按单位合计数值判定，单个账号为 0 不把正常合计标成耗尽。账号列表一行一个账号及独立余额，同名账号补序号，单账号不重复列表，说明只由正文展示一次。OpenDesign 计费来源放悬浮说明与弹层，Antigravity 分池横幅沿用统一尺寸，不为新功能增加常驻标签或特殊横幅。
+- **新增药丸不得另起收起样式**：有窗口就画 Command Code 同款余量条，健康不多写文字，多账号使用代表账号自己的窗口，百分比不相加。纯余额多账号按用户选择显示同单位总积分/余额，不同单位分别合计；单账号直接显示自身余额。其它账号点开查看，多账号弹层默认展示总额，选中账号才显示该账号额度；查看只改变弹层，药丸保持总览，也不修改实际推理账号。失败/旧缓存/缺数字时给已读小计与覆盖数量，没有可读余额时不补造总计 0；余额告警按单位合计数值判定，单个账号为 0 不把正常合计标成耗尽。账号列表一行一个账号及独立余额，仅当前账号加「自动选择/固定」标签，同名账号补序号，单账号不重复列表，说明只由正文展示一次。OpenDesign 计费来源放悬浮说明与弹层，Antigravity 分池横幅沿用统一尺寸，不为新功能增加常驻标签或特殊横幅。
 - 工具查询只在已确认相同来源、渠道与稳定 `accountId` 时折叠联动别名的重复行，优先保留原生入口标签；点名单个 OFM ID 保持原 ID。同名不同账号、不同来源/区域或缺少稳定身份的行保留，不能凭昵称和金额猜测去重。
 - **积分包必须先归一化再展示**：[credit-packages.js](lib/credit-packages.js) 隐藏用尽与能确认已过期的包，按今天 / 3 天内 / 临时 / 周期套餐 / 永久分组；只在单账号、同单位内聚合，紧急组保留最早到期时间。已有窗口的包只补紧急提醒；无法确认语义的到期字段不猜。
 - 变更说明先记入未发布条目；安装、版本发布与源码推送分别处理。

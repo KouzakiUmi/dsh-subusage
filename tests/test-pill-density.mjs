@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { api, renderPill } from './test-client-ofm.mjs';
 import { loadHostModule } from './helpers.mjs';
 import { READBACK_ENTRIES } from './test-linked-info.mjs';
+import { normalizeWorkBuddy } from '../lib/connect-usage.js';
 const host = await loadHostModule();
 
 /** 可见文本按行拆：收起状态的 <details> 只计 summary，内容不计。 */
@@ -40,6 +41,9 @@ const acct = (id, name, balance, notes = 0) => ({
 	authStatus: 'present', authExpiresAt: '2027-01-01T00:00:00.000Z',
 	extras: [{ kind: 'balance', value: `${balance} 积分` }, ...Array.from({ length: notes }, (_, i) => note(i + 1)).flat()]
 });
+const wbNow = Date.now();
+const wbTotals = [3736.92, 3391.86, 3695.93, 4177.31];
+const wbRows = wbTotals.map((total, i) => ({ id: `wb-${i + 1}`, accountName: `账号${i + 1}`, credits: i === 3 ? { total, packages: [] } : total }));
 const window = (kind, percent, extra = {}) => ({ kind, percent, status: 'ok', ...extra });
 
 const CASES = [
@@ -103,6 +107,7 @@ const CASES = [
 		}
 	},
 	...READBACK_ENTRIES.map(entry => ({ name: `${entry.label} 实读余额形态`, entry })),
+	{ name: 'WorkBuddy 四账号（余额完整、仅当前账号有包明细）', entry: normalizeWorkBuddy({ plugin: 'workbuddy', status: 'signed-in', generatedAt: wbNow, accountReadings: wbRows, pool: { enabled: true, accounts: wbRows.map((row, i) => ({ accountId: row.id, current: i === 3 })) } }, 'workbuddy', wbNow) },
 	{ name: '五账号余额', entry: { providerId: 'loomy', label: 'Loomy', state: 'ok', windows: [], extras: [], coverage: 'complete', freshness: 'fresh', linkedAccounts: [1, 2, 3, 4, 5].map(i => acct(`l${i}`, `账号${i}`, i * 100, 2)) } },
 	{ name: '读取失败', entry: { providerId: 'kimi-coding', state: 'error', error: '读不到额度，请检查登录状态后重试。', windows: [], extras: [], coverage: 'partial', freshness: 'unknown' } }
 ];

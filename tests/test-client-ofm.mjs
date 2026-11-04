@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { OFM_IDS } from '../lib/ofm.js';
+import { normalizeWorkBuddy } from '../lib/connect-usage.js';
+import { normalizeEac } from '../lib/eac-usage.js';
 let spec, current;
 const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity).filter(v => v !== null && v !== false && v !== undefined) });
 const react = { createElement: h, Fragment: 'fragment', useState: initial => current.state(initial), useRef: value => current.ref(value), useEffect: (fn, deps) => current.effect(fn, deps), useMemo: (fn, deps) => current.memo(fn, deps), useSyncExternalStore: (_subscribe, read) => read() };
@@ -154,6 +156,52 @@ export function html(tree) {
  assert(markup.includes('固定账号') && markup.includes('记录的登录态已到期') && markup.includes('提供方记录到期'));
  assert(markup.includes('账号额度暂不可读') && markup.includes('鉴权状态待确认'));
  assert(markup.includes('查看账号额度') && !markup.includes('NaN'));
+}
+{
+  // 截图形态：三个账号只有批量余额，第四个有完整包；总额度已知，不应亮「数据不完整」。
+  const now = Date.now(), totals = [3736.92, 3391.86, 3695.93, 4177.31];
+  const rows = totals.map((total, i) => ({ id: `wb-${i + 1}`, accountName: `账号 ${i + 1}`, credits: i === 3 ? { total, packages: [] } : total }));
+  const entry = normalizeWorkBuddy({ plugin: 'workbuddy', status: 'signed-in', generatedAt: now, pool: { enabled: true, accounts: rows.map((row, i) => ({ accountId: row.id, current: i === 3 })) }, accountReadings: rows }, 'workbuddy', now);
+  assert.equal(entry.coverage, 'complete');
+  assert(entry.linkedAccounts.every(row => row.coverage === 'complete'), '各账号已读到余额');
+  const status = api.computeStatus(entry, { providerId: 'workbuddy', t, getLocale: () => 'zh' });
+  assert.equal(status.title, '总额度 · 15002.02 credits');
+  assert.equal(status.short, '总 15002.02 credits');
+  const markup = html(await renderPill(entry));
+  assert(markup.includes('总额度 · 15002.02 credits'));
+  assert.equal((markup.match(/账号池自动选择/g) || []).length, 1, '池模式只标当前账号，不在每一行重复');
+  assert(!markup.includes('数据不完整'));
+  for (const total of totals) assert(markup.includes(`${total} credits`), '逐账号余额仍可见');
+  const hooks = new Hooks(), reader = async () => entry;
+  reader.subscribe = () => () => {}; reader.activate = () => () => {};
+  const props = { providerId: 'workbuddy', label: 'WorkBuddy', readEntry: reader, t, getLocale: () => 'zh', cc: null };
+  let tree = hooks.render(api.UsagePill, props); await flush(); tree = hooks.render(api.UsagePill, props);
+  const pill = () => nodes(tree).find(node => node.type === 'button' && node.props['aria-haspopup'] === 'dialog');
+  pill().props.onClick(); tree = hooks.render(api.UsagePill, props);
+  assert(html(tree).includes('总额度 · 15002.02 credits'), '展开默认仍显示总额度');
+  const third = nodes(tree).find(node => node.type === 'button' && node.props['aria-label']?.includes('账号 3 · 3695.93 credits'));
+  assert(third); third.props.onClick(); tree = hooks.render(api.UsagePill, props);
+  assert(pill().props.title.includes('总额度 · 15002.02 credits'), '查看账号不改变药丸总额');
+  assert(!html(tree).includes('数据不完整'), '仅有账号总余额时不误报警告');
+  hooks.dispose();
+  const missing = normalizeWorkBuddy({ plugin: 'workbuddy', status: 'signed-in', generatedAt: now, pool: { enabled: true, accounts: rows.map((row, i) => ({ accountId: row.id, current: i === 3 })) }, accountReadings: rows.map((row, i) => i === 1 ? { id: row.id, accountName: row.accountName, error: '额度未读取' } : row) }, 'workbuddy', now);
+  const partial = api.computeStatus(missing, { providerId: 'workbuddy', t, getLocale: () => 'zh' });
+  assert.equal(partial.title, '已读合计 · 11610.16 credits', '真正缺失一个余额时不能冒充完整总积分');
+  assert(partial.sub.includes('已读取 3/4 个账号') && partial.sub.includes('数据不完整'));
+}
+{
+  // Loomy / Raccoon 的 EAC 回退只给总余额时，数字可见且不编单位；某账号失败仍显示已读小计。
+  for (const providerId of ['loomy', 'raccoon']) {
+   const rows = [{ accountId: 'a', balance: { total: 42, packages: [] } }, { accountId: 'b', balance: { total: 58, packages: [] } }];
+   const complete = normalizeEac({ accounts: rows }, providerId, providerId);
+   const status = api.computeStatus(complete, { providerId, t, getLocale: () => 'zh' });
+   assert.equal(status.title, '总额度 · 100', `${providerId} 不替未报告单位的余额编造 credits`);
+   assert.equal(status.tinted, false, `${providerId} 有全体账号总余额时不误报警告`);
+   const partial = normalizeEac({ accounts: [rows[0], { accountId: 'b', balance: null, error: '额度暂不可读' }] }, providerId, providerId);
+   const fallback = api.computeStatus(partial, { providerId, t, getLocale: () => 'zh' });
+   assert.equal(fallback.title, '已读合计 · 42');
+   assert(fallback.sub.includes('已读取 1/2 个账号') && fallback.sub.includes('数据不完整'));
+  }
 }
 {
  // 逐账号的 extras 与汇总区同一口径：余额留正文，积分包与到期明细折进 details。

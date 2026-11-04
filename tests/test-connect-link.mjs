@@ -70,7 +70,8 @@ function harness(reply, options = {}) {
  assert.deepEqual(value.providers.map(row => row.providerId), ['workbuddy', 'workbuddy', 'workbuddy']);
  assert.deepEqual(value.providers.slice(0, 2).map(row => row.extras[0].value), ['100 credits', '200 credits']);
  assert.equal(value.providers[0].accountMode, 'fixed');
- assert.equal(value.providers[1].coverage, 'partial');
+  assert.equal(value.providers[1].coverage, 'complete', '批量总余额可用，缺积分包明细不误报部分额度');
+  assert(value.providers[1].extras.some(row => row.kind === 'note' && row.value.includes('未提供积分包明细')));
  assert.equal(value.providers[2].state, 'error');
  const signedOut = await service.readLinked({ providerIds: ['workbuddy-global'], force: false });
  assert(signedOut.entries[0].error.includes('WorkBuddy') && !signedOut.entries[0].error.includes('Trae'));

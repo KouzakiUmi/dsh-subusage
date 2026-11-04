@@ -76,6 +76,17 @@ const cred = (extra = {}) => ({ access_token: 'tok', ...extra });
 
 // ── [4] Qoder：两个额度池 + 资源包；企业版没有数字 ──────────────────────────
 {
+	const rows = [{ ref: 'LOOMY_ACCOUNT_A', accountId: 'l1' }], credentials = { LOOMY_ACCOUNT_A: cred() };
+	const { reader: incomplete } = harness({ rows, credentials, responses: { '/points/records': { code: '000000', data: { balance: 25000 } } } });
+	assert.equal(await incomplete.read('loomy', true), undefined, '缺每日余额且缺官方可用总量时不能把已知永久积分冒充总积分');
+	incomplete.dispose();
+	const { reader: available } = harness({ rows, credentials, responses: { '/points/records': { code: '000000', data: { balance: 25000, availableBalance: 25000 } } } });
+	assert.equal((await available.read('loomy', true)).accounts[0].balance.total, 25000, '官方可用总量存在时无需臆测缺失的每日分项');
+	available.dispose();
+}
+
+// ── [4] Qoder：两个额度池 + 资源包；企业版没有数字 ──────────────────────────
+{
 	const usage = {
 		qoderUsage: {
 			userQuota: { total: 500, used: 500, remaining: 0, unit: 'credits' },
@@ -247,6 +258,15 @@ const cred = (extra = {}) => ({ access_token: 'tok', ...extra });
 
 // ── [13] Trae：POST + Cloud-IDE-JWT，剩余 = credits_limit - credits_amount ────
 {
+	const { reader } = harness({
+		rows: [{ ref: 'trae-auth:fake', accountId: 'trae-cn' }],
+		credentials: { 'trae-auth:fake': { access_token: 'desk-token', region: 'CN' } },
+		responses: { '/web_user_ent_usage': { usage_summary: {}, user_entitlement_pack_list: [] } },
+	});
+	assert.equal(await reader.read('trae', true), undefined, 'Trae 未返回余额和包时不能凭空显示 0 credits');
+	reader.dispose();
+}
+{
 	const { reader, calls } = harness({
 		rows: [{ ref: 'trae-auth:fake', accountId: 'trae-cn' }],
 		credentials: { 'trae-auth:fake': { access_token: 'desk-token', region: 'CN', nickname: '用户甲' } },
@@ -356,6 +376,7 @@ const cred = (extra = {}) => ({ access_token: 'tok', ...extra });
 	});
 	const value = await reader.read('zcode', true);
 	assert.equal(value.accounts[0].balance.total, 0, '真实 0 不能报成「查不到」');
+	assert.equal(value.accounts[0].balance.unit, 'token', '已知本机单位在空包零余额时不能丢失');
 	reader.dispose();
 	// 但 balances 字段整体缺失仍是形状变化 → 回退。
 	const { reader: other } = harness({

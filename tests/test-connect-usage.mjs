@@ -86,7 +86,8 @@ test("WB 顶层完整包按 accountId 匹配，active 独立按 pool.current；�
  assert.equal(a.windows.length, 1, "一次性包到期不生成窗口");
  assert.equal(a.coverage, "complete");
  assert.equal(b.extras[0].value, "125 credits");
- assert.equal(b.coverage, "partial");
+  assert.equal(b.coverage, "complete", "批量接口已给出该账号余额，缺少可选积分包不等于额度不完整");
+  assert(b.extras.some(row => row.kind === "note" && row.value.includes("未提供积分包明细")), "缺少的明细须如实说明");
  assert.deepEqual(b.windows, []);
  assert.equal(c.state, "error");
  assert.equal(c.lastSuccessAt, undefined);

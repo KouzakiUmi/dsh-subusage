@@ -80,6 +80,17 @@ const sample = snapshot('raccoon', [row('a', '账号甲', 6600, [pack('奖励积
  const zero = normalizeOfm(snapshot('raccoon', [row('a', '', 0, [])]), 'ofm-raccoon', now);
  assert.equal(zero.state, 'ok');
  assert.equal(zero.extras.find(x => x.kind === 'balance')?.value, '0', '没有包明细时仍展示真实 0，不编造单位或报成无数据');
+  for (const provider of ['raccoon', 'loomy']) {
+   const totalOnly = normalizeOfm(snapshot(provider, [{ accountId: 'a', balance: { total: 17 } }]), `ofm-${provider}`, now);
+   assert.equal(totalOnly.state, 'ok', `${provider} 仅有 total 时不得冒充读取失败`);
+   assert.equal(totalOnly.coverage, 'complete', '余额已知、可选包明细未提供不误报余额不完整');
+   assert.equal(totalOnly.extras.find(x => x.kind === 'balance')?.value, '17', '单位缺失时只显示原始余额');
+   assert(totalOnly.extras.some(x => x.kind === 'note' && x.value.includes('未报告积分包明细')));
+  }
+  const malformedPackages = normalizeOfm(snapshot('loomy', [{ accountId: 'a', balance: { total: 17, packages: '坏格式' } }]), 'ofm-loomy', now);
+  assert.equal(malformedPackages.coverage, 'partial', '明确错误的积分包格式仍应降级');
+  const noBuckets = normalizeOfm(snapshot('zcode', [{ accountId: 'a', balance: { total: 17 } }]), 'ofm-zcode', now);
+  assert.equal(noBuckets.state, 'error', 'ZCode 的 total 可能跨模型池，缺少桶时不能把不可展示数字当成完整额度');
  const token = normalizeOfm(snapshot('zcode', [row('a', '', 50, [pack('GLM', 50, 'tokens', { total: 100 })])]), 'ofm-zcode', now);
  assert.equal(token.windows[0].detail.unit, 'token', 'tokens 归一为展示单位 token');
 }

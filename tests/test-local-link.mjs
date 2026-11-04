@@ -129,7 +129,7 @@ function harness({ accounts = [], credentials = {}, upstream, options = {} } = {
 	assert.equal(localReads, 1, '页面与工具都使用完整直取池');
 	assert.equal(sourceReads, 0, '直取已有余额时不额外读不同账号域的页面来源');
 	assert.equal(current.linkedAccounts[0].accountId, 'trae-local');
-	assert.equal(current.linkedAccounts[0].extras.find(row => row.kind === 'balance').value, '99 credits');
+	assert.equal(current.linkedAccounts[0].extras.find(row => row.kind === 'balance').value, '99', '没有上游单位的合成快照不编造 credits');
 	const absent = await service.linkedProvider('trae', true, true, false, true, async () => undefined);
 	assert.equal(localReads, 2, '页面提供方缺席时仍能显示本机直取余额');
 	assert.equal(absent.linkedAccounts[0].accountId, 'trae-local');
