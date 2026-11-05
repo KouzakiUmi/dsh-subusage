@@ -251,14 +251,15 @@ OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM
 
 | 项目 | 值 | 来源 |
 |---|---|---|
-| 核心 peer 范围 | `@deepseek-ai/dsh` 及各核心包均为 `>=0.2.0-rc.1 <0.2.1-0 \|\| >=0.2.1-0 <0.3.0-0` | [`package.json`](package.json) 的 `peerDependencies` |
+| 核心 peer 范围 | `@deepseek-ai/dsh` 及各核心包均为 `>=0.2.0-rc.1 <0.2.1-0 \|\| >=0.2.1-0 <0.2.2-0 \|\| >=0.2.2-0 <0.3.0-0` | [`package.json`](package.json) 的 `peerDependencies` |
 | Node.js | `>=22.19.0` | `engines` 与 `dsh.compatibility.node` |
 | 已验证的 Core 版本 | `0.2.0-rc.2`、`0.2.1-alpha.1`、`0.2.1-alpha.2` | 实机运行；逐版本状态与验证方式见 `dsh.compatibility.dshReleases` |
+| 未验证的 Core 版本 | `0.2.2-rc.1` | 仅静态核对核心包导出与版本，未实机安装运行；`dshReleases` 记为 `unknown` |
 | 最后验证日期 | `2026-10-11` | [开发与验证说明](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md) |
 
-> **范围里那个 `||` 分支不是冗余。** node-semver 只有在范围中**某个比较符与该版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时，才放行预发布版本。所以 `>=0.2.0-rc.1 <0.3.0-0` 这种看起来覆盖 0.2.x 的写法会**静默排除** `0.2.1-alpha.1`——而它正是当前活跃版本。必须为每个 minor 元组各写一个带预发布标签的分支。
+> **范围里每个 `||` 分支都不是冗余。** node-semver 只有在范围中**某个比较符与该版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时，才放行预发布版本。所以 `>=0.2.0-rc.1 <0.3.0-0` 这种看起来覆盖 0.2.x 的写法会**静默排除** `0.2.1-alpha.1`，而 `… \|\| >=0.2.1-0 <0.3.0-0` 又会排除 `0.2.2-rc.1`。必须为每个 minor 元组各写一个带预发布标签的下界；Core 升 0.2.3 或 0.3.x 时按同样规则补分支，不要放宽成单分支。
 
-`dsh.compatibility.dshReleases` 逐版本声明已知状态：**只有实际验证过的标 `compatible`**，其余一律 `unknown`——没有证据不猜。本插件只依赖 Core 的**公开扩展 API 面**（Cordis 服务 `llm`/slots/locale/remote/settings/modelDirectories、4 个核心包的公开导出、client 基座的公开模块），不碰内部组件、不依赖桌面壳版本——这是 0.2.x 各版本实际全兼容的原因；`dshReleases` 记录的是**实测证据**，不是依赖声明。实际验证范围（在线接口、真实账号、浏览器像素验收等）见 [开发与验证说明](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md)。这是树外 Host / Client bundle，通过 `cordis.patch.yml` 插入，不修改 DSH 核心、安装树或 ASAR。
+`dsh.compatibility.dshReleases` 逐版本声明已知状态：**只有实际验证过的标 `compatible`**，其余一律 `unknown`——没有证据不猜。`0.2.2-rc.1` 目前只有本机静态核对（四个核心包的公开导出仍在、`slots` 服务仍由 client runner 提供）与全量回归，插件未在该 Core 上实机安装运行，因此不计入「已验证」、最后验证日期不变。本插件只依赖 Core 的**公开扩展 API 面**（Cordis 服务 `llm`/slots/locale/remote/settings/modelDirectories、4 个核心包的公开导出、client 基座的公开模块），不碰内部组件、不依赖桌面壳版本——这是 0.2.x 各版本实际全兼容的原因；`dshReleases` 记录的是**实测证据**，不是依赖声明。实际验证范围（在线接口、真实账号、浏览器像素验收等）见 [开发与验证说明](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md)。这是树外 Host / Client bundle，通过 `cordis.patch.yml` 插入，不修改 DSH 核心、安装树或 ASAR。
 
 ## Install / 安装
 

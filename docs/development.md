@@ -72,9 +72,9 @@ DSH Go 的 `panel` 网页岛使用文档流展开详情，按内容撑高并由�
 - Client（`lib/client.js`）只 require 宿主注入的 `react`，通过 `dsh.client.inject` 声明 client 基座公开模块（client-locale、client-ui-settings、client-ui-slots、api-gateway、api-remotes、api-session-controller、client-ui-model-selection），UI 全走 slots。
 - 适配新能力时先找公开服务与导出；公开面没有的能力不做，不用内部通道绕。
 
-**peer 双分支规则**：`>=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-0 <0.3.0-0`。node-semver 只在**某个比较符与目标版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时才放行预发布版本，所以单分支 `>=0.2.0-rc.1 <0.3.0-0` 会**静默排除** `0.2.1-alpha.x`（0.8.1~0.10.7 的历史教训——当时靠 DSH 安装链路不阻断 peer 才没出事）。Core 升 0.3.x 且 API 面未变时，必须新增 `>=0.3.0-0 <0.4.0-0` 分支，而不是放宽成单分支。
+**peer 逐 minor 分支规则**：`>=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.3.0-0`。node-semver 只在**某个比较符与目标版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时才放行预发布版本，所以单分支 `>=0.2.0-rc.1 <0.3.0-0` 会**静默排除** `0.2.1-alpha.x`（0.8.1~0.10.7 的历史教训——当时靠 DSH 安装链路不阻断 peer 才没出事），两分支 `… || >=0.2.1-0 <0.3.0-0` 又会排除 `0.2.2-rc.1`（2026-11-05 在本机 Core `0.2.2-rc.1` 上用 semver 实测复核）。必须为每个 minor 元组各写一个带预发布标签的下界；Core 升 0.2.3 或 0.3.x 且 API 面未变时，按同样规则新增 `>=0.2.3-0 <0.3.0-0` / `>=0.3.0-0 <0.4.0-0` 分支，而不是放宽成单分支。
 
-**`dsh.compatibility.dshReleases` 是实测证据记录，不是依赖声明**。标 `compatible` 的标准是有实机运行证据：六步闭环（install→dump-config→start→api-smoke→ui-readback→uninstall→rollback）**或**日常实机运行 + 核心包静态核对；无证据一律 `unknown`，没有证据不猜。当前证据：`0.2.1-alpha.1` 六步闭环（0.10.8）；`0.2.1-alpha.2` 日常实机运行（Desktop Core，0.10.8~0.10.11）；`0.2.0-rc.2` 被 v0.1.0~v0.3.0 三个发布版本精确锁定运行；`0.2.0-rc.1` 无直接记录，维持 `unknown`。
+**`dsh.compatibility.dshReleases` 是实测证据记录，不是依赖声明**。标 `compatible` 的标准是有实机运行证据：六步闭环（install→dump-config→start→api-smoke→ui-readback→uninstall→rollback）**或**日常实机运行 + 核心包静态核对；无证据一律 `unknown`，没有证据不猜。当前证据：`0.2.1-alpha.1` 六步闭环（0.10.8）；`0.2.1-alpha.2` 日常实机运行（Desktop Core，0.10.8~0.10.11）；`0.2.0-rc.2` 被 v0.1.0~v0.3.0 三个发布版本精确锁定运行；`0.2.0-rc.1` 无直接记录，维持 `unknown`；`0.2.2-rc.1` 只有静态核对、未实机安装，维持 `unknown`。
 
 **适配新 Core 版本的核对清单**：
 
@@ -322,6 +322,8 @@ node scripts/render-market-screenshots.mjs
 **2026-10-11 兼容声明更新**：`0.2.1-alpha.2` 与 `0.2.0-rc.2` 升为 `compatible`。依据是实机运行证据而非六步闭环——本机 Desktop Core 现为 `0.2.1-alpha.2`（`C:\Program Files\DSH NEXT\resources\app\node_modules\@deepseek-ai\dsh\package.json`），0.10.8 ~ 0.10.11 在其上日常运行（含设置页、药丸、`subusage_quota` 查询）均正常，静态核对 `@deepseek-ai/dsh-tools` / `dsh-typert-protocol` 仍为 `0.2.1-alpha.2` 且导出 `defineTool`；`0.2.0-rc.2` 则有 v0.1.0 ~ v0.3.0 三个发布版本精确锁定它运行的记录。插件只依赖 Core 的公开扩展 API 面（Cordis 服务与核心包公开导出），不碰内部组件、不依赖桌面壳版本，这是 0.2.x 各版本实际全兼容的原因。`0.2.0-rc.1` 没有直接运行记录，维持 `unknown`。
 
 **最后验证汇总**：Core `0.2.1-alpha.2`，日期 `2026-10-11`（日常实机运行 + 离线浏览器检查 + 全量回归）；在线接口与真实账号的最近一轮实测见 0.10.10/0.10.11 各节。打开设置页的首次读取自 0.13.0 起是 `readSettings()`（`read({providerIds:[], force:false})`，只读本机元数据、不查询任何额度端点），各提供商按需加载；整页开关在拿到 revision 前保持禁用，上限为 Client 20 秒 RPC deadline。
+
+**2026-11-05 静态核对（不计入实机验证）**：本机宿主 Core `0.2.2-rc.1`，四个核心包的 7 个公开导出与 client 基座模块逐一核对仍在，`slots` 服务由 `dsh-cordis-client-runner` 提供；`npm run check` 全通过。但插件未安装到该 Core 的 web profile，没有安装 / 启动 / 设置页 / 药丸 / 工具查询的实机闭环，因此 `dshReleases["0.2.2-rc.1"]` 保持 `unknown`，README「最后验证日期」不变。另移除 `dsh.client.inject` 里在 0.2.2 安装树已不存在的 `@deepseek-ai/dsh-client-ui-slots`（信息性名单，Cordis 服务 inject 仍保留 `slots`）。
 
 ### 0.10.0 → 0.10.1 验证记录：火山方舟全面覆盖、额度查询 API、RPC 版本窗口期与设置页排序
 
