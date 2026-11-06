@@ -2,6 +2,11 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 未发布
+
+- **修复 `subusage_quota` 工具 schema 校验报 `missing required property label`**（0.24.4 发布后才修的漏网）：lossless 修复把 `label` 从「裸拷贝 undefined」改成「条件省略」，而工具 output schema 把它标为必填——Magpie 等联动的展开账号行本来就没有 label（账号名在 account 里），全量查询时所有账号行一起违约。现在依次回退：账号名 → 联动/常规表显示名 → providerId，必填字段不再留空。回归在 [test-wire-lossless.mjs](tests/test-wire-lossless.mjs) 增加 `assertToolShape`：lossless 之外再核一遍 schema 必填字段。
+- **`subusage_quota` 报告报实际额度数字，不只报百分比**：窗口行在剩余百分比后补 `（余 N unit）`——`detail.left`（magpie 回推/直接下发）→ `detail.remaining` → `used/limit` 反推；非数值口径（`leftText` 的「Unlimited」）翻中文「不限量」；上游不报告数量的窗口保持纯百分比，不补造。数字量纲与客户端 `fmtTokens` 同口径（K/M/B 分级、两位小数收位）。
+
 ## 0.24.3：宿主 Core 0.2.2-rc.1 兼容性与版本声明
 
 - **兼容宿主 Core `0.2.2-rc.1`**：`peerDependencies` 补 `>=0.2.2-0 <0.3.0-0` 分支——原有两分支按 node-semver 的预发布规则会静默排除 `0.2.2-rc.1`，安装链路会判为 peer 不满足；按「逐 minor 分支」规则把 `>=0.2.1-0 <0.3.0-0` 拆成 `>=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.3.0-0`，semver 实测 0.2.0 / 0.2.1 / 0.2.2 的预发布版均覆盖、0.3.0 仍排除。新增 `tests/test-peer-range.mjs` 守住每个 minor 的下界比较符、范围一致性与 `dshReleases` 状态。
@@ -9,8 +14,6 @@
 - 清理 `dsh.client.inject` 里在 0.2.2 安装树已不存在的 `@deepseek-ai/dsh-client-ui-slots`；该名单只是信息性包名边，Cordis 服务 inject 的 `slots` 不变。
 
 ## 0.24.4：DSH Go 原生面板、Magpie 聚合网关与 wire lossless 修复
-
-- **修复 `subusage_quota` 工具 schema 校验报 `missing required property label`**：上一项修复把 `label` 从「裸拷贝 undefined」改成「条件省略」，而工具 output schema 把它标为必填——Magpie 等联动的展开账号行本来就没有 label（账号名在 account 里），于是全量查询时所有账号行一起违约。现在依次回退：账号名 → 联动/常规表显示名 → providerId，必填字段不再留空。回归在 [test-wire-lossless.mjs](tests/test-wire-lossless.mjs) 增加 `assertToolShape`：lossless 之外再核一遍 schema 必填字段。
 
 - **修复 `subusage_quota` 全量报错「value is not lossless JSON」**：DSH typert 对工具/RPC 输出逐值校验——嵌套 `undefined` 属性、`NaN`/`Infinity`/`-0`、符号键、非普通对象、带洞数组任一处即拒整条结果。实发与潜伏共五处：火山四处 `resetsAt: fromEpoch(...)` 裸赋值（上游哨兵 `-1`/`0` → `undefined` 属性直达 `windows`）；magpie `/v1/models` 目录 `owned_by` 缺席时写成 `owned_by: undefined`；antigravity 去重 `picked.groupLabel = label || undefined`；`quota()` 白名单裸拷贝 `label`（magpie 展开的账号行没有 label）；`QUOTA_SOURCE` 符号键随 entry 到达 `readLinked`/`linkedStep`/`refresh` 客户端出口。源头逐处守卫之外，`quota()` 白名单对 `windows`/`extras`/`quotas` 统一过 `wireJson()` 兜底净化，三个客户端出口同套处理；新增 [test-wire-lossless.mjs](tests/test-wire-lossless.mjs) 用与 typert `visitJsonValue` 同口径的谓词全量扫描 `quota()`/`readLinked()` 输出。
 - **切会话后不再把别的对话的渠道当成当前额度**（含账号行徽标同口径）：magpie 的 `concurrency` / `usage/requests` 是**整机全局**遥测（DSH 不发 `X-Magpie-Session`，网关不区分会话），而药丸是**按会话**回答「当前模型还剩多少」。原先把 `routeContext.live` 无条件排在命中顺序最前，于是切到另一个对话后，前一个对话正在跑的请求就成了本会话的「正在服务」——收窄到别的渠道，本会话模型归不出组时还会一起退回聚合总览。现在遥测**先归属再采信**：`req` 与本会话当前模型一致（去掉 `auto/` / `group/` 前缀后比较）才参与命中卡、池收窄与 `cardId` 回指；对不上时只作路由行展示，并标注「其他对话的请求」。`req` 缺席时无法证伪，维持原行为。同一修正同时落在 Go 原生面板（`goPanelServingCard`）。账号行「正在服务/上次命中」徽标也走同一归属过滤（原先直接读原始 `routeContext.cardId`，别的对话在跑请求时会给别人的卡挂徽标）。另外会话切换会换掉模型目录 store，此时不再沿用上一个会话的厂商（原先会把别的对话的订阅画到本会话药丸上，直到新会话目录就绪）。回归见 [test-pill-density.mjs](tests/test-pill-density.mjs)（另一对话的在途/上次路由、本会话在途仍优先、`req` 缺席、模型归不出组退回总览）与 [test-client-behavior.mjs](tests/test-client-behavior.mjs)（切会话不沿用旧厂商）、[test-go-panel.mjs](tests/test-go-panel.mjs)。

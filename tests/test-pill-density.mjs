@@ -351,5 +351,31 @@ for (const { name, entry } of CASES) {
 	assert.ok(text.split(String.fromCharCode(10)).length <= 12, '两家报告不超过 12 行');
 }
 
+// 工具报告的窗口除了百分比还要报实际数量：detail.left/remaining 优先、used/limit 反推、
+// 非数值口径（Unlimited）翻中文；单位照上游原文，量纲按 fmtQty 分级。
+{
+	const value = {
+		providers: [{
+			providerId: 'ofm-buddy', label: 'CodeBuddy · OFM', state: 'ok', coverage: 'complete', freshness: 'fresh',
+			windows: [
+				window('5h', 40, { detail: { left: 12000, unit: 'credits' } }),
+				window('week', 82, { detail: { used: 450, limit: 2500, unit: 'credits' } }),
+				window('month', 0, { detail: { leftText: 'Unlimited' } }),
+				window('period', 10, { detail: { used: 90, limit: 1_200_000, unit: 'credits' } }),
+				window('day', 55) // 无 detail：保持纯百分比，不补造数量
+			],
+			extras: []
+		}]
+	};
+	const text = host.formatQuotaText(value);
+	const line = text.split(String.fromCharCode(10)).find(l => l.startsWith('CodeBuddy')) ?? '';
+	assert.ok(line.includes('余 12.0K credits'), 'detail.left 直接报剩余量：' + line);
+	assert.ok(line.includes('余 2.0K credits'), 'used/limit 反推剩余量：' + line);
+	assert.ok(line.includes('余 不限量'), 'leftText Unlimited 翻中文：' + line);
+	assert.ok(line.includes('余 1.20M credits'), '百万量级分级：' + line);
+	assert.ok(!/day 45% 剩余（余/.test(line), '没有数量的窗口不补数量：' + line);
+	assert.ok(line.length <= 220, `数量入报告后单家仍不超 220 字符（实际 ${line.length}）`);
+}
+
 console.log('弹层密度核验：' + report.map(row => `${row.name} ${row.lines}行/${row.chars}字/${row.folds}折`).join(' · '));
 console.log(`PASS 弹层信息密度：${CASES.length}种形态收起状态均在上限内，关键金额与窗口保持可见`);
