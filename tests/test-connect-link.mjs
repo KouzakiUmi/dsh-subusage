@@ -93,7 +93,7 @@ function harness(reply, options = {}) {
  const { service, calls } = harness(() => undefined, { resolveOfmUsage: async channel => { assert.equal(channel, 'raccoon'); ofmReads++; return ofm; } });
  const linked = await service.readLinked({ providerIds: ['raccoon'], force: false });
  assert.equal(linked.entries[0].providerId, 'raccoon');
- assert.equal(linked.entries[0].ofmAccounts.length, 2);
+ assert.equal(linked.entries[0].linkedAccounts.length, 2);
  assert(linked.entries[0].label.includes('OFM'));
  assert(calls[0].url.pathname === '/plugins/dsh-raccoon-connect/status');
  const report = await service.quota({ providerIds: ['小浣熊'] });

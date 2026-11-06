@@ -692,6 +692,21 @@ directoryState={status:"ready",current:{provider:"kimi-coding"}};
 assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps).props.providerId,"kimi-coding");
 directoryState={status:"ready",current:{provider:"unsupported-model"}};assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps),null);
 directoryState={status:"ready",current:null};assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps),null);wrapper.unmount();
+// 切会话 = 换了会话模型目录 store：新会话目录还在 loading 时不得沿用上一个会话的厂商，
+// 否则会把别的对话的订阅额度画到本会话的药丸上。同一会话内的 loading 暂态仍保留已知选择。
+{
+ const snapA={status:"ready",current:{provider:"openai-codex"}},snapB={status:"loading",current:null};
+ const storeA={subscribe:()=>()=>{},getSnapshot:()=>snapA},storeB={subscribe:()=>()=>{},getSnapshot:()=>snapB};
+ const switcher=new Hooks();
+ const props={...wrapperProps,store:storeA};
+ assert.equal(switcher.render(api.SubusagePillEntry,props).props.providerId,"openai-codex");
+ assert.equal(switcher.render(api.SubusagePillEntry,{...props,store:storeB}),null,"切到新会话且其目录未就绪时不得沿用上一个会话的厂商");
+ snapB.status="ready";snapB.current={provider:"kimi-coding"};
+ assert.equal(switcher.render(api.SubusagePillEntry,{...props,store:storeB}).props.providerId,"kimi-coding","新会话就绪后按它自己的选择显示");
+ snapA.status="loading";snapA.current=null;
+ assert.equal(switcher.render(api.SubusagePillEntry,props),null,"切回原会话且其目录 loading 时同样不沿用另一个会话的厂商");
+ switcher.unmount();
+}
 console.log("PASS provider management switches/no-dropdown/filtering/persistence payloads/dirty guard/pill subscription/race + refresh lock isolation");
 
 // 完整包装层 + store：模型已选中即证明路由存在，但不能放宽设置页或检测开关。

@@ -2,7 +2,7 @@
 
 ## 1. 目标与授权边界
 
-目标 API 为 DeepSeek Harness `0.2.x` 公开扩展面，peer 范围为 `>=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-0 <0.3.0-0`（双分支各自带预发布标签，否则 0.2.1-alpha.x 被静默排除）。范围声明与真实运行验证分别记录。本项目是树外 Host/Client bundle，`cordis.patch.yml` 插入 `subusage`，不修改核心、安装树或 ASAR；只依赖公开服务与核心包公开导出，不依赖桌面壳版本。
+目标 API 为 DeepSeek Harness `0.2.x` 公开扩展面，peer 范围为 `>=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.3.0-0`（逐 minor 分支各自带预发布标签，否则该档的预发布 Core 被静默排除）。范围声明与真实运行验证分别记录。本项目是树外 Host/Client bundle，`cordis.patch.yml` 插入 `subusage`，不修改核心、安装树或 ASAR；只依赖公开服务与核心包公开导出，不依赖桌面壳版本。
 
 工作区开发、安装启用、依赖安装/构建授权与重启是不同操作。修改并通过测试不代表运行环境已经生效。
 
@@ -40,9 +40,27 @@ DSH Go 的 `panel` 网页岛使用文档流展开详情，按内容撑高并由�
 
 纯余额多账号药丸按用户选择显示同单位总额度，`viewAccount` 仅控制弹层查看对象，药丸保持总览；不同单位分别求和，有失败/旧缓存/缺数字时显示已读小计与覆盖账号数。窗口型使用代表账号自己的窗口，百分比不相加。TRAE 页面与工具保持直取优先，不拼接不同 ID 域的账号。`normalizeEac` 的多账号 coverage 按逐账号成功与完整性归并。工具在展开账号时通过 Host 内的 `QUOTA_SOURCE` Symbol 按来源/渠道/accountId去重，公开 RPC/JSON 不输出该标记。实读脱敏数值回放见 `tests/test-linked-info.mjs`，320 / 1200px 深浅主题离线检查运行 `node scripts/check-linked-info.mjs`；密度表同时覆盖单账号、多账号与五账号平铺，单行 flex 账号按钮按真实排版计一行。
 
+### Magpie 本地聚合网关联动
+
+- **通道**：`via: "magpie"`，Host 进程内直接 `fetch` 回环 `GET`（默认 `http://127.0.0.1:3425`，`magpieOrigin` 可注入）。回环额度接口免鉴权（与推理 `MAGPIE_GATEWAY_KEY` 无关）；只发只读 GET，**不** POST `/refresh`，主动刷新也只用 `kept=1` 读网关已缓存快照（`?kept=0` 会触发全部卡片重查，本插件不使用）。四个端点：`/v1/magpie/quotas`（卡）、`/v1/magpie/usage/requests`（请求日志，`?period=30d&limit=50`）、`/v1/magpie/concurrency`（在途）、`/v1/models`（组模型归组）。后三个失败分别降级为空集合/空目录，额度读取本身失败才算缺席。
+- **不归并**：不是 provider、不进 `CLIENT_FETCH_VIA`（页面拿不到宿主的进程内连接也无浏览器 cookie 需求，Host 直取即可）；`readLinked` / `quota` / 点名别名（`magpie` / `magpie-responses` / `magpie-anthropic` / `yetone/magpie`）走既有 `linkedProvider` 分发，缺席给安装指引（网关没起 = 通道不存在）。`cordis.patch.yml` 的 `magpie` / `magpie-responses` / `magpie-anthropic` 路由经 `ROUTE_PROVIDER_ALIAS` 归到 `magpie`。
+- **卡视图**：`normalizeMagpie` 把 `data[]` 每张订阅卡归一成 `linkedAccounts` 一行：`providerGroup`/`providerName` 分组的键与显示名（组头「`name` · N 张额度卡」），`account` =「`name · user`」，`accountId` = `magpie:<provider>:<user>#<idx>`（同 provider 同用户多套餐靠序号区隔），`last:true` → `accountActive` + `accountMode:"auto"`；`used`/`remaining` 是 0–100 的**已用**百分比，写进 `windows[].percent`；窗口名经 `magpieWindowKind` 先按已知名、再按「读数到重置点的时长」归一到 5h/day/week/month/period。读数超 24h → `freshness:"stale"`；`error` 卡保留成行（state error），`data:[]` → `null`（点名时给「没有可读卡片」而非安装指引）。
+- **路由上下文**：`magpieEntry` 把 `concurrency.active` 里 `agent==="dsh"` 的在途行或 `usage/requests` 里最近一次 `agent==="dsh"` 请求折成 `entry.routeContext`（live 优先；`providerAccount` 按 providerGroup+user 回指 `cardId`）。live 不继承 recent 的 `cardId/account/model/status/at`，Client 也拒绝跨 `providerGroup` 的旧 `cardId`，防止在途换渠道后焦点退回上一张卡。**不猜 auto/group 组的真实上游**：`/v1/models` 的 `owned_by` 只用于当前选择的显示映射，`/v1/magpie/route?session=` 要求 `X-Magpie-Session` 而 DSH 不发；组内实际上游在请求时才定，没有日志就说「暂无路由记录」。Client `UsagePill` 收 `modelId`：具体模型先按 `provider/` 前缀归组，组模型再查 `owned_by`；`LinkedAccountList` 按 `providerGroup` 分组平铺 + 焦点组（live/当前模型/recent/last-served/选中）置顶。有命中卡时只平铺焦点组（`servingOnly`），其余组收进 `details`；无命中或账号数 >12 时也按同一密度预算折叠。
+- 回归：`tests/test-magpie-link.mjs`（归一化、Antigravity 周期/未知池去重、leftText 双轨、live/recent 隔离、模型目录、缺席/0 卡/在场语义、quota 展开、reader 缓存与 kept=1）、`tests/test-pill-density.mjs`（渠道分组与折叠、具体/auto/group 模型归组、跨渠道旧 cardId、中文额度名）。真实形状依据 magpie 0.x `/v1/magpie/*` 与 `/v1/models` 响应在本机 3425 实测。
+
+### QuotaEntry 统一 wire 契约
+
+所有 provider / 联动 / 聚合器在 wire 上只有一种额度形状，单一事实源在 [quota-entry.js](../lib/quota-entry.js)，契约全文见 [quota-entry.md](quota-entry.md)。
+
+- **组合模型**：`QuotaEntry.quotas[]` + `linkedAccounts[].quotas[]`，元素类型 `window`（百分比窗口）/ `amount`（余额·附赠·钱包·套餐·花费，按 `role` 分）/ `package`（额度包）/ `plan` / `status` / `note`；组合维度是「账户 × 池 × 元素」，池由 `pool`/`poolLabel` 标。元素 `id` 稳定身份；`poolScope:"independent"` 才声明独立预算（Antigravity 是唯一生产者，groupLabel 不自动升级）；`amount.unitId` 是聚合键（`unitIdOf()` 同义归一，未知单位不猜）；`componentOf` 元素是总额分项、合计跳过（Trae Work/通用积分 ⊆ available）；`diagnostics[]` 留规范化丢弃/降级记录。
+- **provider 只喂数据**：每元素自声明 `order`/`label`/`amount.unit`（原文单位 + 可选 `unitKind` 白名单 cash/credit/token/quota）；状态推断、覆盖率、阈值告警、布局、i18n、密度全部由管线与渲染端口管。枚举只按白名单收，认不出丢或归安全值，不猜。
+- **边界收编 `canonicalizeEntry()`**：`provider()` 缓存前、`linkedProvider()` 返回、`quota()` 未知条目统一调用——`ofmAccounts`→`linkedAccounts` 折叠（wire 上不再有 ofmAccounts）、quotas↔windows/extras 双向补齐、Symbol 键与未知字段透传。**`quotas` 在场即权威**（含显式 `[]`）：数组存在就按它派生 legacy，整体缺席才从 windows/extras 转。`windows`/`extras` 保留「缺席 ≠ 空」（错误条目不得带陈旧数据），`quotas` 恒为数组。
+- **渲染端口按字段在场触发，不查 providerId**：`routeContext`（含空对象）→ 路由行，`linkedAccounts` → `LinkedAccountList` 分组账号区，window 元素 `poolScope:"independent"`（旧条目按 antigravity 兜底）→ 分池窗，`accountPool` → CC 轮换池，`subscribed`+routeKind → OpenDesign 计费标注。`readAmounts` 结构化金额选择器 quotas 优先、extras 文本兜底；多账号合计按 `unitId` 分组。
+- 双轨期：`quotas` 是规范形状，`windows`/`extras` 是渲染现行消费形状，并存由 canonicalize 保证一致；归一化器逐步迁到只产 quotas（EAC / credit-packages / Trae CN / WorkBuddy / OFM / Antigravity 两通道 / Magpie / ApiGoto 已产原生）。`quota()` 对外投影已下发 `quotas` 并在工具 output schema 声明。回归见 [test-quota-schema.mjs](../tests/test-quota-schema.mjs)。
+
 ### Antigravity 独立额度池
 
-- `groupLabel` 标识原始额度池；同池内以最紧窗口判断，跨池按实际报告的组数汇总。部分池耗尽为黄色提醒，全部已报告池耗尽才标红；缓存、部分数据与失败状态仍显示相应提示。
+- `normalizeAntigravity` / `normalizeAntigravityAuthView` 给每条窗口标 `poolScope:"independent"`（全仓唯一生产者），派生 `groupLabel` 标识原始额度池；同池内以最紧窗口判断，跨池按实际报告的组数汇总。部分池耗尽为黄色提醒，全部已报告池耗尽才标红；缓存、部分数据与失败状态仍显示相应提示。`independentPools()` 由 `poolScope` 声明驱动，quotas 缺席的旧条目按 antigravity 兜底。
 - `statusBanner()` 对分池状态采用紧凑单行结论，不重复 `computeStatus().sub` 的逐池百分比和重置摘要；这些详情保留在窗口卡片及药丸悬浮/无障碍说明。读取失败、缓存提示和其他订阅的状态依据继续正常展示。
 - Client 的 `displayGroupLabel()` 仅转换已知名称：Gemini、Claude/GPT 与 `gemini-argon`，中英文同步，未知组名原样显示。Host 的池标识和取数通道保持一致。
 - `tests/test-client-antigravity-link.mjs` 从两个 Host 归一化入口到真实药丸组件覆盖分池计数、多窗口、同名非相邻窗口、可读名称、全部耗尽与缓存/失败回归。
@@ -69,16 +87,18 @@ DSH Go 的 `panel` 网页岛使用文档流展开详情，按内容撑高并由�
 **只依赖公开扩展 API 面**，不碰内部组件、不依赖桌面壳（Electron）版本——这是 0.2.x 各 Core 实际全兼容的原因：
 
 - Host（`lib/index.js`）只 import 四个核心包的公开导出：`defineTool`（dsh-tools）、`TypertRemoteService` / `RemoteError`（dsh-typert-protocol）、`credentialKey` / `credentialRef` / `isCredentialRefName`（dsh-credentials）、`launchEnvironmentOf`（dsh-launch-environment），外加 Cordis 服务 `llm`。
-- Client（`lib/client.js`）只 require 宿主注入的 `react`，通过 `dsh.client.inject` 声明 client 基座公开模块（client-locale、client-ui-settings、client-ui-slots、api-gateway、api-remotes、api-session-controller、client-ui-model-selection），UI 全走 slots。
+- Client（`lib/client.js`）只 require 宿主注入的 `react`，通过 `dsh.client.inject` 声明 client 基座公开模块（client-locale、client-ui-settings、api-gateway、api-remotes、api-session-controller、client-ui-model-selection），UI 全走 slots。
 - 适配新能力时先找公开服务与导出；公开面没有的能力不做，不用内部通道绕。
 
-**peer 逐 minor 分支规则**：`>=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.3.0-0`。node-semver 只在**某个比较符与目标版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时才放行预发布版本，所以单分支 `>=0.2.0-rc.1 <0.3.0-0` 会**静默排除** `0.2.1-alpha.x`（0.8.1~0.10.7 的历史教训——当时靠 DSH 安装链路不阻断 peer 才没出事），两分支 `… || >=0.2.1-0 <0.3.0-0` 又会排除 `0.2.2-rc.1`（2026-11-05 在本机 Core `0.2.2-rc.1` 上用 semver 实测复核）。必须为每个 minor 元组各写一个带预发布标签的下界；Core 升 0.2.3 或 0.3.x 且 API 面未变时，按同样规则新增 `>=0.2.3-0 <0.3.0-0` / `>=0.3.0-0 <0.4.0-0` 分支，而不是放宽成单分支。
 
-**`dsh.compatibility.dshReleases` 是实测证据记录，不是依赖声明**。标 `compatible` 的标准是有实机运行证据：六步闭环（install→dump-config→start→api-smoke→ui-readback→uninstall→rollback）**或**日常实机运行 + 核心包静态核对；无证据一律 `unknown`，没有证据不猜。当前证据：`0.2.1-alpha.1` 六步闭环（0.10.8）；`0.2.1-alpha.2` 日常实机运行（Desktop Core，0.10.8~0.10.11）；`0.2.0-rc.2` 被 v0.1.0~v0.3.0 三个发布版本精确锁定运行；`0.2.0-rc.1` 无直接记录，维持 `unknown`；`0.2.2-rc.1` 只有静态核对、未实机安装，维持 `unknown`。
+**peer 逐 minor 分支规则**：`>=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.3.0-0`。node-semver 只在**某个比较符与目标版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时才放行预发布版本，所以单分支 `>=0.2.0-rc.1 <0.3.0-0` 会**静默排除** `0.2.1-alpha.x`（0.8.1~0.10.7 的历史教训——当时靠 DSH 安装链路不阻断 peer 才没出事），两分支 `… || >=0.2.1-0 <0.3.0-0` 又会排除 `0.2.2-rc.1`。2026-11-06 在本机用 semver 7.7.3 实测：`0.2.2-rc.1` 旧范围 `false`、新范围 `true`，其余版本（0.2.0-rc.1/rc.2、0.2.1-alpha.1/alpha.2、0.2.2）判定不变，`0.3.0-0`/`0.3.0` 仍排除。必须为每个 minor 元组各写一个带预发布标签的下界；Core 升 0.2.3 或 0.3.x 且 API 面未变时，按同样规则新增 `>=0.2.3-0 <0.3.0-0` / `>=0.3.0-0 <0.4.0-0` 分支，而不是放宽成单分支。`tests/test-peer-range.mjs` 守住这条规则（纯文本核对，不引入 semver 依赖）。
+
+**`dsh.compatibility.dshReleases` 是实测证据记录，不是依赖声明**。标 `compatible` 的标准是有实机运行证据：六步闭环（install→dump-config→start→api-smoke→ui-readback→uninstall→rollback）**或**日常实机运行 + 核心包静态核对；无证据一律 `unknown`，没有证据不猜。当前证据：`0.2.1-alpha.1` 六步闭环（0.10.8）；`0.2.1-alpha.2` 日常实机运行（Desktop Core，0.10.8~0.10.11）；`0.2.0-rc.2` 被 v0.1.0~v0.3.0 三个发布版本精确锁定运行；`0.2.0-rc.1` 无直接记录，维持 `unknown`；`0.2.2-rc.1` 日常实机运行（本机 Desktop Core `0.2.2-rc.1`，DSH NEXT 2.0.22-next：药丸与弹层渲染、设置页、`subusage_quota` 查询均正常）+ 核心包公开导出静态核对，标 `compatible`——注意这里与上游 0.24.3 的取值不同（上游只有静态核对、记 `unknown`），本仓库按本机实机运行证据取值。`dsh.client.inject` 里的 `@deepseek-ai/dsh-client-ui-slots` 已按 0.2.2 安装树清理（信息性名单；Cordis 服务层面的 `slots` 注入不变，UI 仍全走 slots）。
+
 
 **适配新 Core 版本的核对清单**：
 
-1. 读目标 Core 的 manifest 确认版本号；确认 peer 双分支是否覆盖（不覆盖则按上面的规则加分支）。
+1. 读目标 Core 的 manifest 确认版本号；确认 peer 逐 minor 分支是否覆盖（不覆盖则按上面的规则加分支）。
 2. 静态核对四个核心包的版本与公开导出仍存在（`defineTool` 等）。
 3. 实机跑一轮：安装/升级 → 设置页渲染 → 药丸 → `subusage_quota` 查询。
 4. 按证据更新 `dshReleases`、README 兼容表与本文件「最后验证汇总」；证据不足就保持 `unknown` 并写明缺什么。
@@ -321,7 +341,7 @@ node scripts/render-market-screenshots.mjs
 
 **2026-10-11 兼容声明更新**：`0.2.1-alpha.2` 与 `0.2.0-rc.2` 升为 `compatible`。依据是实机运行证据而非六步闭环——本机 Desktop Core 现为 `0.2.1-alpha.2`（`C:\Program Files\DSH NEXT\resources\app\node_modules\@deepseek-ai\dsh\package.json`），0.10.8 ~ 0.10.11 在其上日常运行（含设置页、药丸、`subusage_quota` 查询）均正常，静态核对 `@deepseek-ai/dsh-tools` / `dsh-typert-protocol` 仍为 `0.2.1-alpha.2` 且导出 `defineTool`；`0.2.0-rc.2` 则有 v0.1.0 ~ v0.3.0 三个发布版本精确锁定它运行的记录。插件只依赖 Core 的公开扩展 API 面（Cordis 服务与核心包公开导出），不碰内部组件、不依赖桌面壳版本，这是 0.2.x 各版本实际全兼容的原因。`0.2.0-rc.1` 没有直接运行记录，维持 `unknown`。
 
-**最后验证汇总**：Core `0.2.1-alpha.2`，日期 `2026-10-11`（日常实机运行 + 离线浏览器检查 + 全量回归）；在线接口与真实账号的最近一轮实测见 0.10.10/0.10.11 各节。打开设置页的首次读取自 0.13.0 起是 `readSettings()`（`read({providerIds:[], force:false})`，只读本机元数据、不查询任何额度端点），各提供商按需加载；整页开关在拿到 revision 前保持禁用，上限为 Client 20 秒 RPC deadline。
+**最后验证汇总**：Core `0.2.2-rc.1`，日期 `2026-11-06`（本机 Desktop Core 日常实机运行 + 全量回归 + 核心包公开导出静态核对；**未**做六步安装闭环，也**未**重跑离线浏览器像素检查）；上一轮完整验收为 Core `0.2.1-alpha.2`、`2026-10-11`（日常实机运行 + 离线浏览器检查 + 全量回归）；在线接口与真实账号的最近一轮实测见 0.10.10/0.10.11 各节。打开设置页的首次读取自 0.13.0 起是 `readSettings()`（`read({providerIds:[], force:false})`，只读本机元数据、不查询任何额度端点），各提供商按需加载；整页开关在拿到 revision 前保持禁用，上限为 Client 20 秒 RPC deadline。
 
 **2026-11-05 静态核对（不计入实机验证）**：本机宿主 Core `0.2.2-rc.1`，四个核心包的 7 个公开导出与 client 基座模块逐一核对仍在，`slots` 服务由 `dsh-cordis-client-runner` 提供；`npm run check` 全通过。但插件未安装到该 Core 的 web profile，没有安装 / 启动 / 设置页 / 药丸 / 工具查询的实机闭环，因此 `dshReleases["0.2.2-rc.1"]` 保持 `unknown`，README「最后验证日期」不变。另移除 `dsh.client.inject` 里在 0.2.2 安装树已不存在的 `@deepseek-ai/dsh-client-ui-slots`（信息性名单，Cordis 服务 inject 仍保留 `slots`）。
 

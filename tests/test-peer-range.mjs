@@ -36,11 +36,16 @@ const ranges = new Set(peers.map(([, range]) => range));
 if (ranges.size !== 1) fail(`核心包 peer 范围不一致：${[...ranges].join(" | ")}`);
 else ok("核心包 peer 范围一致");
 
-// 兼容声明：新 Core 只做静态核对、未实机运行，必须保持 unknown。
+// 兼容声明按实机运行证据取值：0.2.2-rc.1 本机 Desktop Core 日常运行正常
+// （药丸 / 设置页 / 工具查询 + 全量回归 + 核心包公开导出静态核对），故标 compatible；
+// 与上游 0.24.3 的 unknown 有意不同——上游当时只有静态核对。将来换 Core 版本时按同样口径取证。
 const releases = pkg.dsh?.compatibility?.dshReleases || {};
-if (releases["0.2.2-rc.1"] !== "unknown") {
-	fail(`dshReleases["0.2.2-rc.1"] 应为 unknown（无实机运行证据），实际 ${releases["0.2.2-rc.1"]}`);
-} else ok('dshReleases["0.2.2-rc.1"] = unknown（未实机验证，不猜）');
+if (releases["0.2.2-rc.1"] !== "compatible") {
+	fail(`dshReleases["0.2.2-rc.1"] 应为 compatible（本机实机运行证据），实际 ${releases["0.2.2-rc.1"]}`);
+} else ok('dshReleases["0.2.2-rc.1"] = compatible（本机实机运行 + 静态核对）');
+for (const [version, state] of Object.entries(releases)) {
+	if (!["compatible", "unknown"].includes(state)) fail(`dshReleases["${version}"] 取值只能是 compatible / unknown，实际 ${state}`);
+}
 
 // client.inject 是信息性名单，不应保留新 Core 安装树里已不存在的基座包名。
 const inject = pkg.dsh?.client?.inject || [];

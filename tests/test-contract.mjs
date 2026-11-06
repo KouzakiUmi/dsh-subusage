@@ -92,7 +92,7 @@ assert.deepEqual(linkedClient.parameters[0].codec.schema.parse({ providerIds: ['
 for (const id of ['raccoon', 'loomy', 'qoder', 'qodercn', 'lobsterai', 'trae', 'cline', 'minimax', 'zcode', 'gemini'].map(channel => `ofm-${channel}`)) {
  for (const contract of [linkedHost, linkedClient]) assert.equal(contract.parameters[0].codec.schema.parse({ providerIds: [id], force: false }).providerIds[0], id, `${id} 联动白名单双端同步`);
 }
-for (const id of ['workbuddy', 'workbuddy-global', 'trae', 'trae-global', 'trae-enterprise', 'raccoon', 'loomy']) {
+for (const id of ['magpie', 'workbuddy', 'workbuddy-global', 'trae', 'trae-global', 'trae-enterprise', 'raccoon', 'loomy']) {
  for (const contract of [linkedHost, linkedClient]) assert.equal(contract.parameters[0].codec.schema.parse({ providerIds: [id], force: false }).providerIds[0], id, `${id} 独立插件联动白名单双端同步`);
 }
 assert.throws(() => linkedClient.parameters[0].codec.schema.parse({ providerIds: ['deepseek'], force: false }), 'Client 出站请求拒绝非联动 id');

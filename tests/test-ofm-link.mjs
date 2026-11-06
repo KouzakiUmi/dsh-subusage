@@ -14,13 +14,13 @@ const sample = snapshot('raccoon', [row('a', '账号甲', 6600, [pack('奖励积
  assert.equal(result.state, 'ok');
  assert.deepEqual(result.windows, []);
  assert.deepEqual(result.extras, [], '多账号没有相加后的余额');
- assert.equal(result.ofmAccounts.length, 2);
- assert.deepEqual(result.ofmAccounts.map(a => a.extras[0].value), ['6600 积分', '6300 积分']);
- assert(result.ofmAccounts.every(a => a.windows.length === 0), '余额快照不编造总容量/百分比');
- assert(result.ofmAccounts[0].extras.some(x => x.value === '周期 / 套餐额度：600 积分'));
- assert(result.ofmAccounts[0].extras.some(x => x.value === '临时额度合计：6000 积分'));
- assert(result.ofmAccounts[0].extras.every(x => !x.value.includes('每日积分：') && !x.value.includes('奖励积分：')), '不再逐包列成长清单');
- assert(result.ofmAccounts.every(a => a.extras.every(x => Object.keys(x).sort().join(',') === 'kind,value')), 'extras 遵守工具输出白名单');
+ assert.equal(result.linkedAccounts.length, 2);
+ assert.deepEqual(result.linkedAccounts.map(a => a.extras[0].value), ['6600 积分', '6300 积分']);
+ assert(result.linkedAccounts.every(a => a.windows.length === 0), '余额快照不编造总容量/百分比');
+ assert(result.linkedAccounts[0].extras.some(x => x.value === '周期 / 套餐额度：600 积分'));
+ assert(result.linkedAccounts[0].extras.some(x => x.value === '临时额度合计：6000 积分'));
+ assert(result.linkedAccounts[0].extras.every(x => !x.value.includes('每日积分：') && !x.value.includes('奖励积分：')), '不再逐包列成长清单');
+ assert(result.linkedAccounts.every(a => a.extras.every(x => Object.keys(x).sort().join(',') === 'kind,value')), 'extras 遵守工具输出白名单');
  assert.equal(normalizeOfm({ ...sample, generatedAt: now - 300000 }, 'ofm-raccoon', now).freshness, 'stale');
  assert.throws(() => normalizeOfm(sample, 'ofm-loomy', now), /形状/);
  assert.equal(normalizeOfm(snapshot('loomy', []), 'ofm-loomy', now), null);
@@ -33,17 +33,17 @@ const sample = snapshot('raccoon', [row('a', '账号甲', 6600, [pack('奖励积
   { id: 'new', nickname: '新账号', enabled: true, authStatus: 'unknown' }
  ];
  const result = normalizeOfm({ ...sample, accountMetadata: metadata, preference: 'auto' }, 'ofm-raccoon', now);
- assert.deepEqual(result.ofmAccounts.map(a => a.accountId), ['a', 'b', 'disabled', 'new']);
- assert.deepEqual(result.ofmAccounts.slice(0, 2).map(a => a.account), ['相同昵称', '相同昵称']);
- assert.deepEqual(result.ofmAccounts.slice(0, 2).map(a => a.extras[0].value), ['6600 积分', '6300 积分'], '同名账号仍按ID关联额度');
- assert.equal(result.ofmAccounts[1].authStatus, 'missing');
- assert.equal(result.ofmAccounts[1].freshness, 'stale', '删除凭据后的提供方缓存不当成新鲜鉴权成功');
- assert.equal(result.ofmAccounts[2].state, 'disabled');
- assert.deepEqual(result.ofmAccounts[2].extras, []);
- assert.equal(result.ofmAccounts[3].state, 'error', '新账号未出现在旧徽标里时不借其他账号额度');
- assert(!result.ofmAccounts.some(a => 'accountMode' in a || 'accountActive' in a), '徽标auto不是账号选择模式');
+ assert.deepEqual(result.linkedAccounts.map(a => a.accountId), ['a', 'b', 'disabled', 'new']);
+ assert.deepEqual(result.linkedAccounts.slice(0, 2).map(a => a.account), ['相同昵称', '相同昵称']);
+ assert.deepEqual(result.linkedAccounts.slice(0, 2).map(a => a.extras[0].value), ['6600 积分', '6300 积分'], '同名账号仍按ID关联额度');
+ assert.equal(result.linkedAccounts[1].authStatus, 'missing');
+ assert.equal(result.linkedAccounts[1].freshness, 'stale', '删除凭据后的提供方缓存不当成新鲜鉴权成功');
+ assert.equal(result.linkedAccounts[2].state, 'disabled');
+ assert.deepEqual(result.linkedAccounts[2].extras, []);
+ assert.equal(result.linkedAccounts[3].state, 'error', '新账号未出现在旧徽标里时不借其他账号额度');
+ assert(!result.linkedAccounts.some(a => 'accountMode' in a || 'accountActive' in a), '徽标auto不是账号选择模式');
  const removed = normalizeOfm({ ...sample, accountMetadata: [metadata[0]] }, 'ofm-raccoon', now);
- assert.deepEqual(removed.ofmAccounts.map(a => a.accountId), ['a'], '实时索引移除已经删除的缓存账号');
+ assert.deepEqual(removed.linkedAccounts.map(a => a.accountId), ['a'], '实时索引移除已经删除的缓存账号');
  const hidden = normalizeOfm({ ...sample, accountMetadata: [metadata[2]] }, 'ofm-raccoon', now);
  assert.equal(hidden.state, 'disabled');
  const privateName = normalizeOfm(snapshot('loomy', [row('mail', 'alice@example.com', 1, [pack('积分', 1)])]), 'ofm-loomy', now);
@@ -180,8 +180,8 @@ function connectionFixture(answer = provider => provider === 'raccoon' ? sample 
  const value = normalizeOfm(await legacy.read('raccoon', false), 'ofm-raccoon', now);
  assert.equal(value.state, 'ok', '账号枚举接口不可用仍保留成功额度');
   assert.equal(value.coverage, 'partial', '枚举失败明确标部分数据，不等同于旧版接口缺席');
-  assert(value.ofmAccounts.every(a => a.coverage === 'partial' && a.error.includes('账号索引读取失败')));
- assert(value.ofmAccounts.every(a => a.authStatus === 'unknown'));
+  assert(value.linkedAccounts.every(a => a.coverage === 'partial' && a.error.includes('账号索引读取失败')));
+ assert(value.linkedAccounts.every(a => a.authStatus === 'unknown'));
  assert(!JSON.stringify(value).includes('METADATA_SECRET'));
  await legacy.dispose();
 }
@@ -200,8 +200,8 @@ function connectionFixture(answer = provider => provider === 'raccoon' ? sample 
   const result = normalizeOfm(await reader.read('raccoon', false), 'ofm-raccoon', now);
   assert.equal(result.state, 'ok', `${name}不丢弃独立成功额度`);
   assert.equal(result.coverage, coverage, name);
-  assert(result.ofmAccounts.every(account => account.coverage === coverage && account.authStatus === 'unknown'), name);
-  assert.deepEqual(result.ofmAccounts.map(account => account.extras[0].value), ['6600 积分', '6300 积分'], name);
+  assert(result.linkedAccounts.every(account => account.coverage === coverage && account.authStatus === 'unknown'), name);
+  assert.deepEqual(result.linkedAccounts.map(account => account.extras[0].value), ['6600 积分', '6300 积分'], name);
   assert.equal(result.freshness, 'fresh', '成功额度采样的时效与账号索引覆盖分别表述');
   assert.equal(Boolean(result.error), coverage === 'partial', name);
   assert(!JSON.stringify(result).includes('PRIVATE_INDEX_ERROR'));
@@ -217,7 +217,7 @@ function connectionFixture(answer = provider => provider === 'raccoon' ? sample 
  assert.deepEqual(result.providers.map(p => p.providerId), ['ofm-raccoon', 'ofm-raccoon']);
  assert(result.providers.every(p => !('ofmAccounts' in p) && !('accountActive' in p) && !('accountMode' in p)), '工具不推断当前服务账号或轮换方式');
  const pill = await service.readLinked({ providerIds: ['ofm-raccoon'], force: false });
- assert.equal(pill.entries[0].ofmAccounts.length, 2);
+ assert.equal(pill.entries[0].linkedAccounts.length, 2);
  assert(!('settings' in pill));
  for (const id of OFM_IDS) {
   assert.equal(PROVIDERS[id], undefined, 'OFM 不创建凭据槽');

@@ -155,10 +155,10 @@ const quota = { state: "ok", coverage: "complete", freshness: "fresh", windows: 
 const renderPill = (entry, open = false) => { states = [entry ? { entry, updatedAt: 0 } : null, null, undefined, false, open]; index = 0; return UsagePill({ providerId: M, label: "MiMo", readEntry: () => {}, t, getLocale }); };
 const json = (node) => JSON.stringify(node);
 
-// 药丸正常态只画彩色余量条、不写字也不写百分比；数字收进 title / aria-label，点开弹层才是大字余量。
+// 药丸正常态画彩色余量条 + 最紧窗剩余百分比：额度数字直接可见，不用点开才看得到。
 const calm = renderPill(quota);
-assert.equal(text(calm).trim(), "", "余量充足时药丸不显示任何文字");
-assert.ok(json(calm).includes("75% left"), "余量数字仍在 title / aria-label 中");
+assert.equal(text(calm).trim(), "75%", "余量充足时药丸直接显示剩余百分比");
+assert.ok(json(calm).includes("75% left"), "完整文案仍在 title / aria-label 中");
 assert.ok(text(renderPill(quota, true)).includes("Plenty left"), "弹层顶部横幅先给出「额度充足」的结论");
 assert.ok(!json(renderPill({ ...quota, ...inMs(5 * 60 * 60 * 1000) })).includes("Cookie expires in"), "未到提醒窗口不打扰用户");
 const soon = renderPill({ ...quota, ...inMs(90 * 60 * 1000) });
@@ -180,7 +180,7 @@ assert.ok(!text(renderPill(quota, true)).includes("Expires "), "无计时记录�
 for (const left of [90 * 60 * 1000, -60 * 1000]) {
 	const renewable = { ...quota, ...inMs(left), cookieRenewable: true };
 	assert.equal(cookieExpiry(renewable, t), null, "扫码续期材料有效时，Cookie 临近到期或过期都不告警");
-	assert.equal(text(renderPill(renewable)).trim(), "", "自动续期不产生药丸告警文案");
+	assert.equal(text(renderPill(renewable)).trim(), "75%", "自动续期不产生药丸告警文案，只留余量百分比");
 	assert.ok(!text(renderPill(renewable, true)).includes("Cookie expire"), "弹层也不显示需人工处理的 Cookie 到期提示");
 }
 

@@ -233,7 +233,10 @@ const settingsResult = (antigravity = true, entries = []) => ({ updatedAt: new F
 	assert.equal(statusFor({ ...entry, coverage: "partial" }).title, api.zh.statusPartial);
 	assert.equal(statusFor({ ...allLimited, coverage: "partial" }).title, api.zh.statusPartial, "部分数据不能直接宣告全部额度池用尽");
 	assert.equal(statusFor({ ...entry, state: "error", windows: [], freshness: "unknown" }).key, "error");
-	assert.equal(statusFor(allLimited, api.zh, "kimi-coding").key, "blocked", "普通订阅仍按共享约束的最差窗判断");
+	// 池语义由配额元素声明（poolScope），不再查 providerId：同一份 independent 数据换 provider 仍是分池；
+	// 只有 quotas 缺席的旧条目才走 antigravity 兼容兜底——换 provider 则退回共享约束最差窗。
+	assert.equal(statusFor(allLimited, api.zh, "kimi-coding").key, "independent-pools", "分池语义跟数据走，不跟 providerId");
+	assert.equal(statusFor({ ...allLimited, quotas: undefined }, api.zh, "kimi-coding").key, "blocked", "quotas 缺席且非 antigravity：共享约束最差窗");
 	assert.equal(statusFor({ ...entry, windows: [entry.windows[2]] }).short, "1/1 池用尽", "只计上游实际报告的池，不补造另外两池");
 	assert.equal(api.displayGroupLabel("Future pool", t), "Future pool", "未知池保留提供方名称，不误并到 Gemini");
 	const interleaved = { ...entry, windows: [entry.windows[0], entry.windows[2], entry.windows[1], entry.windows[3]] };
@@ -261,7 +264,17 @@ const settingsResult = (antigravity = true, entries = []) => ({ updatedAt: new F
 	assert.ok(!textOf(tree).includes("最紧张"));
 	assert.ok(!textOf(tree).includes("额度已用尽"), "不能退回整个订阅耗尽的横幅");
 	const dialog = tree.children.find(node => node.props?.role === "dialog");
-	const banner = dialog.children.find(node => node.props?.role === "status");
+	// 头部（标题 + 横幅）钉在 sticky 容器里，横幅是它的后代而不是 dialog 直接子元素。
+	const sticky = dialog.children.find(node => node.props?.style?.position === "sticky");
+	assert.ok(sticky, "弹层头部 sticky 容器存在");
+	const banner = (function findStatus(nodes) {
+		for (const node of nodes) {
+			if (node.props?.role === "status") return node;
+			const hit = node.children && findStatus(node.children);
+			if (hit) return hit;
+		}
+		return null;
+	})(sticky.children);
 	assert.equal(textOf(banner).trim(), "⚠ 部分额度池已用尽");
 	assert.equal(banner.props.style.borderRadius, 12, "药丸弹层横幅保持统一圆角");
 	assert.ok(!textOf(banner).includes("66.2%") && !textOf(banner).includes("后重置"));
@@ -269,7 +282,7 @@ const settingsResult = (antigravity = true, entries = []) => ({ updatedAt: new F
 	assert.equal(textOf(dialog).split("66.2%").length - 1, 1, "余量仅在额度卡片出现一次");
 	const staleBanner = api.statusBanner(statusFor(stale));
 	assert.ok(textOf(staleBanner).includes(api.zh.statusCache), "缓存提示保持可见");
-	const ordinary = statusFor(allLimited, api.zh, "kimi-coding");
+	const ordinary = statusFor({ ...allLimited, quotas: undefined }, api.zh, "kimi-coding");
 	assert.ok(textOf(api.statusBanner(ordinary)).includes(ordinary.sub), "普通订阅的状态依据不受影响");
 	for (const slot of hooks.slots) slot?.cleanup?.();
 }
