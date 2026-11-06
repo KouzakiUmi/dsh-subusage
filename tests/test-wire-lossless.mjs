@@ -41,6 +41,22 @@ const assertLossless = (value, label) => {
 	assert.deepEqual(bad, [], `${label} 输出必须全量 lossless：${bad.slice(0, 5).join("；")}`);
 };
 
+// ── 工具 schema 必填字段核对：lossless 只是能过编解码，subusage_quota 还要过 output
+// schema。label 曾只在展开账号行上缺席（wire 合法但 schema 必填，整条工具输出仍被判错）。
+const TOOL_REQUIRED = ["providerId", "label", "state", "windows", "extras"];
+const WINDOW_REQUIRED = ["kind", "percent", "status"];
+const EXTRA_REQUIRED = ["kind", "value"];
+const assertToolShape = (value, label) => {
+	const bad = [];
+	(value.providers ?? []).forEach((e, i) => {
+		for (const k of TOOL_REQUIRED) if (e?.[k] === undefined) bad.push(`providers[${i}].${k}`);
+		(e?.windows ?? []).forEach((w, j) => { for (const k of WINDOW_REQUIRED) if (w?.[k] === undefined) bad.push(`providers[${i}].windows[${j}].${k}`); });
+		(e?.extras ?? []).forEach((x, j) => { for (const k of EXTRA_REQUIRED) if (x?.[k] === undefined) bad.push(`providers[${i}].extras[${j}].${k}`); });
+		(e?.quotas ?? []).forEach((q, j) => { if (q?.type === undefined) bad.push(`providers[${i}].quotas[${j}].type`); });
+	});
+	assert.deepEqual(bad, [], `${label} 输出必须符合工具 schema 必填字段：${bad.slice(0, 8).join("、")} 缺席`);
+};
+
 const { SubUsageService } = await loadHostModule();
 const io = {
 	readFileSync() { throw Object.assign(new Error("missing"), { code: "ENOENT" }); },
@@ -64,7 +80,9 @@ const io = {
 		resolveMagpieUsage: async () => snapshot
 	});
 	assertLossless(await service.readLinked({ providerIds: ["magpie"], force: true }), "readLinked(magpie)");
-	assertLossless(await service.quota({ providerIds: ["magpie"] }), "quota(magpie)");
+	const quotaMagpie = await service.quota({ providerIds: ["magpie"] });
+	assertLossless(quotaMagpie, "quota(magpie)");
+	assertToolShape(quotaMagpie, "quota(magpie)");
 	service.dispose();
 	console.log("PASS wire-lossless：Magpie 聚合卡 quota()/readLinked() 全量 lossless");
 }
@@ -93,6 +111,7 @@ const io = {
 	assert.ok(entry && entry.state === "ok", "哨兵路径下条目仍可读");
 	assert.ok(!Object.hasOwn(entry.windows[0], "resetsAt"), "哨兵 -1 不产 resetsAt 属性");
 	assertLossless(result, "quota(arkcli-coding-plan)");
+	assertToolShape(result, "quota(arkcli-coding-plan)");
 	service.dispose();
 	console.log("PASS wire-lossless：火山哨兵重置时间不破坏 quota() lossless");
 }
@@ -106,6 +125,7 @@ const io = {
 	});
 	const result = await service.quota({ providerIds: [] });
 	assertLossless(result, "quota(全量缺凭据)");
+	assertToolShape(result, "quota(全量缺凭据)");
 	service.dispose();
 	console.log("PASS wire-lossless：全量 quota()（缺凭据/缺席形态）lossless");
 }
