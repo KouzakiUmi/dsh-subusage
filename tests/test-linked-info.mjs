@@ -43,7 +43,10 @@ assert(partial.short.includes('6354 积分') && partial.short.includes(api.zh.st
 assert(partial.title.startsWith('已读合计') && partial.sub.includes('1/2'), '部分失败只给已读账号的小计与覆盖数量');
 assert.equal(partial.color, '#eab308');
 const currency = entryFor('trae', 'TRAE', [10, 20], 'credits');
+// quotas 在场即权威：改 balance 必须同步改写结构化元素，否则旧 quotas 会继续生效。
 currency.linkedAccounts[1].extras = [{ kind: 'balance', value: '2 USD' }];
+currency.linkedAccounts[1].quotas = currency.linkedAccounts[1].quotas.map(el =>
+ el?.type === 'amount' && el.role === 'balance' ? { ...el, amount: { value: 2, unit: 'USD', unitId: 'usd' } } : el);
 const separate = api.computeStatus(currency, options('trae'));
 assert(separate.short.includes('10 credits') && separate.short.includes('2 USD') && !separate.short.includes('12'), '不同单位不能求和或互相比较');
 const zero = entryFor('loomy', 'Loomy', [0, 0], '积分');

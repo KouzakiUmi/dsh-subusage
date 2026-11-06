@@ -8,7 +8,7 @@ let spec, current;
 const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity).filter(v => v !== null && v !== false && v !== undefined) });
 const react = { createElement: h, Fragment: 'fragment', useState: initial => current.state(initial), useRef: value => current.ref(value), useEffect: (fn, deps) => current.effect(fn, deps), useMemo: (fn, deps) => current.memo(fn, deps), useSyncExternalStore: (_subscribe, read) => read() };
 const source = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
-vm.runInNewContext(source.replace('exports.apply = apply;', 'exports.__test = { UsagePill, SubusagePillEntry, createUsageStore, computeStatus, parseLinkedQuery, mountPillStyles, PILL_ISLAND_CSS, PILL_LINKED_META, zh, en }; exports.apply = apply;'), {
+vm.runInNewContext(source.replace('exports.apply = apply;', 'exports.__test = { UsagePill, SubusagePillEntry, createUsageStore, computeStatus, parseLinkedQuery, mountPillStyles, PILL_ISLAND_CSS, PILL_LINKED_META, displayQuotaName, zh, en }; exports.apply = apply;'), {
  window: { __ModuleLoader__: { load: value => { spec = value; } } },
  document: { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} },
  console, setInterval: () => 0, clearInterval() {}, setTimeout, clearTimeout,
@@ -31,13 +31,13 @@ export class Hooks {
 }
 const t = key => api.zh[key] ?? key;
 const account = (name, value) => ({ accountId: name, account: name, state: 'ok', windows: [], extras: [{ kind: 'balance', value: `${value} 积分` }], coverage: 'complete', freshness: 'fresh', authStatus: 'present' });
-export const ofmEntry = { providerId: 'ofm-raccoon', label: '小浣熊 · OFM', state: 'ok', windows: [], extras: [], coverage: 'complete', freshness: 'fresh', lastSuccessAt: new Date().toISOString(), ofmAccounts: [account('账号甲', 6600), account('账号乙', 6300)] };
+export const ofmEntry = { providerId: 'ofm-raccoon', label: '小浣熊 · OFM', state: 'ok', windows: [], extras: [], coverage: 'complete', freshness: 'fresh', lastSuccessAt: new Date().toISOString(), linkedAccounts: [account('账号甲', 6600), account('账号乙', 6300)] };
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 export function nodes(tree) { if (!tree || typeof tree !== 'object') return []; return [tree, ...tree.children.flatMap(nodes)]; }
-export async function renderPill(entry = ofmEntry) {
+export async function renderPill(entry = ofmEntry, { modelId = "" } = {}) {
  const hooks = new Hooks();
  const reader = async () => entry; reader.subscribe = () => () => {}; reader.activate = () => () => {};
- const props = { providerId: entry.providerId, label: entry.label || entry.providerId, readEntry: reader, t, getLocale: () => 'zh', cc: null };
+ const props = { providerId: entry.providerId, label: entry.label || entry.providerId, readEntry: reader, t, getLocale: () => 'zh', cc: null, modelId };
  let tree = hooks.render(api.UsagePill, props); await flush(); tree = hooks.render(api.UsagePill, props);
  nodes(tree).find(n => n.type === 'button' && n.props['aria-haspopup'] === 'dialog').props.onClick();
  tree = hooks.render(api.UsagePill, props); hooks.dispose(); return tree;
@@ -84,7 +84,7 @@ export function html(tree) {
  // 多账号窗口也沿用 Command Code：健康收起态只画余量条，账号行直接给各自余量。
  const windowed = {
   ...ofmEntry,
-  ofmAccounts: [
+  linkedAccounts: [
    { ...account('账号甲', 0), windows: [{ kind: '5h', percent: 20, status: 'ok' }], extras: [] },
    { ...account('账号乙', 0), windows: [{ kind: '5h', percent: 40, status: 'ok' }, { kind: 'week', percent: 30, status: 'ok' }], extras: [] }
   ]
@@ -100,15 +100,15 @@ export function html(tree) {
  assert.equal(toggle.children[0].children.length, 2, '只画最紧账号的两窗，不混入另一账号的窗口');
  const markup = html(tree);
  assert(markup.includes('余 80%') && markup.includes('余 60%'), '账号行显示各自窗口余量，而不是暂无数据');
- const low = { ...windowed, ofmAccounts: windowed.ofmAccounts.map((row, index) => index ? row : { ...row, windows: [{ kind: '5h', percent: 80, status: 'ok' }] }) };
+ const low = { ...windowed, linkedAccounts: windowed.linkedAccounts.map((row, index) => index ? row : { ...row, windows: [{ kind: '5h', percent: 80, status: 'ok' }] }) };
  const lowStatus = api.computeStatus(low, { providerId: 'ofm-raccoon', t, getLocale: () => 'zh' });
  assert.ok(lowStatus.short.includes(api.zh.badgeHigh) && !lowStatus.short.includes('余 '), '偏少时追加档位词，不回到健康百分比文案');
  assert.equal(lowStatus.tinted, true);
- const partial = { ...windowed, ofmAccounts: windowed.ofmAccounts.map((row, index) => index ? row : { ...row, coverage: 'partial', error: '订阅窗口暂不可读' }) };
+ const partial = { ...windowed, linkedAccounts: windowed.linkedAccounts.map((row, index) => index ? row : { ...row, coverage: 'partial', error: '订阅窗口暂不可读' }) };
  const partialStatus = api.computeStatus(partial, { providerId: 'ofm-raccoon', t, getLocale: () => 'zh' });
  assert.equal(partialStatus.short, api.zh.statusPartial, '单个账号部分失败时汇总药丸不能继续全绿');
  assert.equal(partialStatus.color, '#eab308');
- const exhausted = { ...windowed, freshness: 'stale', retainPrevious: true, ofmAccounts: windowed.ofmAccounts.map((row, index) => index ? { ...row, windows: [{ kind: '5h', percent: 100, status: 'rate-limited' }, row.windows[1]] } : row) };
+ const exhausted = { ...windowed, freshness: 'stale', retainPrevious: true, linkedAccounts: windowed.linkedAccounts.map((row, index) => index ? { ...row, windows: [{ kind: '5h', percent: 100, status: 'rate-limited' }, row.windows[1]] } : row) };
  const exhaustedStatus = api.computeStatus(exhausted, { providerId: 'ofm-raccoon', t, getLocale: () => 'zh' });
  assert.equal(exhaustedStatus.title, api.zh.statusExhausted, '额度耗尽优先于缓存提示');
  assert.equal(exhaustedStatus.color, '#ef4444');
@@ -116,8 +116,8 @@ export function html(tree) {
 }
 {
  const hooks = new Hooks(); let entry = structuredClone(ofmEntry), notify;
- entry.ofmAccounts[0].accountActive = true; entry.ofmAccounts[0].accountMode = 'auto';
- entry.ofmAccounts[1].authStatus = 'missing'; entry.ofmAccounts[1].coverage = 'partial';
+ entry.linkedAccounts[0].accountActive = true; entry.linkedAccounts[0].accountMode = 'auto';
+ entry.linkedAccounts[1].authStatus = 'missing'; entry.linkedAccounts[1].coverage = 'partial';
  const reader = async () => entry; reader.subscribe = fn => { notify = fn; return () => { notify = null; }; }; reader.activate = () => () => {};
  const props = { providerId: entry.providerId, label: entry.label, readEntry: reader, t, getLocale: () => 'zh', cc: null };
  hooks.render(api.UsagePill, props); await flush();
@@ -143,7 +143,7 @@ export function html(tree) {
  // 乙的缺凭据标签留在它自己的行里，取消选择后仍可见。
  assert(html(tree).includes('缺少凭据'));
  // 另一窗口移除选中账号后，旧选择不能继续复活旧余额。
- entry = { ...entry, ofmAccounts: [entry.ofmAccounts[0]] }; notify(entry); tree = hooks.render(api.UsagePill, props);
+ entry = { ...entry, linkedAccounts: [entry.linkedAccounts[0]] }; notify(entry); tree = hooks.render(api.UsagePill, props);
  assert(!html(tree).includes('6300'));
  assert(html(tree).includes('6600'));
  hooks.dispose(); assert.equal(notify, null);
@@ -215,7 +215,7 @@ export function html(tree) {
    { kind: 'note', value: '包B：8 credits' }
   ]
  };
- const entry = { ...ofmEntry, ofmAccounts: [richAccount, account('账号乙', 6300)] };
+ const entry = { ...ofmEntry, linkedAccounts: [richAccount, account('账号乙', 6300)] };
   // 未选中账号时说明不展开（避免每行一个「其他说明」）；选中后才在该账号下出现。
   const collapsed = html(await renderPill(entry));
   assert(!collapsed.includes('其他说明'), '未选中账号时不展开说明');

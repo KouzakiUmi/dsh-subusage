@@ -55,6 +55,7 @@
 | **讯飞星火 / 国家超算 SCNet / 腾讯 CodeBuddy / 无问芯穹 / 美团 LongCat / 京东云** | 官方文档明确只有控制台 | 无接口可接，不是实现成本问题 |
 | **讯飞星火（MaaS，2026-10-30 复核）** | Key 有效（`/v1/models` 200），但 `/v1/usage`、`/v1/balance`、`/v1/user/info`、`/v1/stat/usage`、`/v1/dashboard/billing/*`、`/api/usage/token/` 及换 host 全部 404 `no Route matched with those values` | 复核结论与上一条一致：只有控制台，仍不接入 |
 | **潞晨云** | 公有云 **2026-09-21 已停服** | 服务不存在 |
+| **商汤 SenseNova Token Plan**（2026-11-04 复核） | 额度**只在控制台**：`GET https://platform.sensenova.cn/lite/console/v1/tokenplan/pool-usage`（`Bearer <控制台 JWT>`；无鉴权实测 **401** `auth_header_missing`）返回 `plan` + `pools[]` 的 5h / 7d 窗口（`limit` / `used` / `remaining` / `reset_at`）、`grant_balance`、`nearest_grant_expiry`、`pool_type`；同前缀另有 `credit-usage-trend`。推理网关 `token.sensenova.cn` **没有**额度端点：`/v1/usage`、`/v1/balance`、`/v1/user/info`、`/v1/dashboard/billing/subscription` 实测全 **404** `{"error":{"code":5,"message":"NOT_FOUND"}}`，而未鉴权的 `/v1/chat/completions`、`/v1/models` 回 **401**（路由存在）。登录是 OIDC 授权码 + PKCE(S256) + IAM 密码 JWE（RSA-OAEP/**SHA-1** + A256GCM），控制台 JWT 约 180 分钟且 **refresh_token 会被轮换** | ①这套额度/登录接口**官方没公开**（商汤文档只有推理侧），属从控制台网页反推的内部契约；②本机已装 `dsh-connect-sensenova-token-plan` 0.8.5，它自带用量药丸、持有账号（`SENSENOVA_USERNAME` / `SENSENOVA_PASSWORD`）并自动续期，本插件再建一条通道会与它**抢 refresh_token 轮换**、互相踢下线；③对方已有只读入口 `GET /api/dsh-connect-sensenova-token-plan/snapshot`（同源校验，宿主进程直连被拒），需要时按 trae 那套页面代取联动即可，不必自建。2026-11-04 用户决策：先不接 |
 
 ## 已由用户决策跳过
 
@@ -67,5 +68,5 @@
 | 厂商 | 状态 |
 |---|---|
 | 联通云 / 移动云 / 天翼云 / 优云智算 / 九章智算云 / 摩尔线程 / GitCode AtomCode | 只在第三方汇总里确认套餐存在，**未逐个核查是否有额度 API** |
-| 商汤 SenseNova Token Plan / 昆仑万维天工 | 未找到额度端点证据，**无法判定** |
+| 昆仑万维天工 | 未找到额度端点证据，**无法判定**（商汤已复核并归入「不接入」，见上表） |
 | Baseten / Modal / RunPod / Nebius / SambaNova 等算力平台 | 未评估（与"模型订阅额度"目标偏离） |

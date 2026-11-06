@@ -139,7 +139,7 @@ const row = (key, body, status = 200) => ({ key, status, ok: status >= 200 && st
 	const service = new SubUsageService(ctx, { io, configPath: 'memory/config', resolveCredentials: async () => undefined, resolveEnvironment: () => undefined, linkedTimeoutMs: 200 });
 	const step = await service.linkedStep({ providerId: 'raccoon', responses: [row('status', undefined, 404)] });
 	assert.equal(step.entry.state, 'ok', '独立插件缺席 + OFM 在场时由 OFM 补上');
-	assert.equal(step.entry.ofmAccounts?.[0]?.providerId, 'raccoon', '账号仍归到同一条联动项');
+	assert.equal(step.entry.linkedAccounts?.[0]?.providerId, 'raccoon', '账号仍归到同一条联动项');
 	assert.ok(step.entry.extras.some(x => String(x.value).includes('777')), 'OFM 的余额被读出来');
 	// 独立插件在场但未登录：即便 OFM 可用也不换数据来源（回落只针对接口缺席）。
 	ofmReads = 0;

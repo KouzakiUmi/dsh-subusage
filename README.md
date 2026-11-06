@@ -111,6 +111,7 @@ OpenDesign 药丸按当前路由标注计费来源：套餐模型显示「使用
 | [`dsh-raccoon-connect`](https://github.com/zhlcba/dsh-raccoon-connect)、[`dsh-loomy-connect`](https://github.com/gdrpzym/dsh-loomy-connect) | `raccoon`、`loomy` | 独立 `/status` 的单当前登录；药丸在接口缺席时回落 OFM。Loomy 保留本地积分缓存时间。 |
 | Our Free Model | 十个 `ofm-*` 入口 | 复用账号索引与 `usage.badge`：小浣熊、Loomy、Qoder 国际/中国版、LobsterAI、TRAE、Cline、MiniMax Code、ZCode、Gemini；逐账号显示积分、额度包与鉴权元数据。[范围与验证](docs/ofm.md) |
 | EAC 三渠道（`dsh-eac-router`） | `raccoon`、`loomy`、`ofm-qodercn` 的回退来源 | 读它挂在 `/api/eac-router` 的只读 `credits.balances`。**不新增并列条目**：独立插件与 OFM 都缺席时，药丸才回退到 EAC；全量报告与工具查询不回落。 |
+| [Magpie 聚合网关](https://github.com/yetone/magpie)（本机 `http://127.0.0.1:3425`） | `magpie`（路由 `magpie` / `magpie-responses` / `magpie-anthropic`） | 只读 `GET /v1/magpie/quotas`（`kept=1` 缓存快照），一张上游订阅卡一行、按 provider 分组；`usage/requests` + `concurrency` 给出 auto 组在途/上次命中的实际上游。回环免鉴权，不发写请求。 |
 
 Antigravity 的两个提供方读取同一份 Google 配额，只出一条 `antigravity`：`agyQuota` 在场优先，否则回落 `antigravityAuth`。联动没有普通提供商凭据卡片，登录与账号管理由提供方负责。Antigravity 在管理区顶部另有独立开关，默认开启；关闭后停止查询并隐藏药丸。
 
@@ -149,7 +150,7 @@ OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM
 
 ## 支持的数据 / Supported data
 
-共 **31 条 provider id**：新安装**有效默认开启 11 条、关闭 20 条**。另有 **18 条联动项**：Antigravity 一条、Trae 三块面板、WorkBuddy 两区域、独立 Raccoon / Loomy 两条及 [OFM 十个渠道](docs/ofm.md)。联动项没有自己的凭据槽或普通设置卡片，Antigravity 另有独立开关。清单取自 [Host](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 归一化为准：Ark 个人版两路默认开启，Team 两路独立控制且默认关闭。展示顺序与短名取自 [Client](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
+共 **31 条 provider id**：新安装**有效默认开启 11 条、关闭 20 条**。另有 **19 条联动项**：Antigravity 一条、Trae 三块面板、WorkBuddy 两区域、独立 Raccoon / Loomy 两条、[OFM 十个渠道](docs/ofm.md)及 Magpie 本地聚合网关一条。联动项没有自己的凭据槽或普通设置卡片，Antigravity 另有独立开关。清单取自 [Host](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 归一化为准：Ark 个人版两路默认开启，Team 两路独立控制且默认关闭。展示顺序与短名取自 [Client](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
 
 | 提供商 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|---|
@@ -253,11 +254,12 @@ OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM
 |---|---|---|
 | 核心 peer 范围 | `@deepseek-ai/dsh` 及各核心包均为 `>=0.2.0-rc.1 <0.2.1-0 \|\| >=0.2.1-0 <0.2.2-0 \|\| >=0.2.2-0 <0.3.0-0` | [`package.json`](package.json) 的 `peerDependencies` |
 | Node.js | `>=22.19.0` | `engines` 与 `dsh.compatibility.node` |
-| 已验证的 Core 版本 | `0.2.0-rc.2`、`0.2.1-alpha.1`、`0.2.1-alpha.2` | 实机运行；逐版本状态与验证方式见 `dsh.compatibility.dshReleases` |
-| 未验证的 Core 版本 | `0.2.2-rc.1` | 仅静态核对核心包导出与版本，未实机安装运行；`dshReleases` 记为 `unknown` |
-| 最后验证日期 | `2026-10-11` | [开发与验证说明](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md) |
 
-> **范围里每个 `||` 分支都不是冗余。** node-semver 只有在范围中**某个比较符与该版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时，才放行预发布版本。所以 `>=0.2.0-rc.1 <0.3.0-0` 这种看起来覆盖 0.2.x 的写法会**静默排除** `0.2.1-alpha.1`，而 `… \|\| >=0.2.1-0 <0.3.0-0` 又会排除 `0.2.2-rc.1`。必须为每个 minor 元组各写一个带预发布标签的下界；Core 升 0.2.3 或 0.3.x 时按同样规则补分支，不要放宽成单分支。
+| 已验证的 Core 版本 | `0.2.0-rc.2`、`0.2.1-alpha.1`、`0.2.1-alpha.2`、`0.2.2-rc.1` | 实机运行；逐版本状态与验证方式见 `dsh.compatibility.dshReleases` |
+| 最后验证日期 | `2026-11-06` | [开发与验证说明](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md) |
+
+> **范围里每个 `||` 分支都不是冗余。** node-semver 只有在范围中**某个比较符与该版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时，才放行预发布版本。所以 `>=0.2.0-rc.1 <0.3.0-0` 这种看起来覆盖 0.2.x 的写法会**静默排除** `0.2.1-alpha.1`，而 `… \|\| >=0.2.1-0 <0.3.0-0` 又会排除 `0.2.2-rc.1`（2026-11-06 用 semver 7.7.3 实测：该版本旧范围 `false`、补上 `>=0.2.2-0 <0.3.0-0` 后 `true`）。必须为每个 minor 元组各写一个带预发布标签的下界；Core 升 0.2.3 或 0.3.x 时按同样规则补分支，不要放宽成单分支。
+
 
 `dsh.compatibility.dshReleases` 逐版本声明已知状态：**只有实际验证过的标 `compatible`**，其余一律 `unknown`——没有证据不猜。`0.2.2-rc.1` 目前只有本机静态核对（四个核心包的公开导出仍在、`slots` 服务仍由 client runner 提供）与全量回归，插件未在该 Core 上实机安装运行，因此不计入「已验证」、最后验证日期不变。本插件只依赖 Core 的**公开扩展 API 面**（Cordis 服务 `llm`/slots/locale/remote/settings/modelDirectories、4 个核心包的公开导出、client 基座的公开模块），不碰内部组件、不依赖桌面壳版本——这是 0.2.x 各版本实际全兼容的原因；`dshReleases` 记录的是**实测证据**，不是依赖声明。实际验证范围（在线接口、真实账号、浏览器像素验收等）见 [开发与验证说明](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md)。这是树外 Host / Client bundle，通过 `cordis.patch.yml` 插入，不修改 DSH 核心、安装树或 ASAR。
 

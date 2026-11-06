@@ -65,7 +65,9 @@ const AK = "AKLTTestAccessKeyId0000", SK = "TestSecretAccessKey0000000000000000"
 	assert.equal(parseVolcCodingPlan({ QuotaUsage: [{ Level: "session", Percent: 3, ResetTimestamp: 0 }] }).windows.length, 1, "兼容顶层形态");
 	assert.equal(parseVolcCodingPlan({ Result: { QuotaUsage: [{ Level: "daily", Percent: 5 }] } }).windows.length, 0, "未登记的 Level 不产出窗口");
 	assert.throws(() => parseVolcCodingPlan({ Result: { QuotaUsage: [{ Level: "session", Percent: "abc" }] } }), "非法百分比报错而不是当作 0%");
-	assert.equal(parseVolcCodingPlan({ Result: { QuotaUsage: [{ Level: "session", Percent: 1, ResetTimestamp: 0 }] } }).windows[0].resetsAt, undefined, "哨兵重置时间不输出");
+	// 哨兵重置时间不能产出 resetsAt 属性本身——`undefined` 属性值会让整条 quota()
+	// 输出被 typert 的 lossless-JSON 校验拒掉（subusage_quota 全量报错）。
+	assert.ok(!Object.hasOwn(parseVolcCodingPlan({ Result: { QuotaUsage: [{ Level: "session", Percent: 1, ResetTimestamp: 0 }] } }).windows[0], "resetsAt"), "哨兵重置时间不输出 resetsAt 属性");
 	console.log("PASS Coding Plan：窗口映射、百分比不放大、秒级重置、未订阅与容错");
 }
 
@@ -339,7 +341,7 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 	assert.equal(coding.windows[1].percent, 100, "超过 100 收敛到 100");
 	assert.equal(coding.windows[0].resetsAt, new Date(1785492000000).toISOString(), "重置时刻是毫秒");
 	assert.equal(coding.windows[1].resetsAt, new Date(1785686400000).toISOString());
-	assert.equal(coding.windows[2].resetsAt, undefined, "哨兵 -1 不输出");
+	assert.ok(!Object.hasOwn(coding.windows[2], "resetsAt"), "哨兵 -1 不输出 resetsAt 属性（undefined 值会让工具输出被判非 lossless）");
 	assert.equal(coding.seatId, "seat-c");
 	assert.deepEqual(parseVolcSeatCoding({ Result: { SeatInfoUsage: { SeatID: "s", WeeklyUsage: "10" } } }).windows.map(w => w.kind), ["week"], "缺字段不产出行、不当作 0");
 	// 站点间结构不同：国际站是 Result.SeatInfoUsage.*，中国站契约是 Result.* 直挂——两条都要认。
@@ -461,7 +463,7 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 	assert.equal(entry.state, "ok");
 	assert.deepEqual(entry.windows.map(w => w.kind), ["5h", "week", "month"], "session/weekly/monthly 映射到 5h/week/month");
 	assert.equal(entry.windows[0].percent, 0, "0% 是真实读数，不是「无数据」");
-	assert.equal(entry.windows[0].resetsAt, undefined, "ResetTimestamp=-1 是哨兵，不输出重置时间");
+	assert.ok(!Object.hasOwn(entry.windows[0], "resetsAt"), "ResetTimestamp=-1 是哨兵，不输出 resetsAt 属性");
 	assert.equal(entry.windows[1].resetsAt, new Date(1791734400 * 1000).toISOString(), "秒级时间戳转 ISO");
 	assert.equal(entry.windows[0].detail, undefined, "接口不给绝对量，也不拿语义未证的 Cap 编造 detail");
 	// 归一化：公开设置里的逐条值必须跟随组开关（注入的 CODING=false 属于迁移残留，不该留在口径里）。
