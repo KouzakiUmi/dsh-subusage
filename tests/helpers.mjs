@@ -25,9 +25,9 @@ const HOST_STUBS = [
 export async function loadHostModule() {
 	let code = readFileSync(join(ROOT, "lib", "index.js"), "utf8");
 	for (const [pattern, stub] of HOST_STUBS) code = code.replace(pattern, stub);
- // 子模块按绝对路径重写：临时目录里的副本必须仍解析到工作区的真实模块，
- // 否则新增的 lib 子模块（如 volcengine.js）在临时目录里找不到。
-  for (const mod of ["mimo-login.js", "mimo-qr.js", "opendesign-login.js", "volcengine.js", "grok-credits.js", "host-env.js", "ofm.js", "connect-usage.js", "desktop-usage.js", "eac-usage.js", "local-usage.js", "trae-auth.js", "credit-packages.js", "magpie-usage.js", "quota-entry.js", "go-panel.js"]) code = code.replace(`from "./${mod}"`, `from ${JSON.stringify(pathToFileURL(join(ROOT, "lib", mod)).href)}`);
+	// 子模块按绝对路径重写：临时目录里的副本必须仍解析到工作区的真实模块，
+	// 否则新增的 lib 子模块（如 volcengine.js、platform/*.js）在临时目录里找不到。
+	code = code.replace(/from "\.\/([^"]+)"/g, (_, mod) => `from ${JSON.stringify(pathToFileURL(join(ROOT, "lib", mod)).href)}`);
 	const file = join(tmpdir(), `dsh-subusage-host-${process.pid}.mjs`);
 	writeFileSync(file, code, "utf8");
 	return import(pathToFileURL(file).href);
