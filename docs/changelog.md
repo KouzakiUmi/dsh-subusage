@@ -14,6 +14,8 @@
 - **映射编辑器**：14 个 JSON Pointer 字段 + envelope/unit/scale/balanceSubjectKind/balanceAggregation/percentSemantics/windowPeriod/pool + 逐字段 `mappingLock` 锁定；内嵌 DisplayProfile（primaryMetric、hiddenElementIds）。
 - **Recipe 导入导出**：实例卡片「导出」返回脱敏 JSON（秘密/凭据引用名/私有地址/路由绑定全部剥离）；「导入 Recipe」粘贴 JSON + 必填 baseUrl 直接落盘。
 - **RouteBinding UI**：手动匹配区新增「路由绑定」子区，把单条模型路由直接绑到订阅或连接实例；与 providerMappings 同层，遵循统一解析顺序。
+- **设置页视觉改版**：`lib/client.js` 新增一套设置页视觉原语（`UI_*` 样式常量、`SETTINGS_CSS` 作用域样式、`uiSwitch`/`uiSegmented`/`uiList`/`uiRow`/`uiGroup`/`uiBindings`/`noticeBar`），中性色全部从 `currentColor` 派生，深浅主题共用一套。「已开启 / 已关闭」文字按钮改为拨动开关（仍为 `role="switch"` + `aria-checked`）；提供商与联动项改为分组列表（发丝分隔线，订阅区按「已开启 / 未开启」分组）；Key 来源与 Z.ai 套餐类型改为分段选择；管理区去掉外框、改为下划线分组 tab；手动匹配、路由绑定、Magpie 分组改用同一个「A → B」绑定编辑器；凭据编辑器有改动时底部显示保存栏。「自定义连接」分组里的操作提示原来不显示，现在会显示。不改变任何设置字段、保存补丁或开关语义。
+- **修复**：开启「手动匹配 provider」后，`RouteBindingsBlock` 引用了未传入的 `getLocale`，设置页渲染会抛出 `ReferenceError`；现在由父组件显式传入。
 - **新增 4 条 RPC**：`subUsage/getCatalog`、`subUsage/detectInstance`（入参白名单校验）、`subUsage/exportRecipe`、`subUsage/importRecipe`（`{recipe, overrides}`）；`exportRecipe`/`importRecipe` 保留直连位置参数兼容。`publicSettings` 已同时下发 `instances`（公开视图）、`displayProfiles`、`routeBindings`、`magpieRoutes`、`catalog`。
 
 ## 未发布：鉴权数据加密存储与重构审查修复
