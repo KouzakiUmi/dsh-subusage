@@ -59,7 +59,9 @@ assert.equal(result.settings.visibility.hideWithoutApi, false);
 await service.refresh({ providerIds: [M], force: false }); assert.equal(calls, 1, "只改隐藏策略不清用量缓存");
 await assert.rejects(service.save({ expectedRevision: initialRevision, visibility: { hideWithoutApi: true } }), e => e.code === "subusage/revision-conflict");
 result = await service.save({ expectedRevision: result.settings.revision, visibility: { providers: { [M]: false, [C]: false } } });
-const stored = JSON.parse(files.get("memory/config")); assert.deepEqual(stored.keys, originalKeys); assert.equal(stored.zai.organization, "org"); assert.equal(stored.visibility.providers[Z], true);
+// 秘密以密文落盘：用 service.load() 读回解密值比对，密文本身另外断言前缀。
+const stored = service.load(); assert.deepEqual(stored.keys, originalKeys); assert.equal(stored.zai.organization, "org"); assert.equal(stored.visibility.providers[Z], true);
+assert.ok(Object.values(JSON.parse(files.get("memory/config")).keys).every(v => typeof v === "string" && v.startsWith("enc:v1:")), "手动 Key 必须以 enc:v1 密文落盘");
 result = await service.refresh({ providerIds: [M], force: true }); assert.equal(calls, 1, "关闭后即使强制刷新也不请求用量接口");
 assert.equal(result.entries[0].state, "disabled"); assert.equal(result.entries[0].apiDetected, true); assert.deepEqual(result.entries[0].windows, []);
 service.dispose(); service = new SubUsageService(ctx, options);

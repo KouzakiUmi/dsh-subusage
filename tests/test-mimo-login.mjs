@@ -27,18 +27,19 @@ assert.equal(extractMimoSession(withExpiry(future, future + 3600)).expiresAt, fu
 assert.equal(extractMimoSession(withExpiry(future, -1)).expiresAt, future * 1000, "其中一个为会话 Cookie 时仍采用另一个的过期时刻");
 assert.equal(extractMimoSession(withExpiry(1, future)), null, "已过期的必需 Cookie 不得进入会话");
 function harness(options = {}) {
- let content = null, writes = 0, launches = 0, closes = 0, calls = 0;
+ const files = new Map();
+ let writes = 0, launches = 0, closes = 0, calls = 0;
  let suppliedCookies = options.cookies ?? cookies;
  const events = {};
  const browser = { on(event, cb) { events[event] = cb; }, async close() { closes++; }, async newContext() { return { cookies: async urls => { assert.deepEqual(urls, MIMO_API_URLS); return suppliedCookies; }, newPage: async () => ({ on(event, cb) { events[`page:${event}`] = cb; }, goto: async url => { assert.equal(url, MIMO_LOGIN_URL, "第一步必须落到控制台套餐页：站点首页不触发登录，用户还得自己点进控制台"); assert.notEqual(url, MIMO_ORIGIN, "不能只打开首页"); } }) }; } };
- const io = { readFileSync() { if (content === null) throw Object.assign(new Error(), { code: "ENOENT" }); return content; }, mkdirSync() {}, writeFileSync(_, value) { writes++; content = value; }, chmodSync() {}, renameSync() {} };
+ const io = { readFileSync(p) { if (!files.has(p)) throw Object.assign(new Error(), { code: "ENOENT" }); return files.get(p); }, mkdirSync() {}, writeFileSync(p, value) { if (p.endsWith(".tmp")) writes++; files.set(p, value); }, chmodSync() {}, renameSync(a, b) { files.set(b, files.get(a)); files.delete(a); } };
  let http = 200, body = options.partial ? { data: {} } : { data: { usage: { items: [{ name: "plan_total_token", percent: .1 }] } } };
  const service = new SubUsageService({ effect() {}, get() {}, llm: { listProviders: () => [] } }, {
   io, configPath: "dummy/config", resolveCredentials: async () => undefined, resolveEnvironment: () => undefined,
   fetch: async (url, init) => { calls++; assert.equal(init.headers.cookie, cookie); assert(init.signal); if (options.fetch) return options.fetch(url, init); return { status: http, ok: http === 200, headers: { get: () => null }, text: async () => JSON.stringify(url.endsWith("/balance") ? { data: { balance: "0", currency: "CNY" } } : body) }; },
   mimoLogin: { pollMs: 1, timeoutMs: 1000, ...options.login, launch: async args => { launches++; assert.equal(args.channel, "chrome"); assert.equal(args.headless, false); assert.deepEqual(args.ignoreDefaultArgs, ["--enable-automation"]); assert.deepEqual(args.args, ["--disable-blink-features=AutomationControlled"]); return options.launch ? options.launch(browser) : browser; } }
  });
- return { service, browser, events, external(fn) { const stored = JSON.parse(content); fn(stored); content = JSON.stringify(stored); }, revision: () => service.result(service.load(), []).settings.revision, get writes() { return writes; }, get launches() { return launches; }, get closes() { return closes; }, get calls() { return calls; }, setHttp: value => http = value, setCookies: value => suppliedCookies = value };
+ return { service, browser, events, external(fn) { const stored = JSON.parse(files.get("dummy/config")); fn(stored); files.set("dummy/config", JSON.stringify(stored)); }, revision: () => service.result(service.load(), []).settings.revision, get writes() { return writes; }, get launches() { return launches; }, get closes() { return closes; }, get calls() { return calls; }, setHttp: value => http = value, setCookies: value => suppliedCookies = value };
 }
 async function until(h, states) { for (let i = 0; i < 200; i++) { const s = h.service.getMimoLoginStatus(); if (states.includes(s.state)) return s; await delay(2); } throw new Error("stub state did not settle"); }
 const h = harness();

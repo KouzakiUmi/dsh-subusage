@@ -220,17 +220,22 @@ const codingBody = { ResponseMetadata: {}, Result: { Status: "Running", QuotaUsa
 	// 空串不是清空指令：只改 AK 不得抹掉已存的 SK。
 	await h.service.save({ providerId: CODING, volc: { accessKeyId: { action: "replace", value: AK }, secretAccessKey: { action: "replace", value: SK } } });
 	let stored = JSON.parse(h.files.get("memory/config"));
-	assert.equal(stored.volc.accessKeyId, AK);
-	assert.equal(stored.volc.secretAccessKey, SK);
+	assert.ok(stored.volc.accessKeyId.startsWith("enc:v1:"), "AK 以密文落盘");
+	assert.ok(stored.volc.secretAccessKey.startsWith("enc:v1:"), "SK 以密文落盘");
+	let loaded = h.service.load();
+	assert.equal(loaded.volc.accessKeyId, AK, "load() 解密回 AK");
+	assert.equal(loaded.volc.secretAccessKey, SK, "load() 解密回 SK");
 	await h.service.save({ providerId: CODING, volc: { accessKeyId: { action: "replace", value: "AKLTNewKeyId000000000" } } });
 	stored = JSON.parse(h.files.get("memory/config"));
-	assert.equal(stored.volc.accessKeyId, "AKLTNewKeyId000000000", "AK 已更新");
-	assert.equal(stored.volc.secretAccessKey, SK, "SK 原样保留");
+	loaded = h.service.load();
+	assert.equal(loaded.volc.accessKeyId, "AKLTNewKeyId000000000", "AK 已更新");
+	assert.equal(loaded.volc.secretAccessKey, SK, "SK 原样保留");
 	// 只清 SK：AK 保留，且该 provider 变成未配置（AK/SK 必须成对）。
 	await h.service.save({ providerId: CODING, volc: { secretAccessKey: { action: "clear" } } });
 	stored = JSON.parse(h.files.get("memory/config"));
-	assert.equal(stored.volc.accessKeyId, "AKLTNewKeyId000000000");
-	assert.equal(stored.volc.secretAccessKey, "", "clear 置空字符串而不是删除字段（publicSettings 依赖字段存在）");
+	loaded = h.service.load();
+	assert.equal(loaded.volc.accessKeyId, "AKLTNewKeyId000000000");
+	assert.equal(loaded.volc.secretAccessKey, "", "clear 置空字符串而不是删除字段（publicSettings 依赖字段存在）");
 	let entry = (await h.service.refresh({ providerIds: [CODING], force: true })).entries[0];
 	assert.equal(entry.state, "no-key", "只有一半凭据视为未配置");
 	assert.ok(entry.error.includes("VOLC_ACCESSKEY"), "指明继承变量");

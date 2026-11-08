@@ -2,6 +2,19 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 未发布：鉴权数据加密存储与重构审查修复
+
+- **秘密落盘加密（新增 `lib/secret-box.js`）**：`~/.dsh/dsh-subusage.json` 中的用户秘密值（`keys[id]`、`instanceSecrets`、小米 `xiaomi.cookie`/`xiaomi.renewal`、火山 `volc.accessKeyId`/`secretAccessKey`）以 AES-256-GCM 加密存储；32 字节随机密钥单独放在 `<config>.key`（0600），密文封套 `enc:v1:<iv>:<tag>:<ct>`（base64）。旧明文值加载时照旧可用并在下一次持久化自动加密；解密失败按空处理不阻断加载；密钥文件损坏抛出 `subusage/key-corrupt`。引用名（keyRefs、credentialRefs、env 名）与环境变量来源本身不存值，不加密；公开设置依旧不含任何秘密。回归见 [test-secret-storage.mjs](tests/test-secret-storage.mjs)。
+- **实例凭据链移除 routeEnvs 注入**：`resolveInstanceIdentity` 不再把绑定路由的 `apiKeyEnv` 灌进自定义实例的凭据链（原顺序 routeEnvs → credentialRefs → builtinEnvs → 手动秘密会把别的路由的 Key 借给实例）；现在实例只吃 `credentialRefs` → `builtinEnvs` → `manualSecret`，路由绑定只决定药丸归属、不改变实例用什么 Key。内置 provider 的继承链不受影响。
+- **routeBindings 归入手动匹配开关**：`visibility.manualMatching` 关闭时路由绑定保留但不生效（原先无条件生效，与 providerMappings 语义不一致）；Host `resolveRouteTarget`、Client 药丸与 `goPanelUsageId` 三处统一为「routeBindings（手动）→ 实例 routeIds → providerMappings（手动）→ 内置别名」同一顺序，实例 routeIds 属实例自身声明不受开关门控。`routeIds` 同时移出额度查询参数哈希：改绑定不再误作废在途请求与额度缓存（原先被计入 queryFields）。
+- **HTTP 执行器加固**：响应体按字节上限流式读取（`ReadableStream.getReader` + `reader.cancel`），不再先 `text()` 全量进内存；JSON 解析加节点数预算（2 万）拒绝超宽/超深负载；超时计时保持到 body 读完。新增 `sanitizeUpstreamMessage`：上游错误消息进条目前先剥掉 hint 秘密（Key/Cookie 原文）、JWT、`sk-/ak-/rk-/ghp_/Bearer` 模式串并截 200 字；`secretHints` 由调用方按 identity 注入。
+- **URL 与请求头收紧**：`isLoopbackHost` 补全 127.0.0.0/8 全部环回段（原先只认 127.0.0.1）与 `localhost`/`::1`/`0.0.0.0`；IPv6 私网只认 ULA/链路本地字面量（带 `:`），169.254 链路本地拦截；`normalizeUsagePath` 解码 `%2e` 后拒绝 `..`/`\`/`#`；自定义 headers 经 `validateNonSecretHeaders` 按 `authHeaderNames(authKind)` 拒掉与注入鉴权头同名的项（`exportInstanceRecipe` 同口径）。
+- **DisplayProfile 改为投影层**：`applyDisplayProfile` 不再改 `quotas`/`windows`/`extras` 事实层，输出 `displayQuotas`/`displayWindows`/`displayExtras`/`displayPrimary.text`/`displayDegraded`；`-0` 归一为 `0`，隐藏元素不能再被推选为 primary；client `parseEntry` 与 Go 面板 `goPanelData` 渲染端优先消费 `displayX ?? X`。余额合计统一走 `sumAccountBalances(..., {dedupeBySubject:true})`——同 subject 的 Key 级余额不再重复相加（含 subject.kind=key 场景）。
+- **声明式适配器修复**：LiteLLM 归一化兼容 `/user/info`（`user_info`）与 `/team/info`（`team_info`）响应壳；`baseUrl` 末尾 `/v1` 在 LiteLLM 管理端点合成时剥除（`/v1/key/info` 一律 404，recipe 新增 `dropsTrailingV1`）。sub2api 全部 `a ?? b ?? c` 取数链改 `pickNumber`：前置字段是不可解析的原始值（如 `"abc"`）不再吞掉后面的数字；`remaining` 为负（limit 0/缺席时上游 `-1` 哨兵）截断为 0 不再透成余额。custom-http 余额 `aggregation.balance` 缺省一律 `forbid`（原先 key 级默认 allow）：未知端点的钱包语义只有用户能确认，不默认可加。
+- **探测与推断加固**：`toNumber` 千分位按 `\d{1,3}(,\d{3})+` 严格分组（`"1,5"` 拒绝）；`timestamp` 纯数字字符串不足 8 位一律当年份不当 epoch 秒；`windowPeriodFromHint` 先按「数字+单位」（7 days→week、15h→day、30 days→month）再按名称词推断。自动探测 `code:401/403`/`success:false` 信封判 auth-required；`readPointerSmart` 兼容 `{code,data}` 信封；预览脱敏补 JWT、`sk-/ak-` 内嵌 Key 与 URL userinfo 模式，`key` 驼峰命名（apiKey 等）入敏感名表。
+- **实例修补与竞态**：`patch.instance` 的 Key 模式字段统一为 `credentialMode`（原先写错成 `keyMode`，清除秘密后实例停在 manual 不回继承）；`instanceProvider` 代次不一致重跑时按 id 从最新 settings 重取实例（原先复用旧对象，带着已删除的 routeIds/秘密引用复活）；`detectInstance` 加设置 revision 守卫，探测期间配置被改则结果作废（`stale:true`），不污染新配置下的草稿。
+- **凭据生命周期字段**：`ConnectionInstance` 新增 `lifecycle`（`read-only | delegate | managed`，默认 `read-only`），`validateLifecycleMode` 统一校验并透出 `publicInstanceView`，为后续「可代理写操作」实例预留边界。
+
 ## 0.24.5：工具报告补实际额度数字、label 必填修复与重构说明
 
 - **修复 `subusage_quota` 工具 schema 校验报 `missing required property label`**（0.24.4 发布后才修的漏网）：lossless 修复把 `label` 从「裸拷贝 undefined」改成「条件省略」，而工具 output schema 把它标为必填——Magpie 等联动的展开账号行本来就没有 label（账号名在 account 里），全量查询时所有账号行一起违约。现在依次回退：账号名 → 联动/常规表显示名 → providerId，必填字段不再留空。回归在 [test-wire-lossless.mjs](tests/test-wire-lossless.mjs) 增加 `assertToolShape`：lossless 之外再核一遍 schema 必填字段。

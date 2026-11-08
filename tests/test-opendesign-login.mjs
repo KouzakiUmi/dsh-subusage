@@ -34,7 +34,8 @@ const SUMMARY = {
 	membershipTier: "plus", subscriptionCurrentPeriodEnd: "2026-11-18T17:09:27.000Z"
 };
 function harness(options = {}) {
-	let content = null, writes = 0, launches = 0, closes = 0, calls = 0;
+	const files = new Map();
+	let writes = 0, launches = 0, closes = 0, calls = 0;
 	const urls = [];
 	let supplied = options.cookies ?? cookies;
 	const events = {};
@@ -47,7 +48,7 @@ function harness(options = {}) {
 			};
 		}
 	};
-	const io = { readFileSync() { if (content === null) throw Object.assign(new Error(), { code: "ENOENT" }); return content; }, mkdirSync() {}, writeFileSync(_, value) { writes++; content = value; }, chmodSync() {}, renameSync() {} };
+	const io = { readFileSync(p) { if (!files.has(p)) throw Object.assign(new Error(), { code: "ENOENT" }); return files.get(p); }, mkdirSync() {}, writeFileSync(p, value) { if (p.endsWith(".tmp")) writes++; files.set(p, value); }, chmodSync() {}, renameSync(a, b) { files.set(b, files.get(a)); files.delete(a); } };
 	let http = 200;
 	const service = new SubUsageService({ effect() {}, get() {}, llm: { listProviders: () => [] } }, {
 		io, configPath: "dummy/config", resolveCredentials: async () => undefined, resolveEnvironment: () => undefined,

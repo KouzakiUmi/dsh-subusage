@@ -73,7 +73,8 @@ function harness({ renewal = RENEWAL, expiresAt = T0 + DAY, cookie = COOKIE0, re
 		},
 		mimoRenewFetch: async (url, init) => { calls.renew.push(url); return renewHandler(url, init); }
 	});
-	return { service, calls, tick: ms => { now += ms; return now; }, stored: () => JSON.parse(files.get("memory/config")), raw: () => files.get("memory/config") };
+	// 秘密现在以 enc:v1 密文落盘；stored() 走 service.load() 读回解密后的值，raw() 保留密文原文用于泄漏断言。
+	return { service, calls, tick: ms => { now += ms; return now; }, stored: () => service.load(), raw: () => files.get("memory/config") };
 }
 const okRenew = (token = "NEW_TOKEN", extra = []) => async url => url.includes("/pass/serviceLogin") ? res(ticket(), { cookies: extra }) : res("", { cookies: [`api-platform_serviceToken=${token}; Path=/`] });
 const read = async h => (await h.service.refresh({ providerIds: [M], force: true })).entries[0];

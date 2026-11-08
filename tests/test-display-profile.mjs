@@ -100,12 +100,19 @@ assert.equal(appliedElement.displayPrimary?.elementId, "wallet");
 assert.equal(appliedElement.displayPrimary?.value, 42.68, "按 precision=2 格式化展示数值");
 assert.equal(appliedElement.displayPrimary?.unit, "USD");
 assert.equal(appliedElement.displayPrimary?.unitId, "usd");
-assert.equal(appliedElement.quotas.some(q => q.id === "spend-today"), false, "hiddenElementIds 隐藏次要元素");
-assert.equal(appliedElement.quotas[0].id, "wallet", "按 elementOrders 调整展示顺序");
-assert.equal(appliedElement.quotas[0].label, "团队共享钱包", "按 elementLabels 覆盖显示名");
-assert.equal(appliedElement.quotas[0].role, "wallet", "role 语义保持不变");
-assert.equal(appliedElement.quotas[0].aggregation?.balance, "forbid", "aggregation 语义保持不变");
-assert.equal(appliedElement.quotas.find(q => q.label === "每日限额")?.percent, 25, "底层窗口百分比不被篡改");
+assert.equal(appliedElement.displayPrimary?.text, "团队共享钱包 42.68 USD", "displayPrimary.text 供药丸直接渲染");
+// 投影契约：quotas 事实原样保留，displayQuotas/displayWindows/displayExtras 才承载隐藏/改名/排序。
+assert.equal(appliedElement.quotas.some(q => q.id === "spend-today"), true, "quotas 事实不被 displayProfile 篡改");
+assert.equal(appliedElement.quotas[0].id, "sub-daily", "quotas 顺序不变");
+assert.equal(appliedElement.quotas.find(q => q.id === "wallet")?.label, "账户钱包", "quotas 标签不被篡改");
+assert.equal(appliedElement.quotas.find(q => q.id === "wallet")?.amount.value, 42.6789, "quotas 数值不被精度篡改");
+assert.equal(appliedElement.displayQuotas.some(q => q.id === "spend-today"), false, "displayQuotas 应用 hiddenElementIds");
+assert.equal(appliedElement.displayQuotas[0].id, "wallet", "displayQuotas 按 elementOrders 排序");
+assert.equal(appliedElement.displayQuotas[0].label, "团队共享钱包", "displayQuotas 应用 elementLabels");
+assert.equal(appliedElement.displayQuotas[0].role, "wallet", "投影内 role 语义仍保持");
+assert.equal(appliedElement.displayQuotas[0].aggregation?.balance, "forbid", "投影内 aggregation 语义保持");
+assert.equal(appliedElement.displayQuotas[0].amount.value, 42.68, "displayQuotas 数值按 precision 取整");
+assert.equal(appliedElement.displayWindows.every(w => w.kind), true, "displayWindows 为 legacy 投影");
 assert.equal(appliedElement.windows.find(w => w.kind === "day")?.percent, 25, "legacy windows 百分比不被篡改");
 
 // 4. tightest-window 主指标
