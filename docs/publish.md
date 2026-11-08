@@ -23,7 +23,7 @@ tag 必须等于 `v` 加包版本。版本 Release 使用 `make_latest: legacy`�
 
 ## npm
 
-0.24.5 工具报告补实际额度数字（`（余 N unit）`，detail.left/remaining/used·limit 反推 + Unlimited 中文化，与客户端 fmtTokens 同口径）与 `subusage_quota` schema 必填修复（联动展开账号行缺 `label` 让全量查询被判 `missing required property`，0.24.4 发布后才修）。awesome 条目同步为 31 条入口 + 「项目正在进行重构」提示。发布完成仍以 registry、Actions run 与 GitHub Release 资产的实际结果为准，不自动安装或重启本机 DSH。
+0.24.5 工具报告补实际额度数字（`（余 N unit）`，detail.left/remaining/used·limit 反推 + Unlimited 中文化，与客户端 fmtTokens 同口径）与 `subusage_quota` schema 必填修复（联动展开账号行缺 `label` 让全量查询被判 `missing required property`，0.24.4 发布后才修）。awesome 条目同步为 31 条入口 + 「项目正在进行重构」提示。推送前只读核验（DeepSeek V4.1 Flash）发现 2 项中等：label=account 时标题行重复账户名（把 4 行推过 220 上限）、数量密度断言没进形态表没真守住——均已修复（`accountSuffix` 在 label===account 时去掉重复名、`assertToolShape` 加型别核对、数量断言换长形态夹具并实测 205 字符）。已于 2026-11-08 经 `v0.24.5` 标签 → `release.yml` 发布：提交 `ecaa093`，版本工作流（run 42430508445）success；registry 的 `versions["0.24.5"]` 与 `dist-tags.latest` 均为 0.24.5。Release 资产与 npm tarball 完全相同（`sha256:a2e835f93d1cb6294ca42d9192ef79c92589835167080c177173f4b16b055d1f`，289851 字节）。已重新物化安装到本机 `desktop` profile，**未重启 DSH**。
 
 0.24.4 DSH Go 原生面板、Magpie 聚合网关与 wire lossless 修复（详见更新记录）。已于 2026-11-06 经 `v0.24.4` 标签 → `release.yml` 发布：标签提交 `2185fad` 为 SSH 签名，版本工作流（run 42264807649）与后续合并提交的主分支 CI（run 42265626882）均 success；registry 的 `versions["0.24.4"]` 与 `dist-tags.latest` 均为 0.24.4。Release 资产与 npm tarball SHA256 一致（`sha256:5af46de3576b1caadfbbc96dd4e8e98c2900fd56420c12f0b466088004975488`，288934 字节）。过程中 `test-go-panel.mjs` 一条「更新时间」断言按 +08:00 硬编码预期在 UTC runner 上失败，改为从 `updatedAt` 动态计算后于合并提交内收敛（`main` 拒绝非快进，用 merge 收拢 tag 提交与修正提交）。已重新物化安装到本机 `desktop` profile，**未重启 DSH**。
 
