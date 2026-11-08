@@ -2,6 +2,20 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 未发布：鉴权数据加密存储、重构审查修复与设置页连接管理
+
+### 设置页功能入口（本次新增）
+
+- **管理区分组 tab（本次新增）**：额度区下方改为横向分组 tab——「订阅与凭据」（原有 provider 卡片 + 手动匹配/隐藏开关）、「聚合商」（`PROVIDER_META.aggregator` 标记的条目，目前只有 apigoto）、「联动」（全部联动项独立开关）、「自定义连接」（原 ConnectionsBlock）。
+- **联动逐项开关（新增 `visibility.linked`）**：OFM 十个渠道（`ofm-*`）、独立 Trae / WorkBuddy / Raccoon / Loomy 与 Magpie 各有独立开关，缺省全开、补丁逐键合并；关闭后 `quota()` 与 `readLinked()` 同样静默缺席，Client store 同步清除旧条目并拦截迟到响应。Antigravity 仍走既有独立 `visibility.antigravity` 开关。回归见 [test-linked-switches.mjs](tests/test-linked-switches.mjs)。
+- **Magpie 自定义分组绑定（新增 `settings.magpieRoutes`）**：`{模型前缀 → Magpie providerGroup}`，药丸 `modelOwnedBy` 归组先查该绑定再回落前缀直配与 `/v1/models` 的 `owned_by`；面向不用内置 magpie 三条路由、自行做 provider 分组的部署。设置页联动 tab 内提供绑定/解绑编辑器，候选分组名从已检测 `linkedAccounts[].providerGroup` 提示；参与保存 revision 但不参与查询一致性哈希（与 routeBindings 同口径，改绑定不作废额度缓存）。
+- **连接实例管理 UI**：设置页「自定义连接」分组（`lib/client.js` 的 `ConnectionsBlock`/`InstanceEditor`），支持实例列表、启停开关、编辑、删除与新建（上限 24 条）；编辑器覆盖 adapterId、baseUrl、usagePath、authKind/scheme/customHeaderName、credentialMode、lifecycle、credentialRefs、routeIds、非秘密请求头与手动秘密（只写不回显）。
+- **探测向导**：编辑器内「测试连接（不保存）」调 `detectInstance`，展示 `identified / needs-review / auth-required / unsupported` 四态、解释与五类冲突提示；可一键采用建议映射；探测期间设置被修改时显示 stale 告警并要求重测。
+- **映射编辑器**：14 个 JSON Pointer 字段 + envelope/unit/scale/balanceSubjectKind/balanceAggregation/percentSemantics/windowPeriod/pool + 逐字段 `mappingLock` 锁定；内嵌 DisplayProfile（primaryMetric、hiddenElementIds）。
+- **Recipe 导入导出**：实例卡片「导出」返回脱敏 JSON（秘密/凭据引用名/私有地址/路由绑定全部剥离）；「导入 Recipe」粘贴 JSON + 必填 baseUrl 直接落盘。
+- **RouteBinding UI**：手动匹配区新增「路由绑定」子区，把单条模型路由直接绑到订阅或连接实例；与 providerMappings 同层，遵循统一解析顺序。
+- **新增 4 条 RPC**：`subUsage/getCatalog`、`subUsage/detectInstance`（入参白名单校验）、`subUsage/exportRecipe`、`subUsage/importRecipe`（`{recipe, overrides}`）；`exportRecipe`/`importRecipe` 保留直连位置参数兼容。`publicSettings` 已同时下发 `instances`（公开视图）、`displayProfiles`、`routeBindings`、`magpieRoutes`、`catalog`。
+
 ## 未发布：鉴权数据加密存储与重构审查修复
 
 - **秘密落盘加密（新增 `lib/secret-box.js`）**：`~/.dsh/dsh-subusage.json` 中的用户秘密值（`keys[id]`、`instanceSecrets`、小米 `xiaomi.cookie`/`xiaomi.renewal`、火山 `volc.accessKeyId`/`secretAccessKey`）以 AES-256-GCM 加密存储；32 字节随机密钥单独放在 `<config>.key`（0600），密文封套 `enc:v1:<iv>:<tag>:<ct>`（base64）。旧明文值加载时照旧可用并在下一次持久化自动加密；解密失败按空处理不阻断加载；密钥文件损坏抛出 `subusage/key-corrupt`。引用名（keyRefs、credentialRefs、env 名）与环境变量来源本身不存值，不加密；公开设置依旧不含任何秘密。回归见 [test-secret-storage.mjs](tests/test-secret-storage.mjs)。

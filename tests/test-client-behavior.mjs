@@ -225,12 +225,12 @@ const uiGate = deferred(); let uiSnapshot = result([...ids.map((id) => entry(id)
 const uiStore = { getSnapshot: () => uiSnapshot, subscribe: () => () => {}, readAll: async () => uiSnapshot, activate: () => () => {}, save: async (patch) => { savedPatch = patch; uiSnapshot = result([], "2"); return uiSnapshot; }, refresh: async () => uiGate.promise };
 const uh = new Hooks(), props = { usageStore: uiStore, t, getLocale: () => "zh" };
 tree = uh.render(api.SubusageSection, props);
-let tabs = nodes(tree).filter((n) => n.props.role === "tab");
+let tabs = nodes(tree).filter((n) => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-"));
 assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Grok", "MiniMax CN", "DeepSeek 账号", "DeepSeek API", "ARK Plan"]);
 assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
 assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
 // 原有 30 个开关，加上默认关闭的手动匹配与默认开启的 Antigravity 联动开关。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 32); assert.ok(!textOf(tree).includes("保存设置"));
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 30); assert.ok(!textOf(tree).includes("保存设置"));
 let focused; tabs[0].props.onKeyDown({ key: "End", preventDefault() {}, currentTarget: { parentElement: { querySelectorAll: () => tabs.map((_, i) => ({ focus() { focused = i; } })) } } });
 assert.equal(focused, ids.length - 1); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids.at(-1));
 // End 键跳到最后一个 tab，其技术信息应显示该 provider 的继承变量名。
@@ -238,10 +238,10 @@ assert.ok(textOf(tree).includes(`${ids.at(-1).replace(/-/g, "_").toUpperCase()}_
 // MiniMax 的技术信息要说明「需要订阅 Key 而不是按量 Key」：显式点开该 tab，不依赖它是第几个/是否在末尾。
 nodes(tree).find(n => n.props.role === "tab" && n.props.id === "subusage-tab-minimax-cn").props.onClick(); tree = uh.render(api.SubusageSection, props);
 assert.ok(textOf(tree).includes("订阅 Key"));
-tabs = nodes(tree).filter((n) => n.props.role === "tab"); tabs[4].props.onClick(); tree = uh.render(api.SubusageSection, props);
+tabs = nodes(tree).filter((n) => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")); tabs[4].props.onClick(); tree = uh.render(api.SubusageSection, props);
 assert.ok(textOf(tree).includes("直接拉取"), "Command Code 标签展示只读说明");
 assert.ok(!nodes(tree).some((n) => n.type === "input" && n.props.type === "password"), "Command Code 不提供本地 Key 输入");
-tabs = nodes(tree).filter((n) => n.props.role === "tab"); tabs[3].props.onClick(); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids[3]);
+tabs = nodes(tree).filter((n) => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")); tabs[3].props.onClick(); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids[3]);
 nodes(tree).find((n) => n.type === "button" && n.children.includes("更换")).props.onClick();
 tree = uh.render(api.SubusageSection, props);
 const password = nodes(tree).find((n) => n.type === "input" && n.props.type === "password"); assert.equal(password.props.value, ""); password.props.onChange({ target: { value: "secret-new" } });
@@ -251,7 +251,7 @@ assert.equal(savedPatch.expectedRevision, "1"); assert.equal(savedPatch.provider
 tree = uh.render(api.SubusageSection, props); assert.ok(textOf(tree).includes("已保存")); assert.ok(!textOf(tree).includes("secret-new"));
 uiGate.resolve(result([entry(ids[3], 0, { state: "error", windows: [], error: "verification failed" })], "2")); await saving;
 tree = uh.render(api.SubusageSection, props); assert.ok(textOf(tree).includes("已保存；验证获取失败")); assert.ok(!textOf(tree).includes("保存设置"));
-tabs = nodes(tree).filter((n) => n.props.role === "tab"); tabs[2].props.onClick(); tree = uh.render(api.SubusageSection, props);
+tabs = nodes(tree).filter((n) => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")); tabs[2].props.onClick(); tree = uh.render(api.SubusageSection, props);
 assert.ok(!nodes(tree).some((n) => n.type === "input" && n.props.type === "password"));
 // MiMo 的手动入口必须直达控制台套餐页：站点首页不触发登录，用户还得自己点进控制台。
 const link = nodes(tree).find((n) => n.type === "a"); assert.equal(link.props.href, "https://platform.xiaomimimo.com/console/plan-manage"); assert.equal(link.props.rel, "noopener noreferrer"); assert.equal(link.props.target, "_blank");
@@ -445,13 +445,13 @@ const controlStore = { ...uiStore, getSnapshot: () => controlSnapshot, readAll: 
 memory.set("dsh-subusage:last-provider", ids[0]);
 const ch = new Hooks(), cp = { ...props, usageStore: controlStore };
 tree = ch.render(api.SubusageSection, cp); tree = ch.render(api.SubusageSection, cp);
-const management = tree.children.at(-1);
-assert.equal(management.type, "details", "管理区为设置页末尾的折叠菜单");
-assert.equal(management.props.id, "subusage-provider-management"); assert.notEqual(management.props.open, true, "默认折叠");
-assert.equal(management.children[0].type, "summary"); assert.equal(management.children[0].children[0], "提供商管理");
+const management = nodes(tree).find(n => n.props.id === "subusage-provider-management");
+assert.equal(management.type, "div", "管理区为分组 tab 下的分区块（自定义连接有独立分组 tab）");
+assert(nodes(tree).some(n => n.props.id === "subusage-section-subscriptions"), "默认分组是「订阅与凭据」");
 // 关闭/隐藏的提供商仍保留管理开关；Ark 两个组开关外，Antigravity 联动也有独立开关。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 32, "普通提供商、Ark 两组及 Antigravity 均保留独立开关");
-const antigravitySwitch = () => nodes(tree).find(n => n.props["aria-label"] === "启用 Antigravity 用量");
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 30, "订阅区内普通提供商与 Ark 两组开关均可见");
+nodes(tree).find(n => n.props.id === "subusage-section-linked").props.onClick(); tree = ch.render(api.SubusageSection, cp);
+ const antigravitySwitch = () => nodes(tree).find(n => n.props["aria-label"] === "启用 Antigravity 用量");
 assert.equal(antigravitySwitch().props["aria-checked"], true, "Antigravity 联动默认开启");
 await antigravitySwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.deepEqual(JSON.parse(JSON.stringify(controlPatches.at(-1).visibility)), { antigravity: false }, "按钮只提交独立开关，不夹带凭据或普通 provider");
@@ -459,9 +459,10 @@ assert.equal(antigravitySwitch().props["aria-checked"], false);
 await antigravitySwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.antigravity, true);
 assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), ["antigravity"], "重新开启后立即刷新联动额度");
-assert.deepEqual(nodes(tree).filter(n => n.props.role === "tab").map(n => n.props.id), ids.filter(id => ![ids[1], ids[3]].includes(id)).map(id => `subusage-tab-${id}`));
+assert.deepEqual(nodes(tree).filter(n => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")).map(n => n.props.id), ids.filter(id => ![ids[1], ids[3]].includes(id)).map(id => `subusage-tab-${id}`));
 assert(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
-nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick(); tree = ch.render(api.SubusageSection, cp);
+nodes(tree).find(n => n.props.id === "subusage-section-subscriptions").props.onClick(); tree = ch.render(api.SubusageSection, cp);
+ nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 const kimiEditor = nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[1]}`);
 assert.equal(kimiEditor.props.hidden, false); assert(nodes(kimiEditor).some(n => n.props.role === "group"), "自动隐藏项可在本行编辑凭据");
 assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"] === "Z.ai Coding（中国）"), "展开隐藏厂商不会切换上方用量");
@@ -515,8 +516,8 @@ ch.unmount();
 controlSnapshot = withPrefs(result(controlSnapshot.entries), preferences(Object.fromEntries(ids.map(id => [id, false]))));
 const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSection, cp);
 // 空状态仍列出全部管理开关，并保留 Antigravity 联动独立开关。
-assert.equal(nodes(tree).filter(n => n.props.role === "tab").length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 32);
-assert.equal(nodes(tree).find(n => n.props.id === "subusage-provider-management").props.open, true, "空状态展开配置入口");
+assert.equal(nodes(tree).filter(n => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")).length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 30);
+assert(nodes(tree).some(n => n.props.id === "subusage-section-subscriptions"), "空状态保留订阅分组入口");
 assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.role === "tabpanel"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick(); tree = emptyControls.render(api.SubusageSection, cp);
 assert(nodes(tree).some(n => n.props.id === `subusage-credentials-${ids[0]}`), "全部关闭仍能行内配置");
@@ -610,7 +611,7 @@ await pendingBoth;
 assert.equal(bothStore.getSnapshot().entries.find(e => e.providerId === ids[1]).windows[0].percent, 42);
 bothStore.dispose();
 // 刷新在途时拨可见性开关：保存只更新 settings，不丢在途用量、不回退本地 revision。
-const visGate = deferred(); let visSaveCalls = 0;
+let visGate = deferred(); let visSaveCalls = 0;
 const visStore = api.createUsageStore((method, query) => {
 	if (method === "read") return result(ids.map((id) => entry(id)));
 	if (method === "save") { visSaveCalls++; return result([], `vis-${visSaveCalls + 1}`); }
@@ -627,6 +628,13 @@ assert.equal(visStore.getSnapshot().entries.find(e => e.providerId === ids[0]).w
 assert.equal(visStore.getSnapshot().settings.revision, "vis-2", "过期响应的 settings 不回退本地 revision");
 assert.equal(visStore.getSnapshot().entries.find(e => e.providerId === ids[1]).windows[0].percent, 25, "被关闭厂商的存量用量保留");
 assert.equal(visStore.getSnapshot().entries.find(e => e.providerId === ids[2]).windows[0].percent, 25, "其它厂商用量不受影响");
+// magpieRoutes 保存同口径：只更新 settings，不丢在途用量、不推进 epoch。
+visGate = deferred();
+const pendingVis2 = visStore.refresh([ids[0]], true); await flush();
+await visStore.save({ expectedRevision: "vis-2", magpieRoutes: { mygroup: "kimi" } });
+visGate.resolve(result([entry(ids[0], 77)], "vis-stale2"));
+await pendingVis2;
+assert.equal(visStore.getSnapshot().entries.find(e => e.providerId === ids[0]).windows[0].percent, 77, "在途刷新结果不被 magpieRoutes 保存丢弃");
 visStore.dispose();
 // 另一窗口改 revision：当前代 refresh 采用新 settings，但不把其它家打成 loading。
 const extStore = api.createUsageStore((method) => method === "read" ? result(ids.map((id) => entry(id))) : result([entry(ids[0], 91)], "other-window"));

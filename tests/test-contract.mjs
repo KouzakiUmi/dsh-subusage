@@ -53,7 +53,7 @@ assert.deepEqual(
   host.CLIENT_FETCH_LINKED_IDS.slice().sort(),
   '两端「页面代取」的 provider id 集合必须一致'
 );
-assert.deepEqual(JSON.parse(JSON.stringify(mounted.descriptors.map(d => d.method).sort())), ['cancelMimoLogin', 'cancelMimoQrLogin', 'cancelOpenDesignLogin', 'getMimoLoginStatus', 'getMimoQrStatus', 'getOpenDesignLoginStatus', 'linkedStep', 'read', 'readLinked', 'refresh', 'save', 'startMimoLogin', 'startMimoQrLogin', 'startOpenDesignLogin']);
+assert.deepEqual(JSON.parse(JSON.stringify(mounted.descriptors.map(d => d.method).sort())), ['cancelMimoLogin', 'cancelMimoQrLogin', 'cancelOpenDesignLogin', 'detectInstance', 'exportRecipe', 'getCatalog', 'getMimoLoginStatus', 'getMimoQrStatus', 'getOpenDesignLoginStatus', 'importRecipe', 'linkedStep', 'read', 'readLinked', 'refresh', 'save', 'startMimoLogin', 'startMimoQrLogin', 'startOpenDesignLogin']);
 const start = host.subUsageRemote.descriptors.find(d => d.method === 'startMimoLogin');
 const cancel = host.subUsageRemote.descriptors.find(d => d.method === 'cancelMimoLogin');
 assert.equal(start.parameters[0].codec.schema.parse({ expectedRevision: 'current-revision' }).expectedRevision, 'current-revision');

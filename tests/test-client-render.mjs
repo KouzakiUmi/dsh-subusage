@@ -199,7 +199,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   assert.equal(selects.length, 0, "设置页不使用任何下拉列表");
   // 火山方舟的 4 条路由在设置页合并成一张卡片，但个人版 / Team 各有一个开关：
   // 原有 30 个开关 + 手动匹配与 Antigravity 联动开关。
-  assert.equal(all.filter(n => n.props?.role === "switch").length, 32, "普通提供商、Ark Team、手动匹配与 Antigravity 开关均可见");
+  assert.equal(all.filter(n => n.props?.role === "switch").length, 30, "订阅区内普通提供商、Ark Team 与手动匹配开关均可见");
   if (provider === "xiaomi-token-plan-cn") {
     assert.ok(visibleText(section).includes("小米扫码登录")); assert.ok(visibleText(section).includes("浏览器登录并导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));
@@ -304,7 +304,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   const entries = order.map(id => ({ providerId: id, state: id === broken ? "error" : "ok", windows: [], extras: [], coverage: "complete", freshness: "fresh", lastAttemptAt: "2026-10-09T00:00:00.000Z" }));
   stateValues = []; stateIndex = 0;
   const section = plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => ({ settings, configured: {}, entries }) }, t: (key) => key, getLocale: () => "zh" });
-  const tabs = flattenNodes(section).filter(n => n.props?.role === "tab");
+  const tabs = flattenNodes(section).filter(n => n.props?.role === "tab" && String(n.props?.id || "").startsWith("subusage-tab-"));
   assert.equal(tabs.length, order.length, "所有可见 provider 都还在");
   assert.equal(tabs[0].props.id, `subusage-tab-${broken}`, "出错的那家排到最前");
   const restIds = tabs.slice(1).map(n => n.props.id);
@@ -321,7 +321,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   const healthy = plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => ({ settings, configured: {}, entries: entries.map(e => ({ ...e, state: "ok" })) }) }, t: (key) => key, getLocale: () => "zh" });
   const healthyCounter = flattenNodes(healthy).find(n => n.type === "button" && JSON.stringify(n.children).includes("家数据获取成功"));
   assert.equal(healthyCounter.props.disabled, true, "全部正常时不可点");
-  assert.equal(JSON.stringify(flattenNodes(healthy).filter(n => n.props?.role === "tab").map(n => n.props.id)), JSON.stringify(order.map(id => `subusage-tab-${id}`)), "没有待处理项时保持登记顺序");}
+  assert.equal(JSON.stringify(flattenNodes(healthy).filter(n => n.props?.role === "tab" && String(n.props?.id || "").startsWith("subusage-tab-")).map(n => n.props.id)), JSON.stringify(order.map(id => `subusage-tab-${id}`)), "没有待处理项时保持登记顺序");}
 // 首次加载 gate：settings 未读到（readAll 在飞）时不闪现默认提供商。
 {
   const order = plugin.__test.PROVIDER_ORDER;
@@ -329,7 +329,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   // a. 初始快照：不渲染标签栏/标签、空状态与计数，但刷新按钮仍在。
   const initial = render({ updatedAt: null, settings: null, configured: {}, entries: [] });
   const nodes = flattenNodes(initial);
-  assert.equal(nodes.filter(n => n.props?.role === "tab").length, 0, "未初始化时不渲染任何提供商标签");
+  assert.equal(nodes.filter(n => n.props?.role === "tab" && String(n.props?.id || "").startsWith("subusage-tab-")).length, 0, "未初始化时不渲染任何提供商标签");
   assert.equal(nodes.filter(n => n.props?.role === "tablist").length, 0, "未初始化时不渲染标签栏");
   assert.ok(!visibleText(initial).includes("没有可显示的提供商"), "未初始化时不显示空状态文案");
   assert.equal(nodes.filter(n => n.type === "button" && JSON.stringify(n.children).includes("家数据获取成功")).length, 0, "未初始化时不渲染计数");
@@ -337,7 +337,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   // b. settings 已加载（哪怕 entries 为空）：标签栏照常出现，gate 不误伤正常加载后的界面。
   const providers = Object.fromEntries(order.map(id => [id, true]));
   const loaded = render({ updatedAt: 1, settings: { revision: "r", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: false }, visibility: { hideWithoutApi: false, arkTeam: true, providers } }, configured: {}, entries: [] });
-  assert.equal(flattenNodes(loaded).filter(n => n.props?.role === "tab").length, order.length, "settings 加载后全部提供商标签照常出现");
+  assert.equal(flattenNodes(loaded).filter(n => n.props?.role === "tab" && String(n.props?.id || "").startsWith("subusage-tab-")).length, order.length, "settings 加载后全部提供商标签照常出现");
 }
 // 按「本机实际装了什么路由」判定默认可见性 + 管理列表把已启用的排到前面。
 {
@@ -349,7 +349,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   const settings = { revision: "r", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: true }, visibility: { hideWithoutApi: true, providers: Object.fromEntries(order.map(id => [id, !off.has(id)])) } };
   const entries = order.map(id => ({ providerId: id, state: "ok", apiDetected: true, keySource: "env", windows: [], extras: [], coverage: "complete", freshness: "fresh", lastAttemptAt: "2026-10-09T00:00:00.000Z" }));
   const render = (over) => { stateValues = []; stateIndex = 0; return plugin.__test.SubusageSection({ usageStore: { subscribe: () => () => {}, getSnapshot: () => ({ settings, configured, entries, ...over }) }, t: (key) => key, getLocale: () => "zh" }); };
-  const tabIds = (node) => flattenNodes(node).filter(n => n.props?.role === "tab").map(n => n.props.id.replace("subusage-tab-", ""));
+  const tabIds = (node) => flattenNodes(node).filter(n => n.props?.role === "tab" && String(n.props?.id || "").startsWith("subusage-tab-")).map(n => n.props.id.replace("subusage-tab-", ""));
 
   const allOn = { ...settings, visibility: { ...settings.visibility, arkTeam: true, providers: Object.fromEntries(order.map(id => [id, true])) } };
   const tabs = tabIds(render({ settings: allOn }));
@@ -378,7 +378,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   // 管理列表：已启用的在前，关闭项沉到末尾，组内各自保持既有顺序。
   const listed = flattenNodes(render()).filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("启用 ") && !["Team 检测", "Antigravity 用量"].some(label => String(n.props["aria-label"]).includes(label))).map(n => String(n.props["aria-label"]).slice("启用 ".length));
   // Ark 剩下的 4 条路由合并成一张卡片，所以比 PROVIDER_ORDER 少 3 条。
-  assert.equal(listed.length, order.length - 3, "管理列表列出全部提供商（Ark 组合并成一张卡片）");
+  assert.equal(listed.length, order.length - 4, "管理列表列出全部订阅（Ark 组合并一张卡，apigoto 在聚合商分组）");
   assert.equal(listed.at(-2), meta["zai-coding-cn"].short, "关闭的 Z.ai 沉到末尾组");
   assert.equal(listed.at(-1), meta["kimi-coding"].short, "关闭项在组内保持既有顺序");
   assert.ok(listed.slice(0, -2).every(short => !off.has(order.find(id => meta[id].short === short))), "前面的都是已启用的");
