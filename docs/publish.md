@@ -23,6 +23,8 @@ tag 必须等于 `v` 加包版本。版本 Release 使用 `make_latest: legacy`�
 
 ## npm
 
+0.24.5 工具报告补实际额度数字（`（余 N unit）`，detail.left/remaining/used·limit 反推 + Unlimited 中文化，与客户端 fmtTokens 同口径）与 `subusage_quota` schema 必填修复（联动展开账号行缺 `label` 让全量查询被判 `missing required property`，0.24.4 发布后才修）。awesome 条目同步为 31 条入口 + 「项目正在进行重构」提示。发布完成仍以 registry、Actions run 与 GitHub Release 资产的实际结果为准，不自动安装或重启本机 DSH。
+
 0.24.4 DSH Go 原生面板、Magpie 聚合网关与 wire lossless 修复（详见更新记录）。已于 2026-11-06 经 `v0.24.4` 标签 → `release.yml` 发布：标签提交 `2185fad` 为 SSH 签名，版本工作流（run 42264807649）与后续合并提交的主分支 CI（run 42265626882）均 success；registry 的 `versions["0.24.4"]` 与 `dist-tags.latest` 均为 0.24.4。Release 资产与 npm tarball SHA256 一致（`sha256:5af46de3576b1caadfbbc96dd4e8e98c2900fd56420c12f0b466088004975488`，288934 字节）。过程中 `test-go-panel.mjs` 一条「更新时间」断言按 +08:00 硬编码预期在 UTC runner 上失败，改为从 `updatedAt` 动态计算后于合并提交内收敛（`main` 拒绝非快进，用 merge 收拢 tag 提交与修正提交）。已重新物化安装到本机 `desktop` profile，**未重启 DSH**。
 
 0.24.3 兼容宿主 Core `0.2.2-rc.1`：`peerDependencies` 按「逐 minor 分支」规则补 `>=0.2.2-0 <0.3.0-0`，修掉 node-semver 静默排除预发布 Core 的问题（本机 semver 实测 0.2.0 / 0.2.1 / 0.2.2 的预发布版均覆盖）；`dsh.compatibility.dshReleases` 补 `0.2.2-rc.1: unknown`（只有静态核对与全量回归，未在该 Core 上实机安装运行，不标 `compatible`），README 兼容表与 development.md 同步，并清理 0.2.2 安装树里已不存在的 `dsh.client.inject` 包名。新增 `tests/test-peer-range.mjs` 守住每个 minor 的下界比较符。已于 2026-11-05 经 `v0.24.3` 标签 → `release.yml` 发布：提交 `5c25d33` 为 SSH 签名，主分支 CI（run 42048690413）与版本工作流（run 42048701165）均 success；registry 的 `versions["0.24.3"]` 与 `dist-tags.latest` 均为 0.24.3。`v0.24.3` Release 资产与 npm tarball SHA256 一致（`sha256:9a81f277bed4a92614bcdadb9c03e60d82a3b713dd925a45f1ec7f73c36d982e`，250710 字节）。**未安装到本机 Profile、未重启 DSH**。
@@ -139,19 +141,19 @@ npm view dsh-subusage version dist-tags
 
 提交前以 [awesome-dsh-plugin 贡献指南](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/contributing.md) 为准。用户提供的 [fork 指南](https://github.com/KouzakiUmi/awesome-dsh-plugin/blob/main/contributing.md) 可用于准备条目；市场收录需要目标注册表接受并合并投稿。
 
-本仓库的条目文件名为 `data/plugins/KouzakiUmi__dsh-subusage.yml`，分类为 `usage`。以下描述涵盖当前支持的服务，可作为投稿内容：
+本仓库的条目文件名为 `data/plugins/KouzakiUmi__dsh-subusage.yml`，分类为 `usage`。以下描述涵盖当前支持的服务，可作为投稿内容（2026-11-08 起与 [fork 条目](https://github.com/KouzakiUmi/awesome-dsh-plugin/blob/main/data/plugins/KouzakiUmi__dsh-subusage.yml) 同步，含 31 条入口与重构提示）：
 
 ```yaml
 url: https://github.com/KouzakiUmi/dsh-subusage
 name: KouzakiUmi/dsh-subusage
 category: usage
 description:
-  en: 'Subscription quota and balance pills for DeepSeek, Z.ai, Kimi, Xiaomi MiMo, OpenCode Go, Command Code, Codex, SuperGrok, MiniMax, Volcengine Ark, SiliconFlow, OpenRouter and other AI providers in DeepSeek Harness, with one settings page for detection switches and credentials and a read-only quota API for other plugins.'
-  zh: '在 DeepSeek Harness 的模型选择器旁为 DeepSeek、Z.ai、Kimi、小米 MiMo、OpenCode Go、Command Code、Codex、SuperGrok、MiniMax、火山方舟 Ark、SiliconFlow、OpenRouter 等提供商显示订阅余量与余额药丸，提供统一管理检测开关与凭据的设置页，并对其他插件开放只读额度查询接口。'
+  en: 'Subscription quota and balance pills beside the DeepSeek Harness model selector for 31 provider entries (DeepSeek, Z.ai, Kimi, Xiaomi MiMo, OpenCode Go, Command Code, Codex, SuperGrok, MiniMax, Volcengine Ark, GitHub Copilot, SiliconFlow, OpenRouter and more), with a shared settings page, a read-only quota tool and linked pills from Antigravity/Trae/WorkBuddy/OFM/Magpie provider plugins. Under active refactor (QuotaEntry contract, DSH Go panel, Magpie gateway); bugs may appear — please report issues.'
+  zh: '在 DeepSeek Harness 模型选择器旁显示 31 条提供商入口的订阅额度与账户余额（DeepSeek、Z.ai、Kimi、小米 MiMo、OpenCode Go、Command Code、Codex、SuperGrok、MiniMax、火山方舟 Ark、GitHub Copilot、SiliconFlow、OpenRouter 等），附统一设置页、只读额度查询工具与 Antigravity/Trae/WorkBuddy/OFM/Magpie 提供方联动。项目正在持续重构（QuotaEntry 契约、DSH Go 面板、Magpie 网关），版本间可能出现 bug——发现异常请回报 issue。'
 tarball: https://github.com/KouzakiUmi/dsh-subusage/releases/latest/download/dsh-subusage.tgz
 ```
 
-分类维持 `usage`：本插件只**读取并展示**用量/余额，不注册模型路由（`models` 会误导为「提供模型」）。提交只添加该条目，不修改其他插件条目或手工改写注册表的生成 README。npm 关联由本包的 `repository` 字段自动建立，条目不添加 `npm:` 字段。
+分类维持 `usage`：本插件只**读取并展示**用量/余额，不注册模型路由（`models` 会误导为「提供模型」）。提交只添加该条目，不修改其他插件条目或手工改写注册表的生成 README。npm 关联由本包的 `repository` 字段自动建立，条目不添加 `npm:` 字段。「重构提示」按事实写进描述（贡献指南要求描述只说功能；功能正经历持续重构是用户安装前需要知道的事实），不是营销措辞。
 
 ### 本仓库核对结果
 

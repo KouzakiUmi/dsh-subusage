@@ -46,15 +46,29 @@ const assertLossless = (value, label) => {
 const TOOL_REQUIRED = ["providerId", "label", "state", "windows", "extras"];
 const WINDOW_REQUIRED = ["kind", "percent", "status"];
 const EXTRA_REQUIRED = ["kind", "value"];
+// 不只核「属性存在」：schema 同时要求型别（label:string、windows/extras:array、
+// percent:number），null/0/字符串嵌套同样会被调用方拒掉。type 表按输出 schema 抄一遍。
+const TOOL_TYPES = { providerId: "string", label: "string", state: "string" };
+const WINDOW_TYPES = { kind: "string", percent: "number", status: "string" };
+const EXTRA_TYPES = { kind: "string", value: "string" };
 const assertToolShape = (value, label) => {
 	const bad = [];
+	const typed = (obj, types, path) => {
+		for (const [k, t] of Object.entries(types)) {
+			const v = obj?.[k];
+			if (v === undefined) bad.push(`${path}.${k}`);
+			else if (typeof v !== t) bad.push(`${path}.${k} 型别 ${typeof v} ≠ ${t}`);
+		}
+	};
 	(value.providers ?? []).forEach((e, i) => {
-		for (const k of TOOL_REQUIRED) if (e?.[k] === undefined) bad.push(`providers[${i}].${k}`);
-		(e?.windows ?? []).forEach((w, j) => { for (const k of WINDOW_REQUIRED) if (w?.[k] === undefined) bad.push(`providers[${i}].windows[${j}].${k}`); });
-		(e?.extras ?? []).forEach((x, j) => { for (const k of EXTRA_REQUIRED) if (x?.[k] === undefined) bad.push(`providers[${i}].extras[${j}].${k}`); });
-		(e?.quotas ?? []).forEach((q, j) => { if (q?.type === undefined) bad.push(`providers[${i}].quotas[${j}].type`); });
+		typed(e, TOOL_TYPES, `providers[${i}]`);
+		if (!Array.isArray(e?.windows)) bad.push(`providers[${i}].windows 非数组`);
+		else e.windows.forEach((w, j) => typed(w, WINDOW_TYPES, `providers[${i}].windows[${j}]`));
+		if (!Array.isArray(e?.extras)) bad.push(`providers[${i}].extras 非数组`);
+		else e.extras.forEach((x, j) => typed(x, EXTRA_TYPES, `providers[${i}].extras[${j}]`));
+		if (e?.quotas !== undefined) (e.quotas ?? []).forEach((q, j) => { if (q?.type === undefined) bad.push(`providers[${i}].quotas[${j}].type`); });
 	});
-	assert.deepEqual(bad, [], `${label} 输出必须符合工具 schema 必填字段：${bad.slice(0, 8).join("、")} 缺席`);
+	assert.deepEqual(bad, [], `${label} 输出必须符合工具 schema 必填字段与型别：${bad.slice(0, 8).join("、")}`);
 };
 
 const { SubUsageService } = await loadHostModule();

@@ -2,10 +2,11 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
-## 未发布
+## 0.24.5：工具报告补实际额度数字、label 必填修复与重构说明
 
 - **修复 `subusage_quota` 工具 schema 校验报 `missing required property label`**（0.24.4 发布后才修的漏网）：lossless 修复把 `label` 从「裸拷贝 undefined」改成「条件省略」，而工具 output schema 把它标为必填——Magpie 等联动的展开账号行本来就没有 label（账号名在 account 里），全量查询时所有账号行一起违约。现在依次回退：账号名 → 联动/常规表显示名 → providerId，必填字段不再留空。回归在 [test-wire-lossless.mjs](tests/test-wire-lossless.mjs) 增加 `assertToolShape`：lossless 之外再核一遍 schema 必填字段。
 - **`subusage_quota` 报告报实际额度数字，不只报百分比**：窗口行在剩余百分比后补 `（余 N unit）`——`detail.left`（magpie 回推/直接下发）→ `detail.remaining` → `used/limit` 反推；非数值口径（`leftText` 的「Unlimited」）翻中文「不限量」；上游不报告数量的窗口保持纯百分比，不补造。数字量纲与客户端 `fmtTokens` 同口径（K/M/B 分级、两位小数收位）。
+- **文档与发布说明补「项目正在进行重构」的提醒**：README 顶部高亮块与 awesome 条目同步注明：当前在 QuotaEntry / DSH Go 面板 / Magpie 网关方向持续重构，版本间可能出现异常，发现问题请回报。[awesome-dsh-plugin 收录条目](https://github.com/KouzakiUmi/awesome-dsh-plugin/blob/main/data/plugins/KouzakiUmi__dsh-subusage.yml) 同步更新到 31 条入口与重构提示（贡献指南为准：`description` 只说功能、不加营销词，提醒按事实写）。
 
 ## 0.24.3：宿主 Core 0.2.2-rc.1 兼容性与版本声明
 

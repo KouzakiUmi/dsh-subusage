@@ -18,7 +18,9 @@
 
 </div>
 
-> **0.20.0**：Antigravity 用量接入本机 dsh-tool-antigravity——新增 `antigravityAuth` 通道（与既有 dsh-antigravity-acp 的 `agyQuota` 双通道自动探测，同一份订阅只出一条），选中 `google-antigravity` 模型时输入区药丸直接显示 Gemini 与 Claude/GPT 两组的 5 小时 / 周额度。[查看更新记录](docs/changelog.md)。
+> **0.24.5**：`subusage_quota` 工具的文本报告在剩余百分比后补**实际额度数字**（`（余 12.0K credits）`、`（余 不限量）`，单位照上游原文），并修复联动账号展开时缺 `label` 导致全量查询被工具 schema 拒掉的问题。[查看更新记录](docs/changelog.md)。
+>
+> **项目正在进行重构**：QuotaEntry 统一契约、DSH Go 原生面板与 Magpie 聚合网关持续调整中，版本间可能出现 bug——发现异常请[回报 issue](https://github.com/KouzakiUmi/dsh-subusage/issues)。报告/药丸缺数据时会写 `omitted` 计数或读取失败原因，不把未知当充足；数字只作参考，不是计费依据。
 
 ## 快速开始
 

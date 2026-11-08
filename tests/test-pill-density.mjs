@@ -352,29 +352,35 @@ for (const { name, entry } of CASES) {
 }
 
 // 工具报告的窗口除了百分比还要报实际数量：detail.left/remaining 优先、used/limit 反推、
-// 非数值口径（Unlimited）翻中文；单位照上游原文，量纲按 fmtQty 分级。
+// 非数值口径（Unlimited）翻中文；单位照上游原文，量纲按 fmtQty 分级。夹具按 Magpie
+// 展开行真实形态构造（label === account 的长账号名、6 窗、requests 单位、rate-limited 行），
+// 不是短摆设——上一轮就是 4 行真实数据被新括号推过 220。
 {
 	const value = {
 		providers: [{
-			providerId: 'ofm-buddy', label: 'CodeBuddy · OFM', state: 'ok', coverage: 'complete', freshness: 'fresh',
+			providerId: 'magpie', label: 'Magpie 聚合 · 呜咪 (9o1lha)', state: 'ok', coverage: 'complete', freshness: 'fresh',
+			account: 'Magpie 聚合 · 呜咪 (9o1lha)', accountMode: 'fixed', accountActive: true,
 			windows: [
-				window('5h', 40, { detail: { left: 12000, unit: 'credits' } }),
-				window('week', 82, { detail: { used: 450, limit: 2500, unit: 'credits' } }),
-				window('month', 0, { detail: { leftText: 'Unlimited' } }),
-				window('period', 10, { detail: { used: 90, limit: 1_200_000, unit: 'credits' } }),
+				window('5h', 10, { detail: { left: 2400, unit: 'requests' } }),
+				window('week', 55, { detail: { left: 8500, unit: 'requests' } }),
+				window('month', 72, { detail: { used: 336000, limit: 1_200_000, unit: 'credits' } }),
+				window('day', 8, { detail: { left: 960, unit: 'requests' } }),
+				window('period', 30, { detail: { leftText: 'Unlimited' } }),
+				window('5h', 95, { status: 'rate-limited', groupLabel: 'Claude & GPT', detail: { left: 0, unit: 'credits' } }),
 				window('day', 55) // 无 detail：保持纯百分比，不补造数量
 			],
 			extras: []
 		}]
 	};
 	const text = host.formatQuotaText(value);
-	const line = text.split(String.fromCharCode(10)).find(l => l.startsWith('CodeBuddy')) ?? '';
-	assert.ok(line.includes('余 12.0K credits'), 'detail.left 直接报剩余量：' + line);
-	assert.ok(line.includes('余 2.0K credits'), 'used/limit 反推剩余量：' + line);
+	const line = text.split(String.fromCharCode(10)).find(l => l.startsWith('Magpie')) ?? '';
+	assert.ok(line.includes('余 2.4K requests'), 'detail.left 直接报剩余量：' + line);
+	assert.ok(line.includes('余 8.5K requests'), 'used/limit 反推剩余量：' + line);
 	assert.ok(line.includes('余 不限量'), 'leftText Unlimited 翻中文：' + line);
-	assert.ok(line.includes('余 1.20M credits'), '百万量级分级：' + line);
+	assert.ok(line.includes('已达限额（余 0 credits）'), 'rate-limited 也带数量：' + line);
 	assert.ok(!/day 45% 剩余（余/.test(line), '没有数量的窗口不补数量：' + line);
-	assert.ok(line.length <= 220, `数量入报告后单家仍不超 220 字符（实际 ${line.length}）`);
+	assert.ok(!line.includes('账户 Magpie'), 'label===account 时标题行不重复账户名：' + line);
+	assert.ok(line.length <= 220, `长形态数量报告仍不超 220 字符（实际 ${line.length}）：${line}`);
 }
 
 console.log('弹层密度核验：' + report.map(row => `${row.name} ${row.lines}行/${row.chars}字/${row.folds}折`).join(' · '));
