@@ -2,7 +2,21 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
-## 1.0.0：New API / One API 一等入口与平台化
+## 1.0.0：一体化额度平台、声明式连接与 New API 一等入口
+
+1.0.0 的主线是把「任意上游的额度读取」平台化：额度接口的 URL 拼接、凭据注入、响应解析、歧义判定与展示配置全部下沉到可组合的模块层，任意上游只需一份声明（适配器配方 + JSON Pointer 映射）或一次探测就能接入药丸与工具，而不是每家上游在宿主核心里写一段专属代码。本节按核心程度排列：先架构底座，再其上的新入口与 UI。
+
+### 一体化额度查询与药丸显示平台（本次最大变更，架构底座）
+
+- **五个新子系统**（31 个文件、约 6800 行）：`lib/http/`（RFC 6901 JSON Pointer、白名单转换器、安全 URL 归一、只读执行器）、`lib/credentials/`（统一凭据解析链与只读鉴权头注入）、`lib/adapters/declarative/`（声明式适配器：sub2api / litellm / custom-http / newapi）、`lib/detection/`（4 态自动探测引擎）、`lib/platform/`（连接实例、实例运行时、DisplayProfile、路由绑定、动态目录与 Recipe 导入导出）。宿主核心不再为自定义上游散写取数逻辑。
+- **自定义连接全链路**：`ConnectionInstance`（上限 24 条）→ 凭据解析 → 只读 HTTP 执行 → 探测/归一化 → 实例运行时 → 药丸与 `subusage_quota` 工具。每条实例独立凭据、独立缓存与指纹；实例与订阅状态解耦。
+- **QuotaEntry 统一契约扩展**：额度元素新增 `subject`（key / user / group / seat / account）与 `aggregation`（`balance: allow | forbid`）聚合边界——同用户多把分组 Key 的共享钱包余额**不再重复累加**（`canSumBalanceElement`/`sumAccountBalances` 按 subject 去重）；`unitId` 是跨渠道聚合键（按 `unitIdOf` 同义归一，未知单位不猜）；`componentOf` 标记总额分项（合计跳过）；`diagnostics[]` 记录规范化丢弃/降级。出边界统一过 `canonicalizeEntry()`。
+- **wire 输出 lossless JSON**：DSH typert 对 RPC/工具返回值逐值校验，嵌套 `undefined`、`NaN`、符号键任一处违规整条作废——`quota()` 与联动出口统一过 `wireJson()` 深度净化兜底，可选字段一律条件展开，不再让单个上游的坏字段打翻全量查询。
+- **统一凭据解析链**：内置 provider `routeEnvs → keyRefs → builtinEnvs → manualSecret`；自定义实例不含 `routeEnvs`——路由绑定只决定药丸归属，**不把别的路由的 Key 借给实例**。秘密落盘 AES-256-GCM 加密（见下节）。
+- **4 态探测引擎**：`identified / needs-review / auth-required / unsupported`，带数值守恒校验、五大歧义检测（金额/百分比/单位/窗口/账户混淆）、逐字段 `mappingLock` 锁定与 `sanitizePreview` 预览脱敏（Key/JWT/userinfo 模式），探测认不全时降级 `needs-review` 而不是猜。
+- **实例运行时**：实例额度查询 60 秒缓存 + 代次保护 + 临时失败回退（retainPrevious）；多 Key 监控挂 `keyAccounts`（药丸与用量面板只认主 Key）；**DisplayProfile 是投影层**——`primaryMetric`/`hiddenElementIds` 输出 `displayX` 视图，不改 `quotas` 事实层，修改展示配置或路由绑定不失效正式额度缓存；Recipe 导出剥离秘密/凭据引用名/私有地址后可分享导入。
+- **HTTP 安全边界**：禁止公网明文 HTTP（环回/私网放行）、拦截跨源重定向、保留反代子路径、OpenAI 兼容根与额度路径的 `/v1` 去重；执行器按字节上限流式读响应、JSON 节点数预算、超时覆盖到 body 读毕（加固细节见加密节）。
+- 回归：新增 [test-sub2api.mjs](../tests/test-sub2api.mjs)、[test-detection-inference.mjs](../tests/test-detection-inference.mjs)、[test-display-profile.mjs](../tests/test-display-profile.mjs)、[test-platform-runtime.mjs](../tests/test-platform-runtime.mjs)、[test-wire-lossless.mjs](../tests/test-wire-lossless.mjs)、[test-secret-storage.mjs](../tests/test-secret-storage.mjs)；架构分层与扩展路径见 [docs/architecture.md](architecture.md)。
 
 ### New API / One API 一等入口与表单占位符改进
 
