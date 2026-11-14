@@ -32,8 +32,6 @@
 - 回归：新增 `tests/test-newapi.mjs`；计数断言 31→32（`test-quota-api` 的未知说明行计入为 33）；`test-contract` / `test-provider-controls` / `test-client-behavior` / `test-client-render` 同步；`scripts/check-browser-runtime.mjs` 开关计数 31→32、关闭 19→20。
 - 契约核对：额度接口与单位口径已按 [New API 官方文档](https://raw.githubusercontent.com/QuantumNous/new-api-docs/main/docs/api/token-usage.md)核实；**未做真实站点联调与 GUI 实机验收**。
 
-### 鉴权数据加密存储、重构审查修复与设置页连接管理
-
 ### 设置页功能入口（本次新增）
 
 - **管理区分组 tab（本次新增）**：额度区下方改为横向分组 tab——「模型厂」（自研模型订阅的 provider 卡片）、「聚合商」（`PROVIDER_META.aggregator` 标记的不自研模型、只做路由/中转的上游：opencode-go / openrouter / zenmux / vercel-ai-gateway / litellm / apigoto，另含本地网关 Magpie 的联动开关）、「客户端代理」（Antigravity / Trae / WorkBuddy / 小浣熊 / Loomy，本身不提供 API、由第三方插件、本机直取或 OFM 回落读额度）、「OFM」（十个渠道）、「自定义连接」（原 ConnectionsBlock）、「绑定与匹配」（显示与匹配开关、provider 映射、路由绑定、Magpie 分组绑定，固定在最后一页）。
