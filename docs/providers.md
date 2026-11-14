@@ -11,7 +11,7 @@
 
 ## 1. 清单与默认开关
 
-31 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 11 条、关闭 20 条**，与注册元数据的 11 开 / 20 关一致：火山个人版两条默认开启，Team 两条由独立的 `visibility.arkTeam` 控制且默认关闭，不再随 `visibility.ark` 打开。Codex 仍默认关闭，避免与提供方自带药丸重复。设置页里这 31 条合并成 **28 张卡片**；历史已保存开关继续合并，未显式配置过 `arkTeam` 的旧配置按关闭迁移。
+31 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 11 条、关闭 21 条**，与注册元数据的 11 开 / 21 关一致：火山个人版两条默认开启，Team 两条由独立的 `visibility.arkTeam` 控制且默认关闭，不再随 `visibility.ark` 打开。Codex 仍默认关闭，避免与提供方自带药丸重复；New API 自建站点需自填站点地址，也默认关闭。设置页里这 32 条合并成 **29 张卡片**；历史已保存开关继续合并，未显式配置过 `arkTeam` 的旧配置按关闭迁移。
 
 新增厂商须同时改 `PROVIDERS`、`PROVIDER_META` / `PROVIDER_ORDER`、帮助文案、README 与默认值测试；未获明确需求的新订阅商一律 `defaultEnabled: false`，原有偏好通过存储合并保留。
 
@@ -208,7 +208,7 @@ Cookie 落在通用的手动 Key 槽，并把凭据模式切成 manual，不额�
 
 ### Antigravity（联动项）
 
-`antigravity` **不是本插件登记的 provider id**，不占普通提供商设置卡片；管理区顶部的独立开关默认开启，关闭后不查询也不显示药丸。本机只要运行下面**两个提供方插件中的任一个**，本插件就读它算好的结果并折算成统一的条目形状，并入 `quota()` 视图与 `subusage_quota` 报告（同一份 Google Antigravity 配额只出一条；两者都在场时优先信息更全的 `agyQuota`）：
+`antigravity` **不是本插件登记的 provider id**，不占普通提供商设置卡片；管理区「客户端代理」分组里的独立开关默认开启，关闭后不查询也不显示药丸。本机只要运行下面**两个提供方插件中的任一个**，本插件就读它算好的结果并折算成统一的条目形状，并入 `quota()` 视图与 `subusage_quota` 报告（同一份 Google Antigravity 配额只出一条；两者都在场时优先信息更全的 `agyQuota`）：
 
 1. [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp)（包名 `dsh-bundle-antigravity-host`）注册的 Cordis 服务 `agyQuota`，方法 `read({ force })`，快照为 `QuotaSnapshot`。
 2. [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity)（本机实际安装的版本 0.5.x，底层 `@cortexkit/antigravity-auth-core`）`ctx.provide("antigravityAuth", AntigravityAuthService)` 暴露的认证服务，方法 `usage(signal?, force?)`，返回 `QuotaStatusView`。

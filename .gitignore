@@ -16,3 +16,6 @@ acl-report-*.jsonl
 acl-backup-*.json
 acl-backup-*.ps1
 .tmp-test/
+
+# 设计与架构探索产物（archify），不进版本库
+.archify/

@@ -105,9 +105,9 @@ function harness(services = {}, options = {}) {
 		const view = await service.quota({ providerIds: [name] });
 		assert.deepEqual(view.providers.map(p => p.providerId), ["antigravity"], `${name} → antigravity`);
 	}
-	// 不点名：31 家 + 联动 1 家。
+	// 不点名：32 家 + 联动 1 家。
 	const all = await service.quota();
-	assert.equal(all.providers.length, 32);
+	assert.equal(all.providers.length, 33);
 	for (const entry of all.providers) for (const [key, value] of Object.entries(entry)) assert.notEqual(value, undefined, `${entry.providerId}.${key} 不得是 undefined`);
 	service.dispose();
 }
@@ -140,7 +140,7 @@ function harness(services = {}, options = {}) {
 {
 	const { service } = harness({ antigravityAuth: { usage: async () => ({ state: "unauthenticated" }) } });
 	const all = await service.quota();
-	assert.equal(all.providers.length, 31, "未登录的联动项不在全量报告里占行");
+	assert.equal(all.providers.length, 32, "未登录的联动项不在全量报告里占行");
 	assert.ok(!all.providers.some(p => p.providerId === "antigravity"));
 	const named = await service.quota({ providerIds: ["antigravity"] });
 	const row = named.providers.find(p => p.providerId === "antigravity");

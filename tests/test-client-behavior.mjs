@@ -229,8 +229,8 @@ let tabs = nodes(tree).filter((n) => n.props.role === "tab" && String(n.props.id
 assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Grok", "MiniMax CN", "DeepSeek 账号", "DeepSeek API", "ARK Plan"]);
 assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
 assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
-// 原有 30 个开关，加上默认关闭的手动匹配与默认开启的 Antigravity 联动开关。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 30); assert.ok(!textOf(tree).includes("保存设置"));
+// 模型厂分组：普通提供商与 Ark 两组开关；聚合商在「聚合商」分组，匹配/绑定开关在最后一页。
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 24); assert.ok(!textOf(tree).includes("保存设置"));
 let focused; tabs[0].props.onKeyDown({ key: "End", preventDefault() {}, currentTarget: { parentElement: { querySelectorAll: () => tabs.map((_, i) => ({ focus() { focused = i; } })) } } });
 assert.equal(focused, ids.length - 1); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids.at(-1));
 // End 键跳到最后一个 tab，其技术信息应显示该 provider 的继承变量名。
@@ -242,6 +242,8 @@ tabs = nodes(tree).filter((n) => n.props.role === "tab" && String(n.props.id || 
 assert.ok(textOf(tree).includes("直接拉取"), "Command Code 标签展示只读说明");
 assert.ok(!nodes(tree).some((n) => n.type === "input" && n.props.type === "password"), "Command Code 不提供本地 Key 输入");
 tabs = nodes(tree).filter((n) => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")); tabs[3].props.onClick(); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids[3]);
+// opencode-go 是中转聚合商，管理卡片在「聚合商」分组而不是默认的模型厂分组。
+nodes(tree).find(n => n.props.id === "subusage-section-aggregators").props.onClick(); tree = uh.render(api.SubusageSection, props);
 nodes(tree).find((n) => n.type === "button" && n.children.includes("更换")).props.onClick();
 tree = uh.render(api.SubusageSection, props);
 const password = nodes(tree).find((n) => n.type === "input" && n.props.type === "password"); assert.equal(password.props.value, ""); password.props.onChange({ target: { value: "secret-new" } });
@@ -251,6 +253,8 @@ assert.equal(savedPatch.expectedRevision, "1"); assert.equal(savedPatch.provider
 tree = uh.render(api.SubusageSection, props); assert.ok(textOf(tree).includes("已保存")); assert.ok(!textOf(tree).includes("secret-new"));
 uiGate.resolve(result([entry(ids[3], 0, { state: "error", windows: [], error: "verification failed" })], "2")); await saving;
 tree = uh.render(api.SubusageSection, props); assert.ok(textOf(tree).includes("已保存；验证获取失败")); assert.ok(!textOf(tree).includes("保存设置"));
+// 凭据编辑器挂在各分组的提供商卡片里：回到模型厂分组才能编辑 xiaomi。
+nodes(tree).find(n => n.props.id === "subusage-section-subscriptions").props.onClick(); tree = uh.render(api.SubusageSection, props);
 tabs = nodes(tree).filter((n) => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")); tabs[2].props.onClick(); tree = uh.render(api.SubusageSection, props);
 assert.ok(!nodes(tree).some((n) => n.type === "input" && n.props.type === "password"));
 // MiMo 的手动入口必须直达控制台套餐页：站点首页不触发登录，用户还得自己点进控制台。
@@ -364,12 +368,16 @@ assert.equal(button("手动导入").props.disabled, true, "MiMo 登录期间禁�
 assert.equal(button("清除登录凭据").props.disabled, true, "MiMo 登录期间禁止清除并产生误导提示");
 for (const providerId of [ids[0], ids[1], ids[3]]) {
  nodes(tree).find((n) => n.props.role === "tab" && n.props.id === `subusage-tab-${providerId}`).props.onClick();
+ // 凭据编辑器挂在各分组卡片里：聚合商（opencode-go）在「聚合商」分组，其余在「模型厂」。
+ nodes(tree).find((n) => n.props.id === (providerId === "opencode-go" ? "subusage-section-aggregators" : "subusage-section-subscriptions")).props.onClick();
  tree = ah.render(api.SubusageSection, ap); tree = ah.render(api.SubusageSection, ap);
  assert.equal(button("更换").props.disabled, false, "后台 MiMo 登录不得阻止其他厂商更换 Key");
  button("更换").props.onClick(); tree = ah.render(api.SubusageSection, ap);
  assert.ok(nodes(tree).some((n) => n.type === "input" && n.props.type === "password"));
  button("取消编辑").props.onClick(); tree = ah.render(api.SubusageSection, ap);
 }
+// 上个循环停在「聚合商」分组；xiaomi 编辑器在「模型厂」，先切回。
+nodes(tree).find((n) => n.props.id === "subusage-section-subscriptions").props.onClick();
 nodes(tree).find((n) => n.props.role === "tab" && n.props.id === `subusage-tab-${ids[2]}`).props.onClick();
 tree = ah.render(api.SubusageSection, ap); await flush(); tree = ah.render(api.SubusageSection, ap);
 await button("取消登录").props.onClick(); tree = ah.render(api.SubusageSection, ap);
@@ -447,10 +455,10 @@ const ch = new Hooks(), cp = { ...props, usageStore: controlStore };
 tree = ch.render(api.SubusageSection, cp); tree = ch.render(api.SubusageSection, cp);
 const management = nodes(tree).find(n => n.props.id === "subusage-provider-management");
 assert.equal(management.type, "div", "管理区为分组 tab 下的分区块（自定义连接有独立分组 tab）");
-assert(nodes(tree).some(n => n.props.id === "subusage-section-subscriptions"), "默认分组是「订阅与凭据」");
-// 关闭/隐藏的提供商仍保留管理开关；Ark 两个组开关外，Antigravity 联动也有独立开关。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 30, "订阅区内普通提供商与 Ark 两组开关均可见");
-nodes(tree).find(n => n.props.id === "subusage-section-linked").props.onClick(); tree = ch.render(api.SubusageSection, cp);
+assert(nodes(tree).some(n => n.props.id === "subusage-section-subscriptions"), "默认分组是「模型厂」");
+// 模型厂分组内普通提供商与 Ark 两组开关均可见；聚合商在「聚合商」分组，匹配/绑定开关在最后一页。
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 24, "模型厂区内普通提供商与 Ark 两组开关均可见");
+nodes(tree).find(n => n.props.id === "subusage-section-clients").props.onClick(); tree = ch.render(api.SubusageSection, cp);
  const antigravitySwitch = () => nodes(tree).find(n => n.props["aria-label"] === "启用 Antigravity 用量");
 assert.equal(antigravitySwitch().props["aria-checked"], true, "Antigravity 联动默认开启");
 await antigravitySwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
@@ -472,8 +480,11 @@ assert(!nodes(tree).some(n => n.type === "summary" && n.props["aria-label"] === 
 await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax CN").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.providers["minimax-cn"], false); assert.equal(controlPatches.at(-1).expectedRevision, String(controlPatches.length), "开关使用保存后的最新 revision");
 assert(!nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-minimax-cn"));
+// 「显示与匹配」开关在最后一页「绑定与匹配」分组。
+nodes(tree).find(n => n.props.id === "subusage-section-custom").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 await nodes(tree).find(n => n.props["aria-label"] === "没配 Key 或登录的，默认不显示").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.hideWithoutApi, false); assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === `subusage-tab-${ids[1]}`));
+nodes(tree).find(n => n.props.id === "subusage-section-subscriptions").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax CN").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.providers["minimax-cn"], true); assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), ["minimax-cn"], "手工重新开启立即刷新");
 assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage-tab-minimax-cn"));
@@ -501,7 +512,7 @@ assert.equal(arkTeamSwitch().props["aria-checked"], true, "重新开启个人版
 await arkTeamSwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.arkTeam, false);
 nodes(tree).find(n => n.type === "button" && n.children.includes("更换")).props.onClick(); tree = ch.render(api.SubusageSection, cp);
-assert(nodes(tree).filter(n => n.props.role === "switch").every(n => n.props.disabled), "凭据脏草稿期间只锁定即时开关");
+assert(nodes(tree).filter(n => n.props.role === "switch").every(n => !n.props.disabled), "凭据脏草稿不再静默禁用开关；点击由保存守卫弹提示（与绑定删除同口径）");
 assert.equal(nodes(kimiEditor).find(n => n.type === "fieldset").props.disabled, false, "行内凭据不能被开关锁定误禁用");
 const editedKey = nodes(tree).find(n => n.type === "input" && n.props.type === "password"); editedKey.props.onChange({ target: { value: "fixture-inline-draft" } }); tree = ch.render(api.SubusageSection, cp);
 // 切到 MiniMax CN（国际版现为默认关闭，不可见）。
@@ -511,12 +522,12 @@ assert.equal(nodes(tree).find(n => n.type === "input" && n.props.type === "passw
 assert(nodes(tree).some(n => n.props.id === `subusage-credentials-${ids[1]}`), "当前编辑器保持展开");
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 MiniMax").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert(nodes(tree).some(n => n.props.id === `subusage-credentials-${ids[1]}`), "切换其他编辑器必须先保存或取消草稿");
-const beforeToggle = controlPatches.length; await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax").props.onClick(); assert.equal(controlPatches.length, beforeToggle);
+const beforeToggle = controlPatches.length; await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax").props.onClick(); assert.equal(controlPatches.length, beforeToggle); tree = ch.render(api.SubusageSection, cp); assert(textOf(tree).includes("请先保存或取消凭据编辑"), "脏草稿期间点开关给出提示而不是静默无效");
 ch.unmount();
 controlSnapshot = withPrefs(result(controlSnapshot.entries), preferences(Object.fromEntries(ids.map(id => [id, false]))));
 const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSection, cp);
-// 空状态仍列出全部管理开关，并保留 Antigravity 联动独立开关。
-assert.equal(nodes(tree).filter(n => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")).length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 30);
+// 空状态仍列出全部管理开关：模型厂分组 22 张卡片加 Ark Team 开关；Antigravity 在「客户端代理」分组。
+assert.equal(nodes(tree).filter(n => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")).length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 24);
 assert(nodes(tree).some(n => n.props.id === "subusage-section-subscriptions"), "空状态保留订阅分组入口");
 assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.role === "tabpanel"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick(); tree = emptyControls.render(api.SubusageSection, cp);
@@ -700,6 +711,19 @@ directoryState={status:"ready",current:{provider:"kimi-coding"}};
 assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps).props.providerId,"kimi-coding");
 directoryState={status:"ready",current:{provider:"unsupported-model"}};assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps),null);
 directoryState={status:"ready",current:null};assert.equal(wrapper.render(api.SubusagePillEntry,wrapperProps),null);wrapper.unmount();
+// Magpie 分组绑定的键是路由 provider id：自建 magpie-* 路由绑定在场即解析到 magpie 联动项，
+// 不需要逐个加 routeBinding，也不受 manualMatching 门控；原始路由 id 传入药丸做分组收窄。
+{
+ const mgStore = { subscribe: () => () => {}, getSnapshot: () => ({ settings: { magpieRoutes: { "magpie-devin": "devin" } } }), readSettings: async () => ({}) };
+ const mgDirectory = { subscribe: () => () => {}, getSnapshot: () => ({ status: "ready", current: { provider: "magpie-devin", model: "devin/swe-2" } }) };
+ const mgHooks = new Hooks();
+ const entry = mgHooks.render(api.SubusagePillEntry, { ...wrapperProps, usageStore: mgStore, store: mgDirectory });
+ assert.equal(entry?.props?.providerId, "magpie", "magpie-devin 绑定路由解析到 magpie 联动项");
+ assert.equal(entry?.props?.routeProviderId, "magpie-devin", "原始路由 id 传给 UsagePill 做分组收窄");
+ const mgDirectory2 = { subscribe: () => () => {}, getSnapshot: () => ({ status: "ready", current: { provider: "magpie-unbound", model: "x/y" } }) };
+ assert.equal(mgHooks.render(api.SubusagePillEntry, { ...wrapperProps, usageStore: mgStore, store: mgDirectory2 }), null, "未绑定的自建路由仍不显示");
+ mgHooks.unmount();
+}
 // 切会话 = 换了会话模型目录 store：新会话目录还在 loading 时不得沿用上一个会话的厂商，
 // 否则会把别的对话的订阅额度画到本会话的药丸上。同一会话内的 loading 暂态仍保留已知选择。
 {

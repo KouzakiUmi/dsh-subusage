@@ -197,9 +197,9 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   const section = plugin.__test.SubusageSection({ usageStore, t: (key) => key, getLocale: () => "zh" });
   const all = flattenNodes(section), selects = all.filter((n) => n.type === "select");
   assert.equal(selects.length, 0, "设置页不使用任何下拉列表");
-  // 火山方舟的 4 条路由在设置页合并成一张卡片，但个人版 / Team 各有一个开关：
-  // 原有 30 个开关 + 手动匹配与 Antigravity 联动开关。
-  assert.equal(all.filter(n => n.props?.role === "switch").length, 30, "订阅区内普通提供商、Ark Team 与手动匹配开关均可见");
+  // 火山方舟的 4 条路由在设置页合并成一张卡片，但个人版 / Team 各有一个开关；
+  // 6 家中转聚合商在「聚合商」分组，显示与匹配开关在最后一页「绑定与匹配」。
+  assert.equal(all.filter(n => n.props?.role === "switch").length, 24, "模型厂区内普通提供商与 Ark Team 开关均可见");
   if (provider === "xiaomi-token-plan-cn") {
     assert.ok(visibleText(section).includes("小米扫码登录")); assert.ok(visibleText(section).includes("浏览器登录并导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));
@@ -377,8 +377,8 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 
   // 管理列表：已启用的在前，关闭项沉到末尾，组内各自保持既有顺序。
   const listed = flattenNodes(render()).filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("启用 ") && !["Team 检测", "Antigravity 用量"].some(label => String(n.props["aria-label"]).includes(label))).map(n => String(n.props["aria-label"]).slice("启用 ".length));
-  // Ark 剩下的 4 条路由合并成一张卡片，所以比 PROVIDER_ORDER 少 3 条。
-  assert.equal(listed.length, order.length - 4, "管理列表列出全部订阅（Ark 组合并一张卡，apigoto 在聚合商分组）");
+  // Ark 剩下的 4 条路由合并成一张卡片（-3），6 家中转聚合商在「聚合商」分组不进本列表（-6）。
+  assert.equal(listed.length, order.length - 9, "管理列表列出全部模型厂订阅（Ark 组合并一张卡，聚合商在聚合商分组）");
   assert.equal(listed.at(-2), meta["zai-coding-cn"].short, "关闭的 Z.ai 沉到末尾组");
   assert.equal(listed.at(-1), meta["kimi-coding"].short, "关闭项在组内保持既有顺序");
   assert.ok(listed.slice(0, -2).every(short => !off.has(order.find(id => meta[id].short === short))), "前面的都是已启用的");
@@ -525,12 +525,16 @@ console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/
 {
  settings.visibility = { manualMatching: true, providerMappings: { "kimi-coding": ["custom-kimi", "custom-kimi-alt"] } };
  const mappingStore = { ...usageStore, getSnapshot: () => ({ settings, configured: {}, entries: [], availableProviders: ["custom-kimi", "custom-kimi-alt", "free-route"] }) };
- stateValues = []; stateIndex = 0;
+ // 绑定类功能在最后一页「绑定与匹配」：预置 section 状态直接渲染该分组。
+ stateValues = ["kimi-coding", plugin.__test.draftFor(settings, "kimi-coding"), false, false, false, null, null, { jobId: null, state: "idle" }, false, "kimi-coding", "custom"]; stateIndex = 0;
  const section = plugin.__test.SubusageSection({ usageStore: mappingStore, t: key => key, getLocale: () => "zh" });
  const all = flattenNodes(section);
- assert.equal(all.filter(node => node.type === "select").length, plugin.__test.PROVIDER_ORDER.length);
- assert.ok(all.filter(node => node.type === "option").some(node => node.props.value === "free-route"));
- assert.ok(!all.filter(node => node.type === "option").some(node => node.props.value === "custom-kimi"));
+ // 每个订阅一个映射下拉；同页还有 Magpie 绑定的「前缀 / 分组」两个下拉（候选不含已绑定路由的断言只看映射下拉）。
+ assert.equal(all.filter(node => node.type === "select").length, plugin.__test.PROVIDER_ORDER.length + 2);
+ const mapSelects = all.filter(node => node.type === "select" && !["本机路由", "Magpie 渠道分组"].includes(node.props["aria-label"]));
+ const mapOptions = mapSelects.flatMap(node => flattenNodes(node).filter(child => child.type === "option"));
+ assert.ok(mapOptions.some(node => node.props.value === "free-route"));
+ assert.ok(!mapOptions.some(node => node.props.value === "custom-kimi"));
  assert.ok(all.some(node => node.props?.["aria-label"] === "移除 custom-kimi-alt"));
  delete settings.visibility;
 }

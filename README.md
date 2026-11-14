@@ -18,9 +18,9 @@
 
 </div>
 
-> **0.24.5**：`subusage_quota` 工具的文本报告在剩余百分比后补**实际额度数字**（`（余 12.0K credits）`、`（余 不限量）`，单位照上游原文），并修复联动账号展开时缺 `label` 导致全量查询被工具 schema 拒掉的问题。[查看更新记录](docs/changelog.md)。
+> **1.0.0**：自建 New API / One API 站点额度（provider + 一等声明式适配器：填站点根与推理同一把 sk- Key 即完成接入，字段映射与 500000 quota = 1 Credits 换算内置，探测自动识别）、自定义连接**点选映射器**、鉴权数据落盘加密、QuotaEntry 统一契约与一体化额度平台。[查看更新记录](docs/changelog.md)。
 >
-> **项目正在进行重构**：QuotaEntry 统一契约、DSH Go 原生面板与 Magpie 聚合网关持续调整中，版本间可能出现 bug——发现异常请[回报 issue](https://github.com/KouzakiUmi/dsh-subusage/issues)。报告/药丸缺数据时会写 `omitted` 计数或读取失败原因，不把未知当充足；数字只作参考，不是计费依据。
+> **版本间可能出现 bug**——发现异常请[回报 issue](https://github.com/KouzakiUmi/dsh-subusage/issues)。报告/药丸缺数据时会写 `omitted` 计数或读取失败原因，不把未知当充足；数字只作参考，不是计费依据。
 
 ## 快速开始
 
@@ -55,15 +55,27 @@ dsh plugin --profile web add dsh-subusage
 
 Command Code 可在弹层和设置页切换固定账户，或查看自动轮换池的健康度。逐账户详情默认折叠，受限周期明确标注。**自动轮换模式的用量仍是默认账户，不跟随实际服务中的账户。**
 
+## 亮点一览
+
+完整的架构分层、数据流与模块地图见 [docs/architecture.md](docs/architecture.md)（做介绍 / 演示时可按那一篇的顺序取材）。这里挑最值得展示的：
+
+- **32 条内置额度入口 + 19 条联动项**：从 DeepSeek、Kimi、火山方舟到 Codex、Copilot、自建 New API / one-api 站，一家一条凭据链、一套单位口径。
+- **零代码接入任意新上游**：填 Base URL → 测试连接 → 探测自动推导字段映射 → 一键套用 → 保存即得药丸；探测认不全时直接点选响应里的字段、选「它是什么」就自动生成映射，可逐字段锁定，接入配方（Recipe）可导出分享。New API / One API 站点有专门的一等入口：填站点根与推理同一把 sk- Key 即完成（字段映射与单位换算内置，`/v1` 尾缀自动去除），不用走通用自定义；同一入口可接入多个站点。
+- **统一条目模型（QuotaEntry）**：百分比窗口、美元余额、积分包、席位池出边界都是同一套元素——药丸、弹层、Go 面板、Agent 工具四端同口径渲染。
+- **秘密落盘加密**：API Key、OAuth 记录、会话 Cookie 全部 AES-256-GCM 加密后写盘；公开设置只有引用名，没有秘密值。
+- **多 Key 监控**：每家最多 8 个凭据引用名逐 Key 独立查询与缓存，主 Key 管药丸、额外 Key 管排障与对账。
+- **路由归属三处同口径**：内置别名、手动映射、路由绑定、Magpie 分组绑定在同一张表、同一套解析顺序，切模型药丸立刻跟着切。
+- **235 项隔离回归**：桩网络、隔离文件系统、双端契约比对，`npm run check` 一条命令；30 个 provider 归一化函数已模块化，可在不触碰 DSH 核心包的情况下独立测试。
+
 ## 支持什么
 
-**31 条数据入口，新安装默认开启 11 条。** 按使用场景，主要分为：
+**32 条数据入口，新安装默认开启 11 条。** 按使用场景，主要分为：
 
 | 你想看什么 | 代表提供商 |
 |---|---|
 | 订阅窗口与重置时间 | Kimi、MiMo、Codex、GitHub Copilot、SuperGrok、MiniMax、Z.ai、OpenCode Go、OpenDesign |
 | 账号钱包与 API 余额 | DeepSeek API / 账号、SiliconFlow、Novita、Hyperbolic、DeepInfra |
-| 套餐、余额与多层预算 | Command Code、NanoGPT、OpenRouter、ZenMux、LiteLLM、APIGOTO |
+| 套餐、余额与多层预算 | Command Code、NanoGPT、OpenRouter、ZenMux、LiteLLM、APIGOTO、New API |
 | 账号级套餐与企业席位 | 火山方舟 Agent Plan / Coding Plan |
 
 [查看完整支持清单](#支持的数据--supported-data) · [查看哪些经过真实账号验证](#support-status--实测覆盖)
@@ -115,7 +127,7 @@ OpenDesign 药丸按当前路由标注计费来源：套餐模型显示「使用
 | EAC 三渠道（`dsh-eac-router`） | `raccoon`、`loomy`、`ofm-qodercn` 的回退来源 | 读它挂在 `/api/eac-router` 的只读 `credits.balances`。**不新增并列条目**：独立插件与 OFM 都缺席时，药丸才回退到 EAC；全量报告与工具查询不回落。 |
 | [Magpie 聚合网关](https://github.com/yetone/magpie)（本机 `http://127.0.0.1:3425`） | `magpie`（路由 `magpie` / `magpie-responses` / `magpie-anthropic`） | 只读 `GET /v1/magpie/quotas`（`kept=1` 缓存快照），一张上游订阅卡一行、按 provider 分组；`usage/requests` + `concurrency` 给出 auto 组在途/上次命中的实际上游。回环免鉴权，不发写请求。 |
 
-Antigravity 的两个提供方读取同一份 Google 配额，只出一条 `antigravity`：`agyQuota` 在场优先，否则回落 `antigravityAuth`。联动没有普通提供商凭据卡片，登录与账号管理由提供方负责。Antigravity 在管理区顶部另有独立开关，默认开启；关闭后停止查询并隐藏药丸。
+Antigravity 的两个提供方读取同一份 Google 配额，只出一条 `antigravity`：`agyQuota` 在场优先，否则回落 `antigravityAuth`。联动没有普通提供商凭据卡片，登录与账号管理由提供方负责。Antigravity 在管理区「客户端代理」分组里另有独立开关，默认开启；关闭后停止查询并隐藏药丸。
 
 EAC 三渠道读的是 Loomy / Raccoon / Qoder 中国版的同一批账号，所以三个渠道不会各出两条：`raccoon` / `loomy` 的顺序是**独立 connect 插件 → Our Free Model → EAC**，`ofm-qodercn` 是 **OFM → EAC**。EAC 未安装或后端未就绪时按「这轮没有这条通道」处理；它只报余额与积分包，未公开的时间单位不做换算。
 
@@ -152,7 +164,7 @@ OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM
 
 ## 支持的数据 / Supported data
 
-共 **31 条 provider id**：新安装**有效默认开启 11 条、关闭 20 条**。另有 **19 条联动项**：Antigravity 一条、Trae 三块面板、WorkBuddy 两区域、独立 Raccoon / Loomy 两条、[OFM 十个渠道](docs/ofm.md)及 Magpie 本地聚合网关一条。联动项没有自己的凭据槽或普通设置卡片，Antigravity 另有独立开关。清单取自 [Host](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 归一化为准：Ark 个人版两路默认开启，Team 两路独立控制且默认关闭。展示顺序与短名取自 [Client](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
+共 **32 条 provider id**：新安装**有效默认开启 11 条、关闭 21 条**。另有 **19 条联动项**：Antigravity 一条、Trae 三块面板、WorkBuddy 两区域、独立 Raccoon / Loomy 两条、[OFM 十个渠道](docs/ofm.md)及 Magpie 本地聚合网关一条。联动项没有自己的凭据槽或普通设置卡片，Antigravity 另有独立开关。清单取自 [Host](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 归一化为准：Ark 个人版两路默认开启，Team 两路独立控制且默认关闭。展示顺序与短名取自 [Client](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
 
 | 提供商 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|---|
@@ -185,6 +197,7 @@ OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM
 | Vercel AI Gateway | `vercel-ai-gateway` | 余额 | Bearer | 关 |
 | ZenMux | `zenmux` | 5 小时 / 周窗口 + PAYG 余额 | **Management API Key** | 关 |
 | LiteLLM | `litellm` | Key / 用户 / 团队预算 + 花费 | 虚拟 Key + **用户自填 proxy 地址** | 关 |
+| New API | `newapi` | 令牌额度窗口（`period`）+ 账户余额（500000 quota = 1 Credits） | 推理同一把 `sk-` Key + **用户自填站点地址** | 关 |
 | OpenDesign | `opendesign` | Design Plan 5 小时 / 7 天窗口 + 套餐余额（订阅额度）、总额度（钱包合计 = 订阅 + 充值） | **控制台会话 Cookie**（不是模型调用的 sk- Key） | 关 |
 
 - 各家的**窗口语义、明细字段与单位换算**（例如 ZenMux / Ollama 的 0–1 小数、Novita 的 1/10000 USD、Kimi 随套餐变化的窗口集合）见 [提供商清单与额度语义](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md)。
@@ -318,9 +331,9 @@ dsh plugin --profile <profile> remove dsh-subusage
 
 ## Configuration / 配置
 
-- **设置页路径**：设置 → **订阅用量** → 提供商管理。管理区顶部的 Antigravity 按钮独立控制联动查询与药丸，默认开启。下方使用单列列表，每家都有独立的检测开关与「配置」按钮；编辑器在当前项下方展开，不会切换上方正在查看的用量。「没有检测到API的默认隐藏」默认开启；首次没有可见条目时管理区自动展开。关闭的提供商仍可配置凭据，只是不会发起用量请求。
+- **设置页路径**：设置 → **订阅用量** → 提供商管理。管理区按来源分为横向 tab：「模型厂」（自研模型订阅）、「聚合商」（只做路由/中转的上游与本地 Magpie 网关）、「客户端代理」（Antigravity、Trae、WorkBuddy、小浣熊、Loomy 等不提供 API、由第三方插件或本机直取读额度的客户端）、「OFM」（十个渠道）、「自定义连接」、「绑定与匹配」（显示与匹配开关、provider 映射、路由绑定与 Magpie 分组绑定，固定在最后一页）。每家订阅都有独立的检测开关与「配置」按钮；编辑器在当前项下方展开，不会切换上方正在查看的用量。「没有检测到API的默认隐藏」默认开启；首次没有可见条目时管理区自动展开。关闭的提供商仍可配置凭据，只是不会发起用量请求。
 - **凭据从哪来**：每一类凭据的**官网入口、环境变量名与界面填入位置**都写在[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)——包括火山的 IAM AK/SK（子用户还要挂 `ArkReadOnlyAccess` 且不限制到项目）、MiMo 的平台会话 Cookie、以及各家 API Key 的对照表。**注意推理 Key 与额度凭据不通用。**
-- **默认开关策略**：新安装默认开启 11 条、默认关闭 20 条（**Codex 默认关闭**——它的提供方插件自带用量药丸；GitHub Copilot 与火山 Team 检测也默认关闭）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
+- **默认开关策略**：新安装默认开启 11 条、默认关闭 21 条（**Codex 默认关闭**——它的提供方插件自带用量药丸；GitHub Copilot、火山 Team 检测与 New API 自建站点检测也默认关闭）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
 - **火山方舟共用凭据、分组检测**：4 条路由共用同一组 IAM AK/SK，所以设置页只呈现**一张卡片**。其中「个人版」开关控制 Agent Plan / Coding Plan，独立的「Team 检测」开关控制两条团队版路由且默认关闭；两组互不影响。这些 provider id 并没有合并——药丸仍按 id 匹配路由。旧插件 `@volcengine/ark-plan-api` 的两个国内路由（`ark-coding-plan-cn` / `ark-agent-plan-cn`）**已移除**：它们与 arkcli 的路由查同一份订阅，并列显示只会让人以为买了两个套餐；装了旧插件的用户，药丸仍按那两个 id 显示同一份数据（入口归并到 arkcli 路由）。
 - **火山方舟不按路由收起**：它的额度走**账号级管控面**，一组 AK/SK 就能查到名下所有套餐（`GetCodingPlanUsage` 与 `GetAFPUsage` 是同一套协议、同一组凭据）。推理路由装没装只影响模型能不能用，**不影响额度能不能查**——所以只持有 Coding Plan、却没在 DSH 里配 coding-plan 路由时，那条额度照样会显示（前提是配了 AK/SK）。
 - **凭据来源优先级**（`inherit` 模式）：**DSH 路由实际声明的 `apiKeyEnv` → 该提供商额外配置的监控引用名 → 内置环境变量名 → 启动环境 → 旧手动配置兜底**。客户端 Models 页保存的自定义 Key 写进路由的 `apiKeyEnv`，药丸与用量跟随它。切到自定义（`manual`）模式时优先使用保存的手动 Key；删除手动 Key 后自动回到继承。界面会区分这些来源。
@@ -362,6 +375,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | Vercel AI Gateway | `AI_GATEWAY_API_KEY` | 余额型；金额是**十进制字符串** |
 | ZenMux | `ZENMUX_MANAGEMENT_API_KEY` | 额度端点**只认 Management API Key**（推理 key 不适用），所以变量名单独区分。在 <https://zenmux.ai/platform/management> 创建该 key |
 | LiteLLM | `LITELLM_API_KEY` + 代理地址 | 自建网关：除虚拟 Key（**与推理同一把**）还要在凭据区填写自己的 proxy 地址。管理端点在 **proxy 根**——填了 `/v1` 也会被去掉，不会拼成 `/v1/key/info` |
+| New API | `NEWAPI_API_KEY` + 站点地址 | 自建 New API / one-api 站点：额度查询与推理用**同一把 `sk-` Key**，另需在凭据区填写站点根地址（末尾 `/v1`、`/api` 会被去掉）。账户余额取决于令牌的「允许查询用户额度」；显示单位按站点标准 **500000 quota = 1 Credits**，不按国家货币换算 |
 | OpenDesign | `OPEN_DESIGN_COOKIE`（或在凭据区手填会话 Cookie） | 额度只在**控制台接口**上，鉴权是浏览器登录会话 Cookie——`sk-` 模型 Key 换的是 `amr-link.open-design.ai` 的模型响应，**没有额度端点**。「登录并自动导入」可用（Cloudflare 人机验证在弹出窗口中完成）；也可手动取：在自己浏览器登录 open-design.ai → 进入「方案与余额」页 → `F12` → Network（筛 Fetch/XHR）→ `F5` 刷新 → 点状态 200 的 `coding-plan-usage` → Headers → Request Headers → 复制 `cookie` 字段的**完整值**（不要包含 `cookie:` 字段名，应含 `__Secure-better-auth.session_token`）→ 粘进凭据区先保存、再独立验证；认证失效会明确报告，不当作部分数据，此时重新复制会话 Cookie |
 
 按 provider id 的字面映射（补齐上表按语义分组、未逐条列出的 4 条火山路由，逐条对应 `PROVIDERS[id].envName`，有 `envAliases` 的一并列出）：
@@ -391,6 +405,7 @@ ollama-cloud             OLLAMA_API_KEY
 vercel-ai-gateway        AI_GATEWAY_API_KEY
 zenmux                   ZENMUX_MANAGEMENT_API_KEY
 litellm                  LITELLM_API_KEY                （另需自填 proxy 地址）
+newapi                   NEWAPI_API_KEY                 （另需自填站点地址）
 arkcli-agent-plan        ARKCLI_AGENT_PLAN_API_KEY      （额度用 VOLC_ACCESSKEY / VOLC_SECRETKEY）
 arkcli-coding-plan       ARKCLI_CODING_PLAN_API_KEY
 arkcli-agent-plan-team   ARKCLI_AGENT_PLAN_TEAM_API_KEY
@@ -412,7 +427,7 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 | `~/.grok/auth.json`（回退 `~/.dsh/.xai-oauth-auth.json`） | Grok CLI / dsh-grok-kit 的 OAuth 登录 | 平时只读；过期时经 grok-kit 官方链续约并写回同一文件，不自行裸刷 |
 | `~/.commandcode/auth.json` | Command Code CLI（`cmd login`）的 Key | **只读**兜底 |
 
-**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`grok.com`（仅 Grok credits 回退）、`chatgpt.com/backend-api`、`api.github.com`（GitHub Copilot 私有额度接口；企业版按记录里的 `enterpriseUrl` 换 `api.<域名>`）、`amr-api.open-design.ai`（OpenDesign 控制台额度）、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址。完整域名表见 [网络端点](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#网络端点)。**`deepseek-account` 不自行发起 HTTP 请求**——它复用 DSH 的 `deepseekAccount` 服务，由宿主完成鉴权与余额请求（宿主服务可能按自身配置联网）；本插件不读取、导出或保存 OAuth token。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
+**网络访问**：只连上面清单里各家自己的额度 / 余额端点，以及 `platform.xiaomimimo.com`（MiMo 用量与登录）、`api.commandcode.ai`、`cli-chat-proxy.grok.com`、`grok.com`（仅 Grok credits 回退）、`chatgpt.com/backend-api`、`api.github.com`（GitHub Copilot 私有额度接口；企业版按记录里的 `enterpriseUrl` 换 `api.<域名>`）、`amr-api.open-design.ai`（OpenDesign 控制台额度）、火山管控面 `open.volcengineapi.com`，外加你自己填写的 LiteLLM proxy 地址与 New API 站点地址。完整域名表见 [网络端点](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/providers.md#网络端点)。**`deepseek-account` 不自行发起 HTTP 请求**——它复用 DSH 的 `deepseekAccount` 服务，由宿主完成鉴权与余额请求（宿主服务可能按自身配置联网）；本插件不读取、导出或保存 OAuth token。MiMo 自动登录会另外打开官方平台页面，由你在该页面自行输入密码与验证码。**本插件没有自己的服务器，不做遥测，也不把你的数据发给任何第三方。**
 
 **命令、进程与安装期行为**
 

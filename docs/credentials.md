@@ -177,6 +177,7 @@ Cookie 必须**同时包含** `api-platform_serviceToken` 与 `userId`，否则�
 | NanoGPT | `NANOGPT_API_KEY` | NanoGPT 控制台 |
 | Synthetic | `SYNTHETIC_API_KEY` | Synthetic 控制台 |
 | LiteLLM | `LITELLM_API_KEY` | **你自建的网关**：虚拟 Key + 在设置页填 proxy 地址 |
+| New API | `NEWAPI_API_KEY` | **你自建的 New API / one-api 站点**：推理用的同一把 `sk-` Key + 在设置页填站点根地址。不要填控制台访问令牌；账户余额需要令牌开启「允许查询用户额度」 |
 | OpenDesign | `OPEN_DESIGN_COOKIE` | 「登录并自动导入」可用（遇 Cloudflare 人机验证在弹出窗口中完成）；也可手动获取：在自己浏览器登录 open-design.ai → `F12` → Network（筛 Fetch/XHR）→ `F5` 刷新 → 点状态 200 的 `coding-plan-usage` → Headers → Request Headers → 复制 `cookie` 字段的**完整值**（不含 `cookie:` 字段名），粘进卡片里标签为「会话 Cookie」的输入框。手动填写先保存，再独立验证；认证失效明确报告，不归为「数据不完整」，此时更新 Cookie 后再验证。要的是会话 Cookie（含 `__Secure-better-auth.session_token`），不是 `sk-` 模型 Key——那把 Key 只在模型端点生效，没有额度端点 |
 
 ### OpenCode Go 的两个引用名

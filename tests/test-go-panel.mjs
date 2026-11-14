@@ -55,6 +55,11 @@ assert.equal(goPanelUsageId("kimi-coding"), "kimi-coding", "未登记路由原�
 assert.equal(goPanelUsageId("volcengine-agent-plan"), "arkcli-agent-plan", "旧插件路由归并到 arkcli");
 assert.equal(goPanelUsageId("custom-route", { manualMatching: true, providerMappings: { "kimi-coding": ["custom-route"] } }), "kimi-coding", "手动映射优先");
 assert.equal(goPanelUsageId("custom-route", { manualMatching: false, providerMappings: { "kimi-coding": ["custom-route"] } }), "custom-route", "开关关闭时映射不生效");
+// magpieRoutes 绑定键是路由 id：自建 magpie-* 路由绑定在场即归 magpie 联动项，不受手动匹配开关门控。
+assert.equal(goPanelUsageId("magpie-devin", {}, { magpieRoutes: { "magpie-devin": "devin" } }), "magpie", "Magpie 分组绑定的路由归到 magpie 联动");
+assert.equal(goPanelUsageId("magpie-devin", {}, {}), "magpie-devin", "未绑定的自建路由原样返回");
+assert.equal(goPanelUsageId("magpie-responses", {}, { magpieRoutes: { "magpie-responses": "devin" } }), "magpie", "内置 magpie 路由绑定后仍归 magpie");
+assert.equal(goPanelUsageId("kimi-coding", {}, { magpieRoutes: { "kimi-coding": "kimi" } }), "magpie", "绑定键显式声明这条路由走 Magpie 网关");
 assert.equal(goPanelProviderName("kimi-coding", host.PROVIDERS, "zh"), "Kimi");
 assert.equal(goPanelProviderName("ofm-qoder", host.PROVIDERS, "zh"), "Qoder · OFM");
 assert.equal(goPanelProviderName("nope", host.PROVIDERS, "zh"), "nope");

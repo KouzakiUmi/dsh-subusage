@@ -10,7 +10,19 @@
 
 | 文件 | 职责 |
 |---|---|
-| `lib/index.js` | 提供商适配、凭据解析、持久化、缓存与 Host RPC |
+| `lib/index.js` | Host 服务：RPC、缓存、设置持久化、调度；provider 归一化保留同名薄包装器（`api = windowApi`） |
+| `lib/providers/shared.js` | `createWindowApi`：provider 模块与宿主的唯一通信面（failure、窗口工具、联动元数据），纯函数无核心包依赖 |
+| `lib/providers/subscriptions.js` | 订阅窗口型归一化 ×9（Kimi / Z.ai / MiMo / OpenCode Go / Synthetic / NanoGPT / MiniMax / Command Code / SuperGrok） |
+| `lib/providers/balances.js` | 余额/限额型归一化 ×12（SiliconFlow / DeepSeek×2 / OpenRouter / Novita / Hyperbolic / DeepInfra / Chutes / Ollama Cloud / Vercel / Zenmux / Apigoto） |
+| `lib/providers/session.js` | 会话/登录态型归一化 ×8（Copilot / OpenDesign+账单 / Antigravity×2 / Trae / LiteLLM / Codex） |
+| `lib/providers/newapi.js` | New API / one-api 自建站：站点根归一、取数（尾斜杠变体重试）与归一化 |
+| `lib/quota-entry.js` | QuotaEntry 统一 wire 契约唯一事实源：元素模型、canonicalizeEntry、池/聚合词汇 |
+| `lib/secret-box.js` | 秘密落盘 AES-256-GCM 加密封套（0600 密钥文件，旧明文兼容、保存自动升级） |
+| `lib/adapters/declarative/*.js` | 声明式适配器：custom-http（JSON Pointer 映射）/ sub2api / litellm / **newapi**（New API / One API 一等入口：内置映射与单位换算、`baseUrlMode: "newapi-root"` 站点根归一，归一化走 providers/newapi.js 的 `classifyNewApiUsage` 纯核心） |
+| `lib/http/*.js` | 安全 URL 归一、只读执行器、信封解包、白名单转换器 |
+| `lib/detection/*.js` | 4 态探测、数值守恒推断、歧义检测、预览脱敏、Recipe |
+| `lib/credentials/*.js` | 凭据解析链（routeEnvs → keyRefs → builtinEnvs → manualSecret）、鉴权头注入、生命周期 |
+| `lib/platform/*.js` | 连接实例、动态目录、DisplayProfile、路由绑定、运行时 |
 | [lib/ofm.js](../lib/ofm.js) | OFM 进程内只读 RPC、逐账号额度与分桶归一化；沿用提供方缓存 |
 | [lib/connect-usage.js](../lib/connect-usage.js) | 独立 Trae / WorkBuddy 账号与区域隔离、额度归属和缓存排序 |
 | [lib/credit-packages.js](../lib/credit-packages.js) | 积分包有效性与到期分组；单账号、同单位聚合，过滤用尽与已过期项 |

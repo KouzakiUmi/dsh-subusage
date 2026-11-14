@@ -2,23 +2,59 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
-## 未发布：鉴权数据加密存储、重构审查修复与设置页连接管理
+## 1.0.0：New API / One API 一等入口与平台化
+
+### New API / One API 一等入口与表单占位符改进
+
+- 自定义连接新增声明式适配器 **newapi**（New API / One API 站点）：填站点根 + sk- Key 即完成接入，字段映射与单位换算（500000 quota = 1 Credits）内置，不再需要 JSON Pointer 配置——「难用的自定义」不再是一等上游的必经之路；实例化支持**多站点**，每个站点独立凭据与路由绑定。
+- 归一化与 provider 通道共享 `classifyNewApiUsage` 纯核心（`lib/providers/newapi.js` 重构提取，provider 行为不变），两路不漂移。
+- 探测修复：有限令牌的 `total_granted/used/available` 三元组与 OpenAI credit_grants 同形，此前 custom-http 签名会抢先命中并把 quota 当 USD——现在 New API 签名（code/success 信封 + 令牌额度字段）优先判定，识别即 `identified` 且带内置归一化预览；`code:false` 信封按认证拒绝进入 auth-required。
+- 站点根归一：粘贴 OpenAI 兼容根（`…/v1`、`…/api` 尾缀）自动剥除（`baseUrlMode: "newapi-root"`，runtime 与探测共用）；探测候选路径优先适配器自带清单（`/api/usage/token` + 尾斜杠变体）。
+- 编辑器对 newapi 简化：隐藏映射编辑器与点选树、显示内置映射提示；凭据来源切换到 newapi 时默认手动 Key；sk- Key 输入框明确「与推理同一把，不是控制台访问令牌」；DisplayProfile 保留。
+- 表单占位符改进（硬编码英文示例 → 本地化 + 说明格式）：Kimi 额外凭据引用（「凭据引用名，如 KIMI_SECOND_KEY」）、实例 ID / 凭据引用 / 路由 ID / 单位等；JSON Pointer 输入框提示「点选上方字段自动生成，或手写」。
+- 回归：新增 [test-newapi-adapter.mjs](../tests/test-newapi-adapter.mjs)——配方注册与目录顺序（newapi 先于 custom-http、不下发函数字段）、三种形态归一化、签名优先级（含无信封 grants 仍走 openai-grants）、根归一、探测端到端（根归一后 URL、identified 预览、code:false → auth-required）与编辑器简化（下拉含 newapi、隐藏映射编辑器、探测带 adapterId）；全套 237 项 PASS。
+
+### 自定义连接点选映射器（零代码接入补全）
+
+- 探测返回的 `rawPreview`（脱敏响应树）此前宿主已下发但客户端未消费；现在映射编辑器把它渲染成可折叠字段树：点响应里的字段 → 弹出「它是什么」语义菜单（14 个字段语义）→ 自动按 RFC 6901 生成 JSON Pointer 写入映射。探测认不全 / `needs-review` 时手写路径降级为兜底而不是必经之路。
+- 树内已映射指针显示「✓ 语义名」徽标；点选与 🔒 锁定只改 mapping，不废弃当前探测结果（`keepProbe`），映射多个字段不再需要反复重新探测。
+- InstanceEditor 编辑器重组为模块卡：基础连接 / 鉴权与凭据 / 探测与映射，探测向导与映射编辑器合并进同一张卡。
+- 回归：新增 [test-mapping-picker.mjs](../tests/test-mapping-picker.mjs)——有状态 React 桩走真实 `InstanceEditor` 全路径（填表 → 探测 → 建议映射 → 点选 `/data/percent` → 选语义 → 保存断言 mapping），指针编码（`~`/`/` 转义、数组下标）单独断言；全套 236 项 PASS。
+- 未覆盖：真实上游响应树的手感与密集响应截断表现待 GUI 实机验收。
+
+### 自建上游 New API / one-api 站点额度（第 32 条 provider `newapi`）+ provider 模块化
+
+- 新增自建 New API / one-api 站点额度：`GET {站点根}/api/usage/token`（文档路径优先，部分部署的尾斜杠变体自动跟进一次），鉴权是**推理同一把 `sk-` Key** 的 Bearer，站点根由公开设置 `settings.newapi.baseUrl` 提供，代码不硬编码任何域名。`/v1` 与 `/api` 尾缀自动去掉，自建子路径保留；只接受 http(s)，拒绝带用户名密码的 URL。
+- 单位固定按站点标准 **500000 quota = 1 Credits**（公开 `/api/status` 的 `quota_per_unit` 默认值），不按国家货币换算。无限制令牌主余额取账户可用额度、累计消费走 `spend`；有限令牌取自身可用额度、`total_granted > 0` 时产 `period` 窗口（无重置时间）；账户钱包只作说明不并入主余额；令牌到期只作说明行、不写进 `resetsAt`。两种成功信封（`code: true` / `success: true`）都认，显式 false 映射认证错误。
+- **手动匹配继承**：开启手动匹配并把订阅绑定到自带 `baseURL`/`apiKeyEnv` 的路由时，自动沿用该路由的站点与 Key（卡片显式值优先）；关闭开关保留映射但停止继承。多条路由按映射顺序取第一条有 `baseURL` 的，Key 引用逐个尝试。映射/开关变化单独失效 `newapi` 缓存。
+- **Provider 模块化**：全部 30 个归一化函数迁出宿主核心，按形态分入 `lib/providers/{shared,subscriptions,balances,session,newapi}.js`（shared 是 `createWindowApi` 通信面，新增 `linkedProviders` 只读透传联动元数据）；模块只经参数 API 与宿主通信、不直引核心包，`lib/index.js` 保留同名薄包装器，内部调用与测试零改动。架构分层、亮点与扩展路径见 [docs/architecture.md](architecture.md)。
+- Client 注册 `newapi`（顺序末尾、默认关闭、`NEWAPI_API_KEY`），`new-api` / `one-api` 路由归并，余额型可见性豁免，Credits 按美元档染色（成功绿色对勾，其它家 credits 保持灰色）。
+- 回归：新增 `tests/test-newapi.mjs`；计数断言 31→32（`test-quota-api` 的未知说明行计入为 33）；`test-contract` / `test-provider-controls` / `test-client-behavior` / `test-client-render` 同步；`scripts/check-browser-runtime.mjs` 开关计数 31→32、关闭 19→20。
+- 契约核对：额度接口与单位口径已按 [New API 官方文档](https://raw.githubusercontent.com/QuantumNous/new-api-docs/main/docs/api/token-usage.md)核实；**未做真实站点联调与 GUI 实机验收**。
+
+### 鉴权数据加密存储、重构审查修复与设置页连接管理
 
 ### 设置页功能入口（本次新增）
 
-- **管理区分组 tab（本次新增）**：额度区下方改为横向分组 tab——「订阅与凭据」（原有 provider 卡片 + 手动匹配/隐藏开关）、「聚合商」（`PROVIDER_META.aggregator` 标记的条目，目前只有 apigoto）、「联动」（全部联动项独立开关）、「自定义连接」（原 ConnectionsBlock）。
+- **管理区分组 tab（本次新增）**：额度区下方改为横向分组 tab——「模型厂」（自研模型订阅的 provider 卡片）、「聚合商」（`PROVIDER_META.aggregator` 标记的不自研模型、只做路由/中转的上游：opencode-go / openrouter / zenmux / vercel-ai-gateway / litellm / apigoto，另含本地网关 Magpie 的联动开关）、「客户端代理」（Antigravity / Trae / WorkBuddy / 小浣熊 / Loomy，本身不提供 API、由第三方插件、本机直取或 OFM 回落读额度）、「OFM」（十个渠道）、「自定义连接」（原 ConnectionsBlock）、「绑定与匹配」（显示与匹配开关、provider 映射、路由绑定、Magpie 分组绑定，固定在最后一页）。
 - **联动逐项开关（新增 `visibility.linked`）**：OFM 十个渠道（`ofm-*`）、独立 Trae / WorkBuddy / Raccoon / Loomy 与 Magpie 各有独立开关，缺省全开、补丁逐键合并；关闭后 `quota()` 与 `readLinked()` 同样静默缺席，Client store 同步清除旧条目并拦截迟到响应。Antigravity 仍走既有独立 `visibility.antigravity` 开关。回归见 [test-linked-switches.mjs](tests/test-linked-switches.mjs)。
-- **Magpie 自定义分组绑定（新增 `settings.magpieRoutes`）**：`{模型前缀 → Magpie providerGroup}`，药丸 `modelOwnedBy` 归组先查该绑定再回落前缀直配与 `/v1/models` 的 `owned_by`；面向不用内置 magpie 三条路由、自行做 provider 分组的部署。设置页联动 tab 内提供绑定/解绑编辑器，候选分组名从已检测 `linkedAccounts[].providerGroup` 提示；参与保存 revision 但不参与查询一致性哈希（与 routeBindings 同口径，改绑定不作废额度缓存）。
+- **折叠可点性**：所有 `details` 折叠统一 `sus-fold`（组级描边卡片 + 旋转 ▸ chevron）/ `sus-fold-lite`（列表内嵌行轻量版）样式，summary 去掉默认 marker、悬停底色加深，不再像普通文字。
+- **编辑态不折叠**：修复「自定义连接」新建/编辑实例时被自己所在的 foldCount 组折进去——`foldCount` 在 `editing` 在场时退化为 0，展开中的操作对象永不隐藏。
+- **折叠扩面**：「模型厂」「聚合商」卡片的未开启分组、「自定义连接」的实例列表也接 `foldCount`，与绑定区同口径——有内容默认收起显示条数、空组展开。连接实例正在编辑（`editing === "new"` 或选中某行）时该组计入 1 条保持展开，不折叠正在操作的对象。
+- **设置页长列表折叠**：「订阅 ← 本机 provider」只平铺已绑定路由的订阅，未绑定行折进「未绑定（N 家）」；「客户端代理」与「OFM」开关列表按已开启平铺 / 未开启折叠分组；「路由绑定」与「Magpie 自定义分组」整组收进 `details`，summary 显示标题与绑定条数，空组保持展开露出添加行。折叠不丢行、不挡操作。
+- **Magpie 渠道分组候选加载**：「绑定与匹配」页的「Magpie 渠道分组」下拉此前永远空（设置页只发 `read`，`entries` 里没有联动项，`providerGroup` 没人喂）；现在切到该页且 Magpie 联动开启时主动 `refresh(["magpie"])`，网关响应后候选实时出现。
+- **「绑定与匹配」页静默锁修复**：凭据编辑器存在未保存草稿时，路由绑定/Magpie 分组的删除键与「订阅 ← 本机 provider」映射此前被 `disabled` 静默禁用（ghost 按钮禁用态几乎无视觉差异），看起来「删不掉」；现在控件保持可点，点击弹出「请先保存或取消凭据编辑」；「设置尚未加载完成」同样从静默 return 改为提示。检测开关同步不再被 dirty 锁死。
+- **Magpie 自定义分组绑定（`settings.magpieRoutes`）**：`{路由 provider id → Magpie providerGroup}`（键来自 `llm.listProviders()`）。**绑定存在即把该路由解析到 magpie 联动项**（自建 `magpie-*` 路由不用逐个加 routeBinding），并取绑定值做渠道分组，优先于内置别名、不受 `manualMatching` 门控；修复：此前绑定键按「模型 id 前缀」查表且不参与药丸解析，自建 `magpie-*` 路由的药丸完全不出现、绑定形同虚设——现在按路由 id 查表并接入解析链（Client 药丸、`goPanelUsageId`、`resolveRouteTarget` 三处同口径）。模型前缀查表保留作兼容回退。设置页「绑定与匹配」分组（最后一页）提供绑定/解绑编辑器，候选分组名从已检测 `linkedAccounts[].providerGroup` 提示；参与保存 revision 但不参与查询一致性哈希（与 routeBindings 同口径，改绑定不作废额度缓存）。
 - **连接实例管理 UI**：设置页「自定义连接」分组（`lib/client.js` 的 `ConnectionsBlock`/`InstanceEditor`），支持实例列表、启停开关、编辑、删除与新建（上限 24 条）；编辑器覆盖 adapterId、baseUrl、usagePath、authKind/scheme/customHeaderName、credentialMode、lifecycle、credentialRefs、routeIds、非秘密请求头与手动秘密（只写不回显）。
 - **探测向导**：编辑器内「测试连接（不保存）」调 `detectInstance`，展示 `identified / needs-review / auth-required / unsupported` 四态、解释与五类冲突提示；可一键采用建议映射；探测期间设置被修改时显示 stale 告警并要求重测。
 - **映射编辑器**：14 个 JSON Pointer 字段 + envelope/unit/scale/balanceSubjectKind/balanceAggregation/percentSemantics/windowPeriod/pool + 逐字段 `mappingLock` 锁定；内嵌 DisplayProfile（primaryMetric、hiddenElementIds）。
 - **Recipe 导入导出**：实例卡片「导出」返回脱敏 JSON（秘密/凭据引用名/私有地址/路由绑定全部剥离）；「导入 Recipe」粘贴 JSON + 必填 baseUrl 直接落盘。
-- **RouteBinding UI**：手动匹配区新增「路由绑定」子区，把单条模型路由直接绑到订阅或连接实例；与 providerMappings 同层，遵循统一解析顺序。
+- **RouteBinding UI**：「绑定与匹配」分组新增「路由绑定」子区，把单条模型路由直接绑到订阅或连接实例；与 providerMappings 同层，遵循统一解析顺序。
 - **设置页视觉改版**：`lib/client.js` 新增一套设置页视觉原语（`UI_*` 样式常量、`SETTINGS_CSS` 作用域样式、`uiSwitch`/`uiSegmented`/`uiList`/`uiRow`/`uiGroup`/`uiBindings`/`noticeBar`），中性色全部从 `currentColor` 派生，深浅主题共用一套。「已开启 / 已关闭」文字按钮改为拨动开关（仍为 `role="switch"` + `aria-checked`）；提供商与联动项改为分组列表（发丝分隔线，订阅区按「已开启 / 未开启」分组）；Key 来源与 Z.ai 套餐类型改为分段选择；管理区去掉外框、改为下划线分组 tab；手动匹配、路由绑定、Magpie 分组改用同一个「A → B」绑定编辑器；凭据编辑器有改动时底部显示保存栏。「自定义连接」分组里的操作提示原来不显示，现在会显示。不改变任何设置字段、保存补丁或开关语义。
 - **修复**：开启「手动匹配 provider」后，`RouteBindingsBlock` 引用了未传入的 `getLocale`，设置页渲染会抛出 `ReferenceError`；现在由父组件显式传入。
 - **新增 4 条 RPC**：`subUsage/getCatalog`、`subUsage/detectInstance`（入参白名单校验）、`subUsage/exportRecipe`、`subUsage/importRecipe`（`{recipe, overrides}`）；`exportRecipe`/`importRecipe` 保留直连位置参数兼容。`publicSettings` 已同时下发 `instances`（公开视图）、`displayProfiles`、`routeBindings`、`magpieRoutes`、`catalog`。
 
-## 未发布：鉴权数据加密存储与重构审查修复
+### 鉴权数据加密存储与重构审查修复
 
 - **秘密落盘加密（新增 `lib/secret-box.js`）**：`~/.dsh/dsh-subusage.json` 中的用户秘密值（`keys[id]`、`instanceSecrets`、小米 `xiaomi.cookie`/`xiaomi.renewal`、火山 `volc.accessKeyId`/`secretAccessKey`）以 AES-256-GCM 加密存储；32 字节随机密钥单独放在 `<config>.key`（0600），密文封套 `enc:v1:<iv>:<tag>:<ct>`（base64）。旧明文值加载时照旧可用并在下一次持久化自动加密；解密失败按空处理不阻断加载；密钥文件损坏抛出 `subusage/key-corrupt`。引用名（keyRefs、credentialRefs、env 名）与环境变量来源本身不存值，不加密；公开设置依旧不含任何秘密。回归见 [test-secret-storage.mjs](tests/test-secret-storage.mjs)。
 - **实例凭据链移除 routeEnvs 注入**：`resolveInstanceIdentity` 不再把绑定路由的 `apiKeyEnv` 灌进自定义实例的凭据链（原顺序 routeEnvs → credentialRefs → builtinEnvs → 手动秘密会把别的路由的 Key 借给实例）；现在实例只吃 `credentialRefs` → `builtinEnvs` → `manualSecret`，路由绑定只决定药丸归属、不改变实例用什么 Key。内置 provider 的继承链不受影响。
