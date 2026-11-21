@@ -40,9 +40,10 @@ const { SubUsageService, normalizeNovitaBalance, normalizeHyperbolicBalance, nor
 
 	// Ollama Cloud：usage 是 0–1 小数；缺层跳过，非法值报错。
 	const ollama = normalizeOllamaCloudUsage({ limits: { session: { usage: 0.5 }, weekly: { usage: 0.25 }, monthly: { usage: 1 } } });
-	assert.deepEqual(ollama.windows.map(w => w.kind), ["period", "week", "month"]);
-	assert.equal(ollama.windows[0].percent, 50);
-	assert.equal(ollama.windows[2].status, "rate-limited", "100% 即限流");
+	// 短周期在上；session 层没能确认具体时长（映射为兜底档 period），统一排在已知周期之后。
+	assert.deepEqual(ollama.windows.map(w => w.kind), ["week", "month", "period"]);
+	assert.equal(ollama.windows.find(w => w.kind === "period").percent, 50);
+	assert.equal(ollama.windows.find(w => w.kind === "month").status, "rate-limited", "100% 即限流");
 	assert.equal(ollama.coverage, "complete");
 	const partial = normalizeOllamaCloudUsage({ limits: { weekly: { usage: 0.1 } } });
 	assert.deepEqual(partial.windows.map(w => w.kind), ["week"]);

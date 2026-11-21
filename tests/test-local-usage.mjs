@@ -5,7 +5,7 @@
 // 所以这里锁的是四件事：请求形状对得上各家契约、响应字段映射正确、
 // 凭据缺失/过期有可读原因、失败不落缓存（否则用户重新登录后要等一轮）。
 import assert from 'node:assert/strict';
-import { LocalUsageReader, LOCAL_CHANNELS } from '../lib/local-usage.js';
+import { LocalUsageReader, LOCAL_CHANNELS, normalizeLocalBalances } from '../lib/local-usage.js';
 
 const NOW = 1_800_000_000_000;
 const jsonResponse = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
@@ -427,4 +427,47 @@ const cred = (extra = {}) => ({ access_token: 'tok', ...extra });
 	assert.equal(rows[0].region, 'CN');
 	assert.equal(readTraeCredentials('pool', { readFile: () => JSON.stringify({ version: 2, credentials: [] }) }), undefined);
 }
-console.log('PASS 本机直取：Raccoon / Loomy / Qoder / QoderCN / ZCode / Trae 的请求形状、字段映射、凭据拦截与缓存');
+
+// ── [23] 余额归一化：单/多账号、单位同义归一、未生效包过滤与畸形包降级 ───────
+{
+	const entry = normalizeLocalBalances({ accounts: [{ accountId: 'a1', nickname: 'me@example.com', balance: { total: 1500, packages: [{ name: '月度积分', remaining: 1200, unit: '积分' }] } }] }, 'raccoon', '小浣熊');
+	assert.equal(entry.providerId, 'raccoon');
+	assert.equal(entry.label, '小浣熊');
+	assert.equal(entry.state, 'ok');
+	assert.equal(entry.accountId, 'a1');
+	assert.equal(entry.account, 'me@example.com');
+	assert.deepEqual(entry.windows, [], '余额归一化不画窗口');
+	assert.equal(entry.extras.find(x => x.kind === 'balance').value, '1500 积分');
+	assert.equal(entry.extras.find(x => x.kind === 'note').value, '周期 / 套餐额度：1200 积分');
+	assert.equal(entry.linkedAccounts.length, 1);
+	assert.equal(entry.coverage, 'complete');
+
+	const multi = normalizeLocalBalances({ accounts: [
+		{ accountId: 'a1', nickname: 'one', balance: { total: 10, packages: [] } },
+		{ accountId: 'a2', nickname: 'two', balance: null, error: 'boom' },
+	] }, 'loomy', 'Loomy');
+	assert.equal(multi.state, 'ok');
+	assert.equal(multi.linkedAccounts.length, 2);
+	assert.equal(multi.linkedAccounts[0].extras[0].value, '10');
+	assert.equal(multi.linkedAccounts[0].coverage, 'complete');
+	assert.equal(normalizeLocalBalances({ accounts: [{ accountId: 'z', balance: { total: 0, packages: [], unit: 'token' } }] }, 'ofm-zcode', 'ZCode').extras[0].value, '0 token');
+	assert.equal(multi.linkedAccounts[1].state, 'error');
+	assert.equal(normalizeLocalBalances({ accounts: [{ accountId: 'a', balance: { total: 100, packages: [{ name: '积分包', remaining: 100, unit: '积分' }, { name: '无单位包', remaining: 20 }] } }] }, 'loomy', 'Loomy').extras.find(x => x.kind === 'balance').value, '100');
+	const mixed = normalizeLocalBalances({ accounts: [{ accountId: 'a', balance: { total: 100, packages: [{ name: '积分包', remaining: 50, unit: '积分' }, { name: 'token 包', remaining: 50, unit: 'tokens' }] } }] }, 'qodercn', 'Qoder 中国版');
+	assert.equal(mixed.extras.find(x => x.kind === 'balance').value, '100');
+	assert.ok(mixed.extras.some(x => x.kind === 'note' && x.value.includes('单位缺失或不一致')));
+	const synonyms = normalizeLocalBalances({ accounts: [{ accountId: 'a', balance: { total: 25, packages: [{ name: '积分包 A', remaining: 10, unit: 'credit' }, { name: '积分包 B', remaining: 15, unit: 'Credits' }] } }] }, 'qodercn', 'Qoder 中国版');
+	assert.equal(synonyms.extras.find(x => x.kind === 'balance').value, '25 credits');
+	const inactive = normalizeLocalBalances({ accounts: [{ accountId: 'a', balance: { total: 100, packages: [
+		{ name: '生效包', remaining: 60, unit: '积分', active: true },
+		{ name: '停用包', remaining: 40, unit: '积分', active: false },
+	] } }] }, 'raccoon', '小浣熊');
+	assert.equal(inactive.extras.find(x => x.kind === 'balance').value, '100 积分');
+	assert.ok(inactive.extras.some(x => x.kind === 'note' && x.value.includes('1 个未生效的积分包未计入')));
+	assert.equal(inactive.quotas.filter(x => x.type === 'package').length, 1);
+	assert.equal(normalizeLocalBalances({ accounts: [{ accountId: 'a', balance: { total: 42, packages: '无效' } }] }, 'loomy', 'Loomy').coverage, 'partial');
+	assert.equal(normalizeLocalBalances({ accounts: [{ accountId: 'a', balance: null }] }, 'loomy', 'Loomy').state, 'error');
+	assert.equal(normalizeLocalBalances({ accounts: [] }, 'loomy', 'Loomy'), null);
+	assert.equal(normalizeLocalBalances(undefined, 'loomy', 'Loomy'), null);
+}
+console.log('PASS 本机直取：Raccoon / Loomy / Qoder / QoderCN / ZCode / Trae 的请求形状、字段映射、凭据拦截、归一化与缓存');

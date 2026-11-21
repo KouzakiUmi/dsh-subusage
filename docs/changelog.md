@@ -2,6 +2,170 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 1.0.1：读取与拉取彻底解耦
+
+### 修复：Devin 周额度用尽显示成「5 小时 100%」
+
+- **现象**：`weeklyQuotaRemainingPercent` 剩余 0 时上游把整字段省略（proto3 JSON 零值省略），归一化当「没下发」直接不画周窗——周额度其实已用尽，界面上只剩 5 小时窗的满格读数。
+- **修复**（[lib/providers/session.js](../lib/providers/session.js) `normalizeDevin`）：`billingStrategy == BILLING_STRATEGY_QUOTA` 且窗口重置时间在时，百分比缺席判为剩余 0%、该窗已用尽；非 quota 套餐或连重置时间都没有才是真正没下发，不补造窗口。与 devin 插件同口径（对方画满格已用）。
+- 回归：[test-devin.mjs](../tests/test-devin.mjs) 增补字段缺席 → 0% 用尽窗与非 quota 套餐不补造两组断言。
+
+### 修复：设置页一堆红色感叹号，要手动逐个刷新
+
+- **可重试失败自动重拉**（`scheduleRetry`/`clearRetry`，[lib/index.js](../lib/index.js)）：缓存行落 `retryAt` 时排一个计时器，到期走**非 force** 的完整读取链重拉（凭据失效 / 开关关闭 / 代次竞争全由既有机制挡）；触发条件 `due = max(retryAt, at + TTL)`，只 retryAt 到点而缓存仍新鲜时不发请求。不可重试错误、`no-key`/`disabled`、联动项与 ingest 不排；`dispose()` / `invalidateProvider()` / 指纹变化撤销挂起计时器。
+- **Client 自愈**（[lib/client.js](../lib/client.js)）：`readAll` 首屏 `cachedOnly` 拿到结果后，对 `error` / `loading` 条目逐个发一次非 force `refresh`——error 是退避未到点时的温和补刀，loading 是重启后暂存只回放 ok 条目的补拉。
+- **登录提交路径也接上重拉**：MiMo / OpenDesign 登录提交后首次取数若遇可重试失败，同样排 `scheduleRetry`（此前只写了 `retryAt` 没排计时器，且未判 `retryable`，要等下一轮 sweep）。
+- 顺带修复暂存闸门两处纵深防御缺口：条目落盘正则 `Bearers` 笔误致 `Bearer ` 形态永不命中（整支臂死代码，JWT 臂 `.` 未转义一并修）；数据源暂存 `putSource` 补上与条目相同的 `hasSecretShape` 闸门。
+- 回归：[test-auto-retry.mjs](../tests/test-auto-retry.mjs)（排期/撤销/触发条件/不排的场景）、[test-client-behavior.mjs](../tests/test-client-behavior.mjs)（自愈断言）。
+
+### 修复：拉取不自动，依赖打开设置页
+
+- **Host 后台扫描**（`startSweep`/`sweep`/`sweepSkip`/`clearSweep`）：拉取不再挂在任何 UI 事件上——`apply()` 传 `sweepIntervalMs: TTL`（60 秒）+ `sweepWarmupMs: 5000`，插件启动 5 秒后做第一轮全量非 force `refresh`，之后每 60 秒续一轮；缓存自己保鲜，可重试失败的退避计时器第一轮就长出来。读取与拉取之间有持久中间件（[snapshot-store.js](../lib/snapshot-store.js)），UI 读取走暂存不触发上游。
+- **`sweepSkip` 跳过**：ingest（推送方负责）、开关关闭、`no-key`/`no-cookie`/`disabled`/不可重试错误的既有结论行；`loading` 不跳——重启后暂存只回放 ok 条目，loading 正是冷启动要补的。每轮跑完才续排（自节流、不重叠），`dispose()` 撤钟，`handle?.unref?.()` 不留住宿主进程。
+- **默认关、构造选项显式开**：隔离测试注入假计时器，`sweepIntervalMs` 缺省为 0；`sweepWarmupMs` 首轮后重置为 `sweepIntervalMs`。
+- 回归：[test-sweep.mjs](../tests/test-sweep.mjs)（默认关 / warmup 重排 / TTL 内跳过 / 429 与重试计时器并存 / 跳过判定 / dispose 撤钟）。
+
+### 移除 Unified Router 接入回退（原 dsh-eac-router）
+
+- 移除经 `/api/unified-router`（及旧名 `/api/eac-router`）查询 `credits.balances` 的回退通道：删除 `lib/eac-usage.js`、`tests/test-eac-link.mjs`，清理 [lib/index.js](../lib/index.js) 中的 `ROUTER_RPC`、`fetchEacUsage`、`EacUsageReader`、`eacPeer`、`LINKED_PROVIDERS.*.eac` 与 `channel === "eac"` 分支。
+- [lib/platform/sources.js](../lib/platform/sources.js) 移除 `router` 来源项（保留 `local` / `plugin` / `ofm` / `magpie` 四项），设置页对应文案同步收拢。
+- 原由本机直取复用的纯余额归一化函数内聚迁入 [lib/local-usage.js](../lib/local-usage.js)（`normalizeLocalBalances`），纯归一化回归断言迁入 [test-local-usage.mjs](../tests/test-local-usage.mjs)，本机直取六渠道行为不变。
+
+### 被动接入（ingest）：其它插件主动推送额度卡
+
+其它 DSH 插件可以把额度快照直接推给本插件持久化并展示；数据内容、刷新节奏与撤回责任完全归推送方，本插件不轮询、不保存对方的上游凭据、也不在设置页删除对方数据。
+
+- **Host 侧**（[lib/ingest.js](../lib/ingest.js)、[lib/index.js](../lib/index.js)）：
+  - 提供同进程 Cordis 服务方法 `ingest(payload)` / `revokeIngest(source)` / `listIngest()`（不做 HTTP 端点），卡片 id 固定为 `ingest:<source>`（`[a-z0-9][a-z0-9._-]{0,63}`），与 33 个内置 provider 彻底隔离。
+  - 独立持久化到 `<config 目录>/dsh-subusage-ingest.json`（0600 + 原子写，不复用可丢弃的额度暂存文件）；落盘前经秘密闸门拦截疑似凭据形态，并限定单条 64 KiB 与最多 50 个源。
+  - 可选 `ttlMs` 过期只将 `freshness` 标为 `stale`，不隐藏卡片；`settings.ingest.hidden` 控制显示与否；`publicSettings.ingest` 投影 `{ hidden, sources }`，同时 `snapshotEntry()` 支持 `cachedOnly` 零请求直读。
+- **Client 侧**（[lib/client.js](../lib/client.js)）：
+  - 出站 codec 同步放行 `ingest: { hidden }` 保存补丁与 `ingest:<source>` 查询；`readAll` / `refresh` 并入未隐藏的外部源且不污染静态 `PROVIDER_ORDER`，顶部用量 tab 安全展示外部源卡片。
+  - 设置页「绑定与匹配」分组新增「外部接入」区块：有源时逐行展示名称、source、相对推送时间、错误原因或未更新分钟数，以及即时保存的显示开关；无源时展示空态指引、不放假开关。不做药丸注册与删除按钮。
+- **回归**：[test-ingest.mjs](../tests/test-ingest.mjs)、[test-client-render.mjs](../tests/test-client-render.mjs)、[test-client-behavior.mjs](../tests/test-client-behavior.mjs)、[test-contract.mjs](../tests/test-contract.mjs)。
+
+### 药丸外观改为可切换：经典 / 沉浸式
+
+上一轮把药丸统一到模型选择器的观感，但那是**直接替换**——不喜欢的人没有退路。现在改成设置项 `visibility.pillStyle`：
+
+- **经典**（默认）：改动前的全圆胶囊 + 1px 描边 + 600 粗体，一切照旧。已有安装升级后**观感不变**。
+- **沉浸式**：与右侧 ModelSelect 的 `.trigger` 同一套——定高 28px、`var(--dsw-radius-sm, 8px)` 圆角、无边框、400 字重、次级文字色、悬停主题中性底。
+- 入口在「订阅用量 → 绑定与匹配 → 显示与匹配」，分段选择两档；只写显示设置，不触发额度失效、不影响读数与缓存。未知取值（旧配置被手改坏等）一律按经典处理。
+- 实现上两套是分开的：沉浸式的几何 / 字重 / 常态配色在 `PILL_CSS` 且限定 `[data-style="immersive"]`（inline 写不出 `:hover`）；经典式仍全部 inline（描边色要按告警档位动态算）。两套都保留告警染色。
+- 回归：[test-client-render.mjs](../tests/test-client-render.mjs) 分别钉住两套的 inline 约束与设置页分段选择，[test-client-ofm.mjs](../tests/test-client-ofm.mjs) 断言 CSS 规则只作用于沉浸态，[test-host-service.mjs](../tests/test-host-service.mjs) 覆盖默认经典 / 可切沉浸 / 白名单拒绝未知值。
+
+### 窗口顺序：短周期在上、长周期在下
+
+- **问题**：窗口顺序完全跟着上游下发顺序走。Antigravity 的 Gemini 组有时把 `7 days` 放在 `5 hours` 前面，同一个界面在两次刷新之间会上下颠倒；OFM 的多窗口也一样。
+- **修复**：新增 `sortWindowsByPeriod()`（[lib/providers/shared.js](../lib/providers/shared.js)），按周期长度排（`5h` → 日 → 周 → 月 → 周期），并把它挂进 `cascadeRateLimited()` —— 所有窗口型 provider 最终都要过连坐这一步，排序挂在那里就不会有哪家漏排。排序是稳定且幂等的。
+- **分组要保护**：带 `groupLabel` 的窗口（Antigravity 的模型分组、Magpie 的渠道池）**只做组内排序**，组间保持首次出现顺序——全局排会把同一组的窗口拆到别的组标题下面。`poolKey: null` 用于「groupLabel 不是池身份」的场景（OFM 把上游窗口类型名塞在 groupLabel 里做分组标题）。
+- **`period` 排最后**：它是「无法确认具体周期」的兜底档。Ollama Cloud 的 `session` 层就映射到 `period`——没能确认它到底多长，所以不猜，排到已知周期之后。
+- **顺带修了 OFM**：[lib/ofm.js](../lib/ofm.js) 的窗口此前完全不过排序（它不走 `windowExtrasResult`），现在按 `poolKey: null` 全局排序。
+- 测试里三处**按索引**断言窗口的用例（`windows[1]`）改为按 kind 语义查找——顺序变了以后索引指向的是另一条窗口，这类断言本来就不该依赖下标。
+- 回归：[test-cascade-pools.mjs](../tests/test-cascade-pools.mjs) 新增两组（上游乱序仍排成短在上、分组内排序、第二个提供方通道、Magpie 卡、排序的池边界）。
+
+### 输入区药丸与模型选择器统一外观（issue #7）
+
+- **改了什么**：药丸的几何与配色从「全圆胶囊 + 1px 描边 + 600 粗体 + 继承色」改成与右侧 ModelSelect `.trigger` 同一套——定高 `28px`、`var(--dsw-radius-sm, 8px)` 圆角、无边框、`font-weight: 400`、`var(--dsw-alias-label-secondary)` 文字色、悬停 `var(--dsw-alias-interactive-bg-hover)`。
+- **为什么必须落在 CSS 里**：inline style 写不出 `:hover`，所以几何 / 字重 / 常态配色移进 `PILL_CSS`（原 `PILL_ISLAND_CSS`，它本来就由 `mountPillStyles()` 注入到 head，桌面端也生效）；inline 只留布局（`gap` / `padding` / `maxWidth` / `fontSize`）与**告警染色**。tinted 态自带 background + color，天然压过基础规则，额度告警仍然是告警。
+- **一处顺带的语义修正**：告警档位过去靠 `.45` alpha 的描边表达，描边去掉后改用文字色——`test-mimo-cookie-expiry.mjs` 里那条「临近到期药丸描边随档位着色」随之改为断言文字色。
+- **token 是核实过的**：`--dsw-radius-sm: 8px`、`--dsw-alias-label-secondary`、`--dsw-alias-interactive-bg-hover` 都在本机 DSH 的 client-ui 样式里（从 `resources/app.asar` 里读出），不是照抄 issue 的猜想。
+- 回归：[test-client-render.mjs](../tests/test-client-render.mjs) 断言 inline **不再**自带圆角 / 边框 / 字重 / 高度 / 背景 / 文字色（防止有人把手写样式加回来），并断言告警态仍内联染色；[test-client-ofm.mjs](../tests/test-client-ofm.mjs) 断言 `PILL_CSS` 用的是主题 token 而不是魔法数。
+
+### Z.ai 余额端点：与 magpie / opencodex / glm-for-copilot 的实现交叉核验
+
+issue #8 的实现补了三个细节（都有外部实现作依据）：
+
+- **端点确属未文档化**：[yetone/magpie](https://github.com/yetone/magpie/commit/b967b162084b48dd95daac463713961164c6a6e0) 读同一个 path 并在提交说明里明确写「the account report is undocumented and may change」，还记录了「Coding Plan 订阅与按量 Key 并存时那个 Key 读不到余额」。所以这里的处理是**读不到就静默不给余额**，绝不影响套餐窗口——与 magpie 的取舍一致。
+- **两个域名都试**：另有实现用 `www.bigmodel.cn`（[grep.app 命中](https://grep.app/api/search?q=query-customer-account-report)），而 issue #8 实测 `open.bigmodel.cn` 可用。现在先试 `open`、认证之外的失败再试 `www`，只多一次请求。
+- **独立小超时**：那份实现还注明「optional lookup must be bounded well below the fetch deadline」。余额查询现在有 4 秒独立上限，慢或挂住都不拖累套餐窗口。
+- **仍不接国际站**：`api.z.ai` 有同名 path，但响应结构与币种没有真实 Key 验证过（opencodex 的 PR 只做 quota 端点、不做余额，也没有国际站余额的实测记录），保持不接入。
+
+### issue #6 / #8：读取与拉取解耦（条目暂存 → 数据源通道）
+
+两个 issue 的共同根因是同一件事：**一个 provider 的全部数据被当成一个原子单元**——要么整条成功，要么整条失败，中间没有「这一路读到了、那一路没有」的位置。
+
+- **数据源通道**（[lib/index.js](../lib/index.js) 的 `sourceChannel()` → `fetchProvider(..., sources)`）：多端点的 provider 现在每一路独立取数、独立落暂存，这一路这次失败（非认证）就用上一次成功响应顶上并标 `stale`，不牵连另一路。原始响应按 `Map<cacheKey, {source: {body, at}}>` 存（每条目 ≤16 路、全局 ≤400 条），与条目级暂存分开——**整条 entry 判失败时，某一路单独的成功结果仍要留着**。
+- **失败判据按「本次真的读到了什么」算，不按「有没有可回放的旧数据」算**：两路都没有新数据 → 整条失败并抛真实错误（保留既有 error / 退避 / `retryable` 语义，不被暂存静默成成功）；一路新数据 + 一路失败或回落 → 成功但 `coverage: "partial"`。认证失败不回落（拿旧数据顶会掩盖「需要重新登录」）。
+- **#8 Z.ai（中国）退订后看不到余额**：新增账户余额数据源 `GET {站点}/api/biz/account/query-customer-account-report`（与推理同一把 Key 的 Bearer，团队档带同一组组织 / 项目头），新增 `zaiBalanceExtras()`（`availableBalance` 优先、字符串/数字都认、两位小数、固定 CNY、`frozenBalance > 0` 才补说明）。没有套餐窗口但有余额时不再判「无法读取」，改为 `subscribed: false` + 余额 + 「未检测到 Coding Plan 套餐，按量计费」。国际站同名路径存在但响应结构与币种没用真实 Key 验证过，**未接入**。
+- **#6 MiMo 无 Token Plan 时看不到余额**：`emptyGroups` 现在把 `items: null` 也算空分组（上游对无订阅账号下发的是 `items: null` 而不是 `items: []`），纯余额账号从 `coverage: partial`（Client 走 degraded 分支只显「数据不完整」）变成 `complete` 并正常显示余额。同时把三路（余额 / 套餐详情 / 套餐用量）接上数据源通道。
+- **#6 路由归并**：`xiaomi` / `mimo` / `xiaomimimo` 三个路由 id 在 Client `ROUTE_PROVIDER_ALIAS`、go-panel `ROUTE_USAGE_ID` 与 Host `detectConfigured()` 三处归并到 `xiaomi-token-plan-cn`。此前 pi-ai 自定义 provider 把这些路由注册成 `xiaomi` 时，`detectConfigured()` 认为额度入口「没有配置」，默认 `hideWithoutApi` 把卡片藏起来。
+- 回归：新增 [test-source-decoupling.mjs](../tests/test-source-decoupling.mjs)（Z.ai 退订 / 双路并存 / 双路失败仍失败 / 一路回落标 partial / 余额归一化边界 / MiMo `items: null` / 路由归并与 `detectConfigured`）；[test-host-service.mjs](../tests/test-host-service.mjs) 的请求计数按「Z.ai 一次取数 = 额度 + 余额两个端点」更新，并发合并断言改为「只生成一组请求（2 个）」。
+
+未做：issue #7（药丸与模型选择器的外观对齐）属纯视觉改动，本轮未动。
+
+### 连坐（cascade）口径全面复核：一处修，六处同病
+
+用户反馈「上层窗口用尽连坐失效，Devin 周窗口用尽后日窗口显示 100%」。上一轮只修了 Client 窗口卡片一处，这次按「同一口径在几处实现」逐层排查，修完五处、收敛一处架构债。
+
+- **工具文本**（[lib/index.js](../lib/index.js) 的 `formatQuotaText`）：连坐窗口原来写「已达限额」，现在写「受连累（60% 剩余）」，保留自己的读数。
+- **Go 面板窗口行**（[lib/go-panel.js](../lib/go-panel.js)）：连坐时行尾只有「连带限流」，把剩余百分比吃掉了；现在写「连带限流 · 剩余 60%」。
+- **Go 面板标题**：只有连坐、没有自身用尽时，标题会退回报「剩余 40%」——此刻额度实际不可用。现在用「连带限流」。
+- **池耗尽代表窗口**（`pickPoolLimitedWindow`）：池里挑给状态计算的那条窗口按出现顺序取，可能取到被连坐的那条，导致横幅说「受连累」掩盖真正用完的窗口。现在**根因优先**。
+- **Antigravity 两个提供方通道**（`normalizeAntigravity` / `normalizeAntigravityAuthView`）：同池有「5 小时 + 周」两层，却**完全没有连坐**——周额度用尽后该池的 5 小时仍显示正常剩余，会让人以为还能用。现在补齐，且只连坐同池。
+- **Magpie**（[lib/magpie-usage.js](../lib/magpie-usage.js)）：Antigravity 卡去重合并出 4 窗 3 池，同样缺连坐，一并补齐。
+- **连坐范围算法**：原来只认 `detail.scope`，而 Antigravity 的 `detail.scope` 恒为 `"all"`（语义是「约束全部模型」），于是不同池被串成一起——一个池周用尽会把别的池 5 小时也标红。现在 `groupLabel`（池身份）优先，其次 `detail.scope`，都没有才回退全量。
+- **架构债**：`cascadeRateLimited` 与 `windowExtrasResult` 曾在 `lib/index.js` 与 `lib/providers/shared.js` **各有一份**，本轮已经分叉（改了宿主侧、provider 侧不生效）。现在只保留 [shared.js](../lib/providers/shared.js) 的导出实现，宿主经 `windowApi` 复用。
+
+**判定不改**：Copilot 的 Premium / Chat / Completions、LiteLLM 的 key / team / user 预算、Trae 的汇总窗是**并列额度线**而非层级，一层用尽不代表另一层不可用，不做连坐；声明式自定义实例的窗口由用户映射，不猜。
+
+**仍存的技术债（未动）**：`lib/index.js` 里的 `windowRow` / `windowKindFromSeconds` / `numeric` 仍与 shared.js 重复。三者是纯计算且当前一致，分叉风险低于本轮修掉的连坐，留待下次统一收敛。
+
+回归：新增 [test-cascade-pools.mjs](../tests/test-cascade-pools.mjs)（Antigravity 两通道同池连坐与跨池隔离、Magpie 同池连坐、无分池 provider 退回全量）与 [test-cascade-display.mjs](../tests/test-cascade-display.mjs)（工具文本、go-panel 行与标题、Client 窗口卡片、池代表窗口）；`npm run check` 全绿。
+
+### 修复：受连坐窗口被显示成「100% 已用」
+
+- **现象**：上层窗口用尽后，被连坐的下层窗口（Devin 的每日、Kimi 的 5 小时等）显示成 0% 剩余，也就是「100% 已用」，而不是「还剩 60% + 受连累」。
+- **根因在渲染层，不在归一化**：[`cascadeRateLimited`](../lib/providers/shared.js) 一直正确地在 wire 上标记 `cascade: true` 与 `blockedBy`，Host 侧复现确认输出是 `{ kind:'day', percent:40, status:'rate-limited', cascade:true, blockedBy:['week'] }`。但 Client 的 `windowLeft()` 与 `UsageWindowRow` 用 `status === "rate-limited"` 一刀切算 0，把「自身用尽」与「受连累」混成了同一种显示。
+- **修复**：只有**自身用尽且非 cascade** 才是 0；连坐窗口保留它自己的 `percent`（[lib/client.js](../lib/client.js) 的 `windowLeft()` 与窗口卡片两处），不可用改由 `badgeBlocked` 徽标与说明行表达。修复后 Devin 周用尽时：周 = 「已用尽 0% 剩余」，日 = 「受连累 60% 剩余（受更长周期限额连累，暂不可用）· 每周」。
+- 回归：[test-client-render.mjs](../tests/test-client-render.mjs) 增加连坐窗口的进度条 `aria-valuenow`、大数字百分比与徽标断言。此前只断言了「连坐来源用窗口名」的文案、没断言读数，所以这个回归漏了过去。
+
+### 额度暂存层：显示与拉取分离
+
+- **问题**：额度缓存只在内存里（60 秒 TTL），DSH 重启 / 插件重载 / 隔一分钟再打开设置，所有条目都要重新打一遍上游——「打开设置」等于一次全量拉取，自动拉取的结果也不固化。
+- **持久化暂存**：新增 [snapshot-store.js](../lib/snapshot-store.js)，把读到成功的结果写到 `<config 目录>/dsh-subusage-cache.json`（0600、tmp+rename 原子写、条目上限 200 / 文件上限 2 MiB）。**只存 `state === "ok"`** —— 错误与缺凭据不落盘，否则重启后会把过期错误当现状。
+- **两条路径分开**：显示走暂存（新增 `read` 的 `cachedOnly: true`：一个上游请求都不发）；拉取只由显式 `refresh`、tab 激活与药丸轮询触发。Client 的 `readAll` 改为 `cachedOnly`，**首次打开设置不再触发任何上游请求**，一次 RPC 拿设置 + 全部暂存。
+- **读取语义**：没有暂存的条目回 `state: "loading"`（「还没读过」≠「读不到」）；暂存条目按 age 标 `freshness`（TTL 内 `fresh`、外 `stale`）并保留 `lastSuccessAt`。
+- **失效与安全**：`invalidateProvider()`（凭据 / 开关变化）同时删暂存条目；落盘前有**秘密形态闸门**（Bearer / `sk-` / `cog_` / `gh*_` / JWT / `devin-session-token` / `xox*`），命中即整条跳过并记 warn。文件损坏 / 版本不符 / 超大一律当空，不影响启动；`options.snapshotPath === null` 可关闭。
+- 回归：新增 [test-snapshot.mjs](../tests/test-snapshot.mjs)（只收 ok / 0600 原子写 / 坏文件按空 / 上限淘汰 / 落盘→回填→cachedOnly 零请求 / 失败不落盘 / 秘密闸门 / 关闭开关）；[test-client-behavior.mjs](../tests/test-client-behavior.mjs) 增加「首屏 readAll 带 cachedOnly 且 force=false」的断言。
+
+### 跟随 Unified Router 0.9.10 复核（2026-11-19）
+
+- **契约未破坏**：对端的 HTTP 路径 `/api/unified-router`、信封 `method:'unified-router'`、错误码 `unified-router/*` 全部未变，`ROUTER_RPC` 与改名兼容逻辑无需改动。
+- **积分包 `active`**：`credits.balances` 投影新增包级 `active`（对端已归一成布尔，缺省视为生效）。`active === false` 的包 `remaining` 可能非零，计入合计会虚增可用额度——[eac-usage.js](../lib/eac-usage.js) 现在把它们从总额与到期分组里剔除，并留一行「N 个未生效的积分包未计入」；字段缺失的老形态仍按生效处理，不会把包全丢。
+- **`raccoon-pro` 模型路由**：对端把 Raccoon 拆成 `raccoon`（免费面）/ `raccoon-pro`（订阅面）两个模型路由，但账号只有一个池、余额同源。两个路由 id 在 Client `ROUTE_PROVIDER_ALIAS`、go-panel `ROUTE_USAGE_ID` 与 Host `LINKED_ALIASES` 三处归并到同一条联动项，避免选中订阅面模型时药丸消失。
+- 顺带修掉来源改造遗留的两处旧文案（客户端代理分组里「独立 / 本机直取 / OFM / EAC 依次回落」），改为「逐项可启停，不再自动回落」。
+- **验收脚本**：`scripts/check-browser-runtime.mjs` 读的是 `render-ui-preview.mjs` 生成的 HTML 快照，改 Client 后必须先重新生成（本次重新生成后暴露了 Devin 加入后未同步的计数：可见 provider 11 → **12**、首屏开关 24 → **25**，已按实测校准并在注释里写明）。工作区没有 `node_modules`，跑该脚本需先具备 `playwright-core`（本轮临时借用 DSH profile 的副本，跑完已移除）。
+- 回归：`npm run check` 全绿（含新增的 `active` 与 `raccoon-pro` 别名断言）；浏览器验收 9 项通过。
+
+### 联动来源改为「逐项开关 + 按路由绑定」，去掉自动回退
+
+- **行为变更**：联动项（raccoon / loomy / ofm-* / trae* / workbuddy* / antigravity / magpie）过去是隐式回退链（独立插件 → Our Free Model → Unified Router），前一级缺席就静默换下一级。换来源等于换账号，单位也可能不同，用户看不出数字来自谁。现在每个来源都是独立可选项：`local` 本机直取 / `plugin` 兄弟插件 / `ofm` Our Free Model / `router` Unified Router / `magpie` 网关。
+- **`settings.sources`**：`disabled[linkedId] = sourceKey[]` 逐来源停用（整条来源链每一级都能关），`bindings[routeId] = { linkedId, source }` 把某条模型路由固定到「某条目的某个来源」；补丁整体替换，空对象即清空。未知条目、条目未声明的来源、非法路由 id 一律拒绝（不静默丢绑定）。
+- **解析**：绑定命中 → 只读那一个（被停用即无来源）；否则主来源组 = 本机直取 → 该条目原生来源。`ofm` / `router` **不在**任何主来源组里，要用必须显式绑定或启用。全停用时如实报缺席并给指引，不自己挑一个顶上。
+- **wire**：`readLinked` / `linkedStep` 增加可选 `routeId`；药丸把当前模型路由带下去（`reader(id, selectedRoute, routeId)` → `activate` 记 `routedRoute`），设置页轮询、工具与 `quota()` 没有它，走主来源组。
+- **UI**：设置页「绑定与匹配」新增「来源」区（列出可用来源 ≥2 的条目逐项开关）与「来源绑定」区（路由 → 条目 · 来源，复用 `uiBindings`）；`publicSettings.sources` 下发 `disabled` / `bindings` / `available` / `labels`，Client 不复制推导规则。
+- `sources` 不参与 `querySettingsHash`（与 `routeBindings` 同口径），不使在途额度缓存失效。
+- 回归：新增 [test-sources.mjs](../tests/test-sources.mjs)（推导 / 解析 / 校验 / 未绑定不补位 / 绑定单选 / 停用与全停用 / 设置管线）；既有回落用例（[test-eac-link.mjs](../tests/test-eac-link.mjs)、[test-connect-link.mjs](../tests/test-connect-link.mjs)、[test-linked-client-fetch.mjs](../tests/test-linked-client-fetch.mjs)）全部改为**显式绑定**，并各自补一条「未绑定时不补位」的断言；[test-contract.mjs](../tests/test-contract.mjs) 增加来源补丁的双端校验。
+
+### Unified Router 改名适配（原 dsh-eac-router）
+
+- 对端插件 2026-11 由 **dsh-eac-router** 改名为 **dsh-unified-router**，对外契约整体换名：路径 `/api/eac-router` → `/api/unified-router`、信封 `method:'eac-router'` → `'unified-router'`、错误码 `eac-router/not-ready` → `unified-router/not-ready`（另有 `bad-request` / `forbidden` / `aborted` / `operation-failed`）。按改名前的字面量去问只会拿到 404，被当成「插件没装」静默缺席——Loomy / Raccoon / Qoder 中国版 的第三个来源会整体失效，且**不报错**。
+- `ROUTER_RPC` 契约表（[lib/index.js](../lib/index.js)）按优先级列出「现行名 → 改名前的旧名」；只有该端点 **404** 时才换下一个候选，未升级的安装仍可用，`not-ready` 等其它错误不换端点重试（那是「通道在场但没就绪」，不是「没有这条通道」）。
+- `credits.balances` 的投影字段（`accounts[].{accountId,nickname,balance{total,packages{name,remaining,unit,expiresAt}},error}`）未随改名变化，[eac-usage.js](../lib/eac-usage.js) 的归一化零改动；模块内 `EAC_*` / `eac` 标识保留为内部代号，用户可见文案改为 Unified Router（旧名括注）。
+- 回归：`tests/test-eac-link.mjs` 增加改名兼容三例（只装旧版 → 先问新名 404 后回退旧名并成功；两个端点都 404 → 恰好两次尝试后静默缺席；新名 `not-ready` → 不换端点重试），并把请求形状断言改到 `http://dsh.internal/api/unified-router` + `method:'unified-router'`。
+- 未覆盖：本机 profile 当时未安装该插件（新旧都无），全部结论来自对端源码核对与隔离回归；真实联调需装好后在运行实例里点一次药丸。
+
+### Devin 订阅额度（第 33 条 provider `devin`）
+
+- 新增内置额度入口 `devin`，读取 `dsh-devin-provider` 注册的 `devin` 路由背后的 Devin / Codeium 订阅额度：官方 Connect JSON 接口 `POST {server}/exa.seat_management_pb.SeatManagementService/GetUserStatus`，输出每日（24 小时）与每周（7 天）两个百分比窗口 + 重置时间，外加套餐名、套餐周期结束日与超额余额。
+- **凭据只读、与提供方插件同序**：`cli` 模式读 `%APPDATA%\devin\credentials.toml` 的 `windsurf_api_key`（缺失回落保存的 grant）、`reference` 模式按它声明的 `apiKeyRef` 走凭据服务 / 启动环境、其余模式读凭据库 grant `dsh-devin-provider/<accountId>` 的 `payload.key`；无凭据服务时回落它写在 `<state 目录>/credentials/<id>.json` 的 0o600 文件。多账号只取它当前激活的那个。不登录、不续期、不写回它的状态文件。
+- 归一化 `normalizeDevin`（`lib/providers/session.js`）与 devin 插件 `parseUsageResponse` 同一份上游契约，但**缺失不猜**：没有百分比就不画窗口、`coverage` 降为 `partial`（对方把缺失当 0 剩余会画成满格已用）；被套餐隐藏的窗口（`hideDailyQuota` / `hideWeeklyQuota`）不补造；`planEnd` 是套餐周期而非窗口重置，写成说明行；超额余额正数进 `balance`、负数写成「超额余额 −$X」、0 不占行。
+- **真机实测纠正一处隐式契约**：Connect JSON 序列化的 protobuf 把 int64 字段编码成**字符串**（2026-11-16 实测 `overageBalanceMicros: "-77928"`），只认 `number` 会让真实账户静默少一条额度行——百分比与微单位金额两种形态都认。
+- 站点地址只接受 https 或回环 http（自建反代），拒绝公网明文与带内嵌账号的写法：这个 URL 会把 session token 一并带出去。优先级与提供方插件同序（`WINDSURF_API_SERVER_URL` 环境变量 → 账号 → 全局设置 → 官方默认）。
+- Client 侧登记 `PROVIDER_META` / `PROVIDER_ORDER`（短名 Devin，新安装默认开启），拒绝本地 Key 编辑（凭据归提供方插件）；路由别名 `devin` / `devin-provider` / `cognition` / `windsurf` 都归到这一条。弹层密度形态表补「双窗口 + 套餐周期/超额」形态。
+- 回归：新增 [test-devin.mjs](../tests/test-devin.mjs)（凭据三种模式与回落、state 当前账号、CLI toml、server 安全校验、归一化真机形态 / 缺失不猜 / 隐藏窗口 / 级联、Host 端到端请求形状与 401 专属文案、未登录不发请求、别名解析），并把全套计数断言同步到 33 条（231 项 PASS + 25 个 `node:test` 用例 = 256 项）。
+
 ## 1.0.0：一体化额度平台、声明式连接与 New API 一等入口
 
 1.0.0 的主线是把「任意上游的额度读取」平台化：额度接口的 URL 拼接、凭据注入、响应解析、歧义判定与展示配置全部下沉到可组合的模块层，任意上游只需一份声明（适配器配方 + JSON Pointer 映射）或一次探测就能接入药丸与工具，而不是每家上游在宿主核心里写一段专属代码。本节按核心程度排列：先架构底座，再其上的新入口与 UI。

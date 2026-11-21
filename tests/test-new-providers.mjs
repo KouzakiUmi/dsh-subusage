@@ -18,7 +18,7 @@ out = normalizeSynthetic({ subscription: { requests: 27, limit: 135, renewsAt: n
 assert.equal(out.windows.length, 1); assert.equal(out.windows[0].percent, 20); assert.equal(out.windows[0].detail.unit, "requests");
 for (const limit of [0, -1, "135", null]) assert.throws(() => normalizeSynthetic({ subscription: { requests: 0, limit } }));
 assert.equal(normalizeZai({ data: { limits: [{ type: "TOKENS_LIMIT", percentage: 12 }] } }).windows[0].kind, "5h");
-assert.equal(normalizeZai({ data: { limits: [{ type: "TOKENS_LIMIT", unit: 6, percentage: 100, currentValue: 100, usage: 100 }, { type: "TOKENS_LIMIT", unit: 3, percentage: 10 }] } }).windows[1].cascade, true);
+assert.equal(normalizeZai({ data: { limits: [{ type: "TOKENS_LIMIT", unit: 6, percentage: 100, currentValue: 100, usage: 100 }, { type: "TOKENS_LIMIT", unit: 3, percentage: 10 }] } }).windows.find(w => w.kind === "5h").cascade, true);
 const files = new Map(), calls = [];
 let now = reset - 10000, rateLimit = false;
 const io = { readFileSync(path) { if (!files.has(path)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); return files.get(path); }, mkdirSync() {}, chmodSync() {}, writeFileSync(path, data) { files.set(path, data); }, renameSync(from, to) { files.set(to, files.get(from)); files.delete(from); } };

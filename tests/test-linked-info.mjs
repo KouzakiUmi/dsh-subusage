@@ -1,11 +1,11 @@
 // 使用本次工具实读的脱敏余额回放真实 Client；账号标签为测试别名，未知容量不补造。
 import assert from 'node:assert/strict';
-import { normalizeEac } from '../lib/eac-usage.js';
+import { normalizeLocalBalances } from '../lib/local-usage.js';
 import { api, html, renderPill, Hooks, nodes } from './test-client-ofm.mjs';
 
 const t = key => api.zh[key] ?? key;
 const options = providerId => ({ providerId, t, getLocale: () => 'zh' });
-const entryFor = (id, label, values, unit, sameName = false) => normalizeEac({ accounts: values.map((total, i) => ({
+const entryFor = (id, label, values, unit, sameName = false) => normalizeLocalBalances({ accounts: values.map((total, i) => ({
  accountId: `${id}-${i + 1}`, nickname: sameName ? '同名账号' : `账号 ${i + 1}`,
  balance: { total, packages: [{ name: '可用额度', remaining: total, unit }] }
 })) }, id, label);

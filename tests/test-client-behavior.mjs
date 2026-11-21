@@ -4,7 +4,7 @@ import vm from "node:vm";
 import assert from "node:assert/strict";
 // 本机装着的那条 Ark 路由（其余 Ark 路由在 result() 里标成未安装，见下方 ARK_NOT_INSTALLED）。
 // Codex 默认关闭：它的提供方插件自带用量药丸，两个并排是重复信息。
-const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go", "commandcode", "xai-oauth", "minimax-cn", "deepseek-account", "deepseek", "arkcli-agent-plan"];
+const ids = ["zai-coding-cn", "kimi-coding", "xiaomi-token-plan-cn", "opencode-go", "commandcode", "xai-oauth", "devin", "minimax-cn", "deepseek-account", "deepseek", "arkcli-agent-plan"];
 // 默认关闭的厂商：在提供商管理里可见开关、但不产生 tab。新增厂商时同步这里。
 // openai-codex 默认关闭——它的提供方插件自带用量药丸。
 const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
@@ -61,6 +61,9 @@ let gate = deferred();
 const store = api.createUsageStore((method, query) => { calls.push({ method, query }); if (method === "read") return result(ids.map((id) => entry(id))); return gate.promise; });
 await Promise.all([store.readAll(), store.readAll()]);
 assert.equal(calls.filter((c) => c.method === "read").length, 1);
+// 首屏 readAll 是**只读暂存**：带 cachedOnly 且不要求 force，绝不在这里触发上游拉取。
+assert.equal(calls[0].query.cachedOnly, true, "首屏只读暂存");
+assert.equal(calls[0].query.force, false);
 assert.equal(store.reader(ids[0]), store.reader(ids[0]), "reader 稳定");
 const r1 = store.reader(ids[0])(), r2 = store.reader(ids[0])();
 await flush();
@@ -195,6 +198,35 @@ const cached = entry(ids[0], 25, { state: "error", freshness: "stale", retainPre
 assert.equal(api.canShowUsage(cached), true);
 for (const changed of [{ retainPrevious: false }, { freshness: "unknown" }, { state: "no-key" }, { state: "no-cookie" }, { errorCode: "subusage/auth" }]) assert.equal(api.canShowUsage({ ...cached, ...changed }), false);
 failedStore.dispose();
+// readAll 首屏画完后自愈：暂存里 state=error 的条目补一次**非强制** refresh（穿透退避会破坏 backoff），
+// 成功的条目不重复拉——否则失败条目永远等用户手点「刷新」，设置页一打开就是一片红。
+const healCalls = [];
+const healSettings = { ...publicSettings(), ingest: { sources: [{ source: "good", label: "Good", state: "ok", receivedAt: Date.now() }] } };
+const healStore = api.createUsageStore((method, query) => {
+	if (method === "refresh") { healCalls.push(JSON.parse(JSON.stringify(query))); return result(query.providerIds.map((id) => entry(id))); }
+	const list = query.providerIds.includes("ingest:good")
+		? [entry("ingest:good", 0, { state: "error", error: "push expired", windows: [] })]
+		: [entry(ids[0], 25, { state: "error", errorCode: "subusage/network", error: "upstream timeout", windows: [], coverage: "partial" }), entry(ids[1]), entry(ids[2], 0, { state: "loading", windows: [], freshness: "unknown", lastSuccessAt: undefined })];
+	return { ...result(list), settings: healSettings };
+});
+await healStore.readAll(); await flush();
+assert.equal(healCalls.length, 2, "error 与 loading 条目各触发一次自愈刷新（refresh 按 id 逐个走 RPC）");
+assert.ok(healCalls.every((call) => call.force === false), "自愈不穿透 Host 退避");
+assert.deepEqual(healCalls.map((call) => call.providerIds[0]).sort(), [ids[0], ids[2]].sort(), "失败与重启后未读到的条目都被重拉，成功与 ingest 不蹭拉取");
+const healStale = healStore.getSnapshot().entries.find((e) => e.providerId === ids[0]);
+assert.equal(healStale.state, "ok", "刷新成功后红 ! 立即恢复为读数");
+assert.equal(healStore.getSnapshot().entries.find((e) => e.providerId === ids[2]).state, "ok", "loading 条目补拉后成读数");
+healStore.dispose();
+// ingest 的 error 形状条目不参与拉取（数据归推送方，本插件不主动拉）。
+const healIngestSettings = { ...publicSettings(), ingest: { sources: [{ source: "bad", label: "Bad", state: "ok", receivedAt: Date.now() }] } };
+const healIngest = api.createUsageStore((method, query) => {
+	if (method === "refresh") return result(query.providerIds.map((id) => entry(id)));
+	const list = query.providerIds.includes("ingest:bad") ? [entry("ingest:bad", 0, { state: "error", error: "push expired", windows: [] })] : [];
+	return { ...result(list), settings: healIngestSettings };
+});
+await healIngest.readAll(); await flush();
+assert.equal(healIngest.getSnapshot().entries.find((e) => e.providerId === "ingest:bad").state, "error", "ingest 错误照实展示，不自动拉取");
+healIngest.dispose();
 // 活跃provider共享单计时器；visibility/reset只刷新活跃项，到期force不循环。
 const periodicCalls = [];
 const periodic = api.createUsageStore((method, query) => { if (method === "read") return result(ids.map((id) => entry(id, 25, { windows: [{ kind: "sub", percent: 25, status: "ok", resetsAt: new FakeDate(clock - 1000).toISOString() }] }))); periodicCalls.push(JSON.parse(JSON.stringify(query))); return result(query.providerIds.map((id) => entry(id))); });
@@ -226,11 +258,11 @@ const uiStore = { getSnapshot: () => uiSnapshot, subscribe: () => () => {}, read
 const uh = new Hooks(), props = { usageStore: uiStore, t, getLocale: () => "zh" };
 tree = uh.render(api.SubusageSection, props);
 let tabs = nodes(tree).filter((n) => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-"));
-assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Grok", "MiniMax CN", "DeepSeek 账号", "DeepSeek API", "ARK Plan"]);
+assert.equal(tabs.length, ids.length); assert.deepEqual(tabs.map((n) => n.children.at(-1)), ["Z.ai", "Kimi", "MiMo", "OpenCode Go", "Command", "Grok", "Devin", "MiniMax CN", "DeepSeek 账号", "DeepSeek API", "ARK Plan"]);
 assert.equal(nodes(tree).find((n) => n.props.role === "tablist").props.style.flexWrap, "wrap");
 assert.ok(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
 // 模型厂分组：普通提供商与 Ark 两组开关；聚合商在「聚合商」分组，匹配/绑定开关在最后一页。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 24); assert.ok(!textOf(tree).includes("保存设置"));
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 25); assert.ok(!textOf(tree).includes("保存设置"));
 let focused; tabs[0].props.onKeyDown({ key: "End", preventDefault() {}, currentTarget: { parentElement: { querySelectorAll: () => tabs.map((_, i) => ({ focus() { focused = i; } })) } } });
 assert.equal(focused, ids.length - 1); tree = uh.render(api.SubusageSection, props); assert.equal(memory.get("dsh-subusage:last-provider"), ids.at(-1));
 // End 键跳到最后一个 tab，其技术信息应显示该 provider 的继承变量名。
@@ -457,7 +489,7 @@ const management = nodes(tree).find(n => n.props.id === "subusage-provider-manag
 assert.equal(management.type, "div", "管理区为分组 tab 下的分区块（自定义连接有独立分组 tab）");
 assert(nodes(tree).some(n => n.props.id === "subusage-section-subscriptions"), "默认分组是「模型厂」");
 // 模型厂分组内普通提供商与 Ark 两组开关均可见；聚合商在「聚合商」分组，匹配/绑定开关在最后一页。
-assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 24, "模型厂区内普通提供商与 Ark 两组开关均可见");
+assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 25, "模型厂区内普通提供商与 Ark 两组开关均可见");
 nodes(tree).find(n => n.props.id === "subusage-section-clients").props.onClick(); tree = ch.render(api.SubusageSection, cp);
  const antigravitySwitch = () => nodes(tree).find(n => n.props["aria-label"] === "启用 Antigravity 用量");
 assert.equal(antigravitySwitch().props["aria-checked"], true, "Antigravity 联动默认开启");
@@ -527,7 +559,7 @@ ch.unmount();
 controlSnapshot = withPrefs(result(controlSnapshot.entries), preferences(Object.fromEntries(ids.map(id => [id, false]))));
 const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSection, cp);
 // 空状态仍列出全部管理开关：模型厂分组 22 张卡片加 Ark Team 开关；Antigravity 在「客户端代理」分组。
-assert.equal(nodes(tree).filter(n => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")).length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 24);
+assert.equal(nodes(tree).filter(n => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")).length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 25);
 assert(nodes(tree).some(n => n.props.id === "subusage-section-subscriptions"), "空状态保留订阅分组入口");
 assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.role === "tabpanel"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick(); tree = emptyControls.render(api.SubusageSection, cp);
@@ -877,4 +909,56 @@ for (const initialEditor of ["zai-coding-cn", "opendesign", "xiaomi-token-plan-c
  await odLogin.props.onClick();
  assert.equal(odStarts, 0, "不并发启动OpenDesign登录");
  hook.unmount(); store.dispose();
+}
+
+// 被动接入（ingest）首屏拉取与 save 行为：
+// 1. 已有 settings 时 readAll 直接把未隐藏的 ingest:<source> 并入 providerIds；
+// 2. 冷启动首次 readAll 返回新发现的 ingest.sources 时，自动补拉缺失的被动源条目（仍走 cachedOnly）。
+{
+ const readCalls = [];
+ const ingestSettings = {
+  ...result([]).settings,
+  ingest: {
+   hidden: ["relay-hidden"],
+   sources: [
+    { source: "relay-a", label: "Relay A", state: "ok", receivedAt: Date.now() },
+    { source: "relay-hidden", label: "Hidden", state: "ok", receivedAt: Date.now() }
+   ]
+  }
+ };
+ const coldStore = api.createUsageStore((method, query) => {
+  if (method === "read") {
+   readCalls.push(query);
+   const list = query.providerIds.includes("ingest:relay-a")
+    ? [{ providerId: "ingest:relay-a", label: "Relay A", state: "ok", freshness: "fresh", coverage: "complete", windows: [{ kind: "5h", percent: 20, status: "ok" }], extras: [] }]
+    : [];
+   return { ...result(list), settings: ingestSettings };
+  }
+  return { ...result([]), settings: ingestSettings };
+ });
+ await coldStore.readAll();
+ assert.equal(readCalls.length, 2, "冷启动首次 read 后自动补拉未返回的被动源");
+ assert.deepEqual(readCalls[1].providerIds, ["ingest:relay-a"], "补拉仅包含未隐藏的被动源");
+ assert.equal(readCalls[1].cachedOnly, true, "补拉同样保持 cachedOnly");
+ assert.ok(coldStore.getSnapshot().entries.some(e => e.providerId === "ingest:relay-a"), "补拉后快照包含被动源卡片");
+ coldStore.dispose();
+
+ // 先 readSettings 再 readAll：第一次 readAll 就把 ingest:relay-a 并入 providerIds。
+ const warmCalls = [];
+ const warmStore = api.createUsageStore((method, query) => {
+  if (method === "read") {
+   warmCalls.push(query);
+   const list = query.providerIds.includes("ingest:relay-a")
+    ? [{ providerId: "ingest:relay-a", label: "Relay A", state: "ok", freshness: "fresh", coverage: "complete", windows: [], extras: [] }]
+    : [];
+   return { ...result(list), settings: ingestSettings };
+  }
+  return { ...result([]), settings: ingestSettings };
+ });
+ await warmStore.readSettings();
+ await warmStore.readAll();
+ assert.ok(warmCalls[1].providerIds.includes("ingest:relay-a"), "已知 settings 时 readAll 直接并入 ingest:<source>");
+ assert.ok(!warmCalls[1].providerIds.includes("ingest:relay-hidden"), "已隐藏被动源不并入 readAll");
+ assert.equal(warmCalls.length, 2, "已随主请求返回，不发多余补拉");
+ warmStore.dispose();
 }

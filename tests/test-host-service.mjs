@@ -86,7 +86,7 @@ staleManual.environment[Z] = { value: "env-fallback" };
 result = await staleManual.service.refresh({ providerIds: [Z], force: true });
 assert.equal(result.entries[0].keySource, "env");
 const isolated = harness(); isolated.service.credentials = async id => { if (id === Z) throw new Error("DO NOT LEAK"); return undefined; };
-result = await isolated.service.read(); assert.equal(result.entries.length, 32); assert.equal(result.entries[0].errorCode, "subusage/credentials"); assert(!JSON.stringify(result).includes("DO NOT LEAK")); assert.equal(isolated.calls.length, 0);
+result = await isolated.service.read(); assert.equal(result.entries.length, 33); assert.equal(result.entries[0].errorCode, "subusage/credentials"); assert(!JSON.stringify(result).includes("DO NOT LEAK")); assert.equal(isolated.calls.length, 0);
 // identity 解析（凭据服务/登录文件读取）与 HTTP 一样可能永久挂起：默认 10s（对齐 fetchJson 的
 // AbortSignal.timeout）。注入极短 identityTimeoutMs + 永不 resolve 的 resolveCredentials，验证
 // 超时后该家在短时间内返回可读 error 条目、不拖死同批其它 provider（Client 的「刷新中」不再
@@ -163,24 +163,32 @@ assert(!JSON.stringify(await nested.service.refresh({ providerIds: [M], force: f
 for (const balance of ["REFLECTED-TOKEN", "", "NaN", "Infinity", "0x10"]) assert.throws(() => normalizeMimo({ data: { balance } }, {}, {}));
 // 并发普通/force 合并；设置改变阻止旧请求写缓存。
 const concurrent = harness({ keys: { [Z]: "key1" }, keyModes: { [Z]: "manual" } });
-let release; concurrent.respond(() => new Promise(resolve => { release = resolve; }));
+// 每次取数是 quota + balance 两路并发，所以挂起的 resolver 要攒起来一起放行（单个 release 变量
+// 只会放掉最后一路，另一路永远挂着 → 死锁）。
+let pendingResolvers = [];
+concurrent.respond(() => new Promise(resolve => { pendingResolvers.push(resolve); }));
 const first = concurrent.service.refresh({ providerIds: [Z], force: false });
 await new Promise(resolve => setTimeout(resolve, 0));
 const second = concurrent.service.refresh({ providerIds: [Z], force: true });
-await new Promise(resolve => setTimeout(resolve, 0)); assert.equal(concurrent.calls.length, 1);
-release(zBody); await Promise.all([first, second]);
+// Z.ai 一次取数是「额度 + 账户余额」两个端点（issue #8）：并发合并后仍只有**一组**请求，即 2 个。
+await new Promise(resolve => setTimeout(resolve, 0)); assert.equal(concurrent.calls.length, 2);
+const firstPending = pendingResolvers.splice(0, pendingResolvers.length);
+assert.equal(firstPending.length, 2, "一组取数挂起两路请求");
+firstPending.forEach(resolve => resolve(zBody)); await Promise.all([first, second]);
 concurrent.tick(61000);
 const old = concurrent.service.refresh({ providerIds: [Z], force: true }); await new Promise(resolve => setTimeout(resolve, 0));
 await concurrent.service.save({ providerId: Z, keyUpdate: { action: "replace", value: "key2" } });
-const releaseOld = release; concurrent.respond(() => ({ data: { limits: [{ type: "CREDIT_LIMIT", unit: 3, percentage: 80 }] } }));
-await concurrent.service.refresh({ providerIds: [Z], force: true }); releaseOld(zBody); const oldResult = await old;
+const oldPending = pendingResolvers.splice(0, pendingResolvers.length);
+concurrent.respond(() => ({ data: { limits: [{ type: "CREDIT_LIMIT", unit: 3, percentage: 80 }] } }));
+await concurrent.service.refresh({ providerIds: [Z], force: true }); oldPending.forEach(resolve => resolve(zBody)); const oldResult = await old;
 assert.equal(oldResult.entries[0].errorCode, "subusage/config-changed"); assert.equal(oldResult.entries[0].windows, undefined);
 assert.equal(oldResult.settings.revision, (await concurrent.service.refresh({ providerIds: [], force: false })).settings.revision);
 assert.equal((await concurrent.service.refresh({ providerIds: [Z], force: false })).entries[0].windows[0].percent, 80);
 // reset 到期可以越过TTL/backoff触发新尝试。
 const reset = harness({ keys: { [Z]: "x" } });
 reset.respond(() => ({ data: { limits: [{ type: "CREDIT_LIMIT", unit: 3, percentage: 100, nextResetTime: Date.parse("2026-01-01T00:00:10Z") }] } }));
-await reset.service.refresh({ providerIds: [Z], force: false }); reset.tick(11000); await reset.service.refresh({ providerIds: [Z], force: false }); assert.equal(reset.calls.length, 2);
+// 两次取数 = 两组请求（每组额度 + 余额两路），reset 到期越过 TTL/backoff 会真的再打一遍。
+await reset.service.refresh({ providerIds: [Z], force: false }); reset.tick(11000); await reset.service.refresh({ providerIds: [Z], force: false }); assert.equal(reset.calls.length, 4);
 // 结构边界、99.5/raw判定、明确新版fixture、同级不连坐。
 for (const key of ["usages", "usage", "limits"]) {
  const windows = normalizeKimi({ [key]: { limit_5h: { used_ratio: .995 }, limit_7d: { used_ratio: .9999 } } });
@@ -198,7 +206,11 @@ assert.equal(kimiAbsolute[0].percent, 69.5); assert.equal(kimiAbsolute[1].percen
 assert.throws(() => normalizeKimi({ usages: { unknown_window: { used_ratio: 0 } } }));
 assert.throws(() => normalizeZai({ data: { limits: [{ type: "CREDIT_LIMIT", unit: 3, percentage: NaN }] } }));
 const peers = normalizeZai({ data: { limits: [{ type: "CREDIT_LIMIT", unit: 6, percentage: 100 }, { type: "CREDIT_LIMIT", unit: 6, percentage: 10 }, { type: "CREDIT_LIMIT", unit: 3, percentage: 0 }] } });
-assert.equal(peers.windows[1].status, "ok"); assert.deepEqual(peers.windows[2].detail.blockedBy, ["week"]);
+// 展示顺序改为「短在上」后按语义断言：两个周窗之间同级不连坐，5 小时被周窗连坐。
+const peerWeeks = peers.windows.filter(w => w.kind === "week");
+assert.equal(peers.windows[0].kind, "5h", "5 小时排在周窗前面");
+assert.equal(peerWeeks[0].status, "rate-limited"); assert.equal(peerWeeks[1].status, "ok");
+assert.deepEqual(peers.windows.find(w => w.kind === "5h").detail.blockedBy, ["week"]);
 const mimo = normalizeMimo({ data: { balance: "0" } }, {}, { data: { usage: { items: [{ name: "plan_total_token", percent: .995 }] } } }); assert.equal(mimo.windows[0].percent, 99.5); assert.equal(mimo.windows[0].status, "ok");
 const malformed = harness({ keys: { [Z]: "x" } }); malformed.respond(() => "not JSON"); result = await malformed.service.refresh({ providerIds: [Z], force: true }); assert.equal(result.entries[0].errorCode, "subusage/response"); assert.equal(result.entries[0].retryable, false);
 malformed.respond(() => new Error("authorization=SECRET")); result = await malformed.service.refresh({ providerIds: [Z], force: true }); assert(!JSON.stringify(result).includes("SECRET")); assert.equal(result.entries[0].errorCode, "subusage/network");
@@ -247,4 +259,21 @@ for (const visibility of [{ manualMatching: true, providerMappings: { [Z]: ["cus
   assert.deepEqual(finished.settings.visibility.providerMappings[Z], ["custom-zai", "custom-zai-alt"]);
  } else assert.equal(finished.entries[0].errorCode, "subusage/config-changed", "其他配置变更保护保持不变");
  local.service.dispose();
+}
+
+// 药丸外观（visibility.pillStyle）：公开设置、白名单取值、默认经典。
+{
+	const look = harness({});
+	const before = await look.service.refresh({ providerIds: [Z], force: false });
+	assert.equal(before.settings.visibility.pillStyle, "classic", "默认经典式");
+	const saved = await look.service.save({ expectedRevision: before.settings.revision, visibility: { pillStyle: "immersive" } });
+	assert.equal(saved.settings.visibility.pillStyle, "immersive", "切到沉浸式");
+	const reread = await look.service.refresh({ providerIds: [Z], force: false });
+	assert.equal(reread.settings.visibility.pillStyle, "immersive", "持久化后仍在");
+	await assert.rejects(
+		look.service.save({ expectedRevision: reread.settings.revision, visibility: { pillStyle: "neon" } }),
+		error => error.code === "subusage/invalid-request", "未知外观取值拒绝"
+	);
+	look.service.dispose();
+	console.log("PASS 药丸外观设置：默认经典、可切沉浸、白名单拒绝未知值");
 }

@@ -136,14 +136,17 @@ const row = (key, body, status = 200) => ({ key, status, ok: status >= 200 && st
 			return { ok: false, status: 404, json: async () => ({}) };
 		} })
 	} : undefined };
+	// 来源绑定：把这条路由显式绑到 OFM（回落已不再自动）。
+	files.set('memory/config', JSON.stringify({ sources: { bindings: { 'route-raccoon': { linkedId: 'raccoon', source: 'ofm' } } } }));
 	const service = new SubUsageService(ctx, { io, configPath: 'memory/config', resolveCredentials: async () => undefined, resolveEnvironment: () => undefined, linkedTimeoutMs: 200 });
-	const step = await service.linkedStep({ providerId: 'raccoon', responses: [row('status', undefined, 404)] });
-	assert.equal(step.entry.state, 'ok', '独立插件缺席 + OFM 在场时由 OFM 补上');
+	const step = await service.linkedStep({ providerId: 'raccoon', responses: [row('status', undefined, 404)], routeId: 'route-raccoon' });
+	assert.equal(step.entry.state, 'ok', '绑定到 OFM 时读 OFM 的余额');
 	assert.equal(step.entry.linkedAccounts?.[0]?.providerId, 'raccoon', '账号仍归到同一条联动项');
 	assert.ok(step.entry.extras.some(x => String(x.value).includes('777')), 'OFM 的余额被读出来');
 	// 独立插件在场但未登录：即便 OFM 可用也不换数据来源（回落只针对接口缺席）。
 	ofmReads = 0;
-	const signedOut = await service.linkedStep({ providerId: 'raccoon', responses: [row('status', { status: 'signed-out' })], force: true });
+	// 未绑定该路由 → 主来源组（本机直取 + 独立插件）：插件在场但未登录时报「尚未登录」，不换来源。
+	const signedOut = await service.linkedStep({ providerId: 'raccoon', responses: [row('status', { status: 'signed-out' })], force: true, routeId: 'route-unbound' });
 	assert.equal(signedOut.entry.state, 'error', '未登录不换来源');
 	assert.match(signedOut.entry.error, /独立插件尚未登录/);
 	assert.equal(ofmReads, 0, '在场但未登录时不得去问 OFM');

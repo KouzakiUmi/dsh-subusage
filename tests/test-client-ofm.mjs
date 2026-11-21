@@ -3,12 +3,12 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { OFM_IDS } from '../lib/ofm.js';
 import { normalizeWorkBuddy } from '../lib/connect-usage.js';
-import { normalizeEac } from '../lib/eac-usage.js';
+import { normalizeLocalBalances } from '../lib/local-usage.js';
 let spec, current;
 const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity).filter(v => v !== null && v !== false && v !== undefined) });
 const react = { createElement: h, Fragment: 'fragment', useState: initial => current.state(initial), useRef: value => current.ref(value), useEffect: (fn, deps) => current.effect(fn, deps), useMemo: (fn, deps) => current.memo(fn, deps), useSyncExternalStore: (_subscribe, read) => read() };
 const source = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
-vm.runInNewContext(source.replace('exports.apply = apply;', 'exports.__test = { UsagePill, SubusagePillEntry, createUsageStore, computeStatus, parseLinkedQuery, mountPillStyles, PILL_ISLAND_CSS, PILL_LINKED_META, displayQuotaName, zh, en }; exports.apply = apply;'), {
+vm.runInNewContext(source.replace('exports.apply = apply;', 'exports.__test = { UsagePill, SubusagePillEntry, createUsageStore, computeStatus, parseLinkedQuery, mountPillStyles, PILL_CSS, PILL_LINKED_META, displayQuotaName, zh, en }; exports.apply = apply;'), {
  window: { __ModuleLoader__: { load: value => { spec = value; } } },
  document: { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} },
  console, setInterval: () => 0, clearInterval() {}, setTimeout, clearTimeout,
@@ -74,7 +74,20 @@ export function html(tree) {
   assert(!html(nodes(tree).find(n => n.props.role === 'group')).includes('12900'), '账号列表仍只列各自余额，不把合计重复成一个账号');
  let mountedStyle, removed = false;
  const unmountStyles = api.mountPillStyles({ head: { appendChild: style => { mountedStyle = style; } }, createElement: name => { assert.equal(name, 'style'); return { remove: () => { removed = true; } }; } });
- assert.equal(mountedStyle.textContent, api.PILL_ISLAND_CSS);
+ assert.equal(mountedStyle.textContent, api.PILL_CSS);
+// 沉浸式药丸（visibility.pillStyle=immersive）与模型选择器同一套外观 token。这些值必须写在 CSS 里（inline 写不出 :hover），
+// 且用的都是 DSH 主题 token（`--dsw-radius-sm` / `--dsw-alias-*`），不是我们自己编的数字。
+{
+	const css = api.PILL_CSS;
+	assert.ok(css.includes('[data-style="immersive"]'), "外观规则只作用于沉浸态；经典式仍由 inline 自管");
+	assert.ok(css.includes("height: 28px"), "定高与模型选择器一致（28px）");
+	assert.ok(css.includes("--dsw-radius-sm"), "圆角用主题 token（8px）");
+	assert.ok(css.includes("font-weight: 400"), "字重与模型选择器一致");
+	assert.ok(css.includes("--dsw-alias-label-secondary"), "文字色用次级色 token");
+	assert.ok(css.includes("--dsw-alias-interactive-bg-hover"), "悬停底色用主题中性底");
+	assert.ok(!/border-radius:\s*999/.test(css), "不再用全圆胶囊");
+	assert.ok(!/^\s*border:\s*1px/m.test(css), "不再自带 1px 边框");
+}
  unmountStyles(); assert.equal(removed, true, '客户端卸载清理样式');
  assert.equal(tree.props['data-expanded'], 'true');
  assert(nodes(tree).some(n => n.props.className === 'dsh-subusage-dialog' && n.props.style.position === 'absolute'), '桌面弹层保持原来的定位');
@@ -190,14 +203,14 @@ export function html(tree) {
   assert(partial.sub.includes('已读取 3/4 个账号') && partial.sub.includes('数据不完整'));
 }
 {
-  // Loomy / Raccoon 的 EAC 回退只给总余额时，数字可见且不编单位；某账号失败仍显示已读小计。
+  // Loomy / Raccoon 本机直取只给总余额时，数字可见且不编单位；某账号失败仍显示已读小计。
   for (const providerId of ['loomy', 'raccoon']) {
    const rows = [{ accountId: 'a', balance: { total: 42, packages: [] } }, { accountId: 'b', balance: { total: 58, packages: [] } }];
-   const complete = normalizeEac({ accounts: rows }, providerId, providerId);
+   const complete = normalizeLocalBalances({ accounts: rows }, providerId, providerId);
    const status = api.computeStatus(complete, { providerId, t, getLocale: () => 'zh' });
    assert.equal(status.title, '总额度 · 100', `${providerId} 不替未报告单位的余额编造 credits`);
    assert.equal(status.tinted, false, `${providerId} 有全体账号总余额时不误报警告`);
-   const partial = normalizeEac({ accounts: [rows[0], { accountId: 'b', balance: null, error: '额度暂不可读' }] }, providerId, providerId);
+   const partial = normalizeLocalBalances({ accounts: [rows[0], { accountId: 'b', balance: null, error: '额度暂不可读' }] }, providerId, providerId);
    const fallback = api.computeStatus(partial, { providerId, t, getLocale: () => 'zh' });
    assert.equal(fallback.title, '已读合计 · 42');
    assert(fallback.sub.includes('已读取 1/2 个账号') && fallback.sub.includes('数据不完整'));

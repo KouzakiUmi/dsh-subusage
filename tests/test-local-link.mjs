@@ -1,9 +1,9 @@
 // 直取的**接线**回归（区别于 test-local-usage.mjs 的 reader 单测）。
 //
 // 这里钉的是 `linkedSnapshot()` 这一层的行为，也就是药丸实际走的路径：
-//  1. 直取命中时返回 `channel: "local"`，且**不再**触碰页面代取 / 本机 HTTP / OFM / EAC；
+//  1. 直取命中时返回 `channel: "local"`，且**不再**触碰页面代取 / 本机 HTTP / OFM；
 //  2. 直取拿不到数据时安静让位，不把失败行顶成药丸结论；
-//  3. 多账号经 `normalizeEac` 归一化后，余额落在各自的账号行上。
+//  3. 多账号经 `normalizeLocalBalances` 归一化后，余额落在各自的账号行上。
 import assert from 'node:assert/strict';
 import { loadHostModule } from './helpers.mjs';
 
@@ -37,7 +37,7 @@ function harness({ accounts = [], credentials = {}, upstream, options = {} } = {
 	return { service, upstreamCalls };
 }
 
-// ── [1] 直取命中：返回 local 通道，余额经 normalizeEac 落到 extras ──────────
+// ── [1] 直取命中：返回 local 通道，余额经 normalizeLocalBalances 落到 extras ──
 {
 	const { service, upstreamCalls } = harness({
 		accounts: [{ ref: 'RACCOON_ACCOUNT_A', accountId: 'a1', nickname: '账号甲' }],

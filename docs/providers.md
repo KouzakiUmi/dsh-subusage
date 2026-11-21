@@ -11,7 +11,7 @@
 
 ## 1. 清单与默认开关
 
-31 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 11 条、关闭 21 条**，与注册元数据的 11 开 / 21 关一致：火山个人版两条默认开启，Team 两条由独立的 `visibility.arkTeam` 控制且默认关闭，不再随 `visibility.ark` 打开。Codex 仍默认关闭，避免与提供方自带药丸重复；New API 自建站点需自填站点地址，也默认关闭。设置页里这 32 条合并成 **29 张卡片**；历史已保存开关继续合并，未显式配置过 `arkTeam` 的旧配置按关闭迁移。
+33 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 12 条、关闭 21 条**，与注册元数据的 12 开 / 21 关一致：火山个人版两条默认开启，Team 两条由独立的 `visibility.arkTeam` 控制且默认关闭，不再随 `visibility.ark` 打开。Codex 仍默认关闭，避免与提供方自带药丸重复；New API 自建站点需自填站点地址，也默认关闭。设置页里这 33 条合并成 **30 张卡片**（火山方舟 4 条路由合并成一张）；历史已保存开关继续合并，未显式配置过 `arkTeam` 的旧配置按关闭迁移。
 
 新增厂商须同时改 `PROVIDERS`、`PROVIDER_META` / `PROVIDER_ORDER`、帮助文案、README 与默认值测试；未获明确需求的新订阅商一律 `defaultEnabled: false`，原有偏好通过存储合并保留。
 
@@ -123,6 +123,27 @@ provider id 必须与注册这些路由的插件**逐字一致**（arkcli 官方
 ### SuperGrok 凭据
 
 `xai-oauth` 路由由 dsh-grok-kit 注册。插件读取 Grok CLI / dsh-grok-kit 共享的 OAuth 登录文件（`~/.grok/auth.json`，回退 `~/.dsh/.xai-oauth-auth.json`），不保存凭据；access token 过期时借 dsh-grok-kit（≥0.2.0）的官方登录链（`new XaiOAuthSession().models.getAuth("xai")`）续约并由该链写回同一文件（同一把写锁、compare-and-write，非本插件裸刷），未安装 grok-kit 或续约失败才提示手动重新登录；API Key 路线取不到订阅周池。用量优先走官方 CLI 的计费代理（`cli-chat-proxy.grok.com` 的 `/v1/billing?format=credits`）；该格式在部分统一计费账号上 500 时，用同一 OAuth Bearer 回退 `grok.com` 的 `GetGrokCreditsConfig` gRPC-web。REST 成功但缺百分比时也最多补查一次（6 秒）；仅当 gRPC 周期与 REST 一致才采纳。完整成功 protobuf 中，活跃周/月周期省略的隐式 float 表示已用 0%；其它缺字段、补查失败或周期不匹配保持部分数据，不把充值支出当订阅用量。
+
+### Devin 凭据
+
+`devin` 路由由 [`dsh-devin-provider`](https://www.npmjs.com/package/dsh-devin-provider) 注册。额度走官方 Connect JSON 接口 `POST {server}/exa.seat_management_pb.SeatManagementService/GetUserStatus`（与 devin 插件、官方 devin CLI 同一套调用口径：凭据放在请求体 `metadata.apiKey`，不走 `Authorization` 头，带 `Connect-Protocol-Version: 1` 与客户端版本号）。
+
+凭据**只读**，解析顺序与提供方插件的 `resolveCredential` 一致：
+
+- `cli` 模式：读 `%APPDATA%\devin\credentials.toml`（非 Windows 为 `$XDG_DATA_HOME/devin/credentials.toml`）的 `windsurf_api_key`；文件临时缺失时回落到保存的 grant。
+- `reference` 模式：按账号声明的 `apiKeyRef` 走凭据服务，凭据服务不可用时看启动环境。
+- 其余模式（`oauth` / `api-key`）：读 DSH 凭据库记录 `dsh-devin-provider/<accountId>` 的 `payload.key`；没有凭据服务时回落它写在 `<state 目录>/credentials/<id>.json` 的 0o600 文件。
+- 多账号只读**它当前激活的**那一个（`activeAccountId`，指向已消失账号时按它自己的降级取首个）；不登录、不续期、不写回它的状态文件，也不接受本插件的本地 Key。
+- 站点地址与提供方插件同序：`WINDSURF_API_SERVER_URL` → 账号自己的 `server` → 全局设置 `serverUrl` → `https://server.codeium.com`。只接受 https 或**回环** http（自建反代）；公网明文与带内嵌账号的 URL 一律拒绝——这个地址会把 session token 一并带出去。
+
+窗口语义（对外按**已用**百分比输出，接口给的是剩余百分比）：
+
+- `dailyQuotaRemainingPercent` / `weeklyQuotaRemainingPercent` → 「日」（24 小时）与「周」（7 天）两条窗口，重置时间取自 `dailyQuotaResetAtUnix` / `weeklyQuotaResetAtUnix`（实测是 Unix **秒**，也认毫秒）。被套餐隐藏的窗口（`planInfo.hideDailyQuota` / `hideWeeklyQuota`）不适用，不补造。
+- **缺失不猜**：没有百分比就不画窗口，覆盖率降为 `partial`——提供方插件那边把缺失当 0 剩余（画成满格已用），这里不跟。百分比与微单位金额实测**可能是字符串**（Connect JSON 序列化 protobuf 的 int64 形态，如 `overageBalanceMicros: "-77928"`），两种形态都认。
+- `planEnd` 是**套餐周期结束日**，不是窗口重置时间：写成「套餐周期至 …（还有 N 天）」说明行，过期改写为「已于 … 结束」。套餐名取 `planInfo.planName`，缺失时把 `teamsTier` 枚举（`TEAMS_TIER_DEVIN_PRO`）翻成可读词。
+- `overageBalanceMicros`：正数是可用超额充值（写成余额行），负数是已透支（写成「超额余额 −$X」），0 不占行。ACU 计费套餐才有的 `acuLimit` / `acuConsumed` 在本机 Pro 档不下发，不补造。
+
+> 这是按提供方插件的实现与真机响应核对的内部契约，官方没有公开文档承诺字段名。2026-11-16 用真实账号实测（HTTP 200，Pro 档日 81% / 周 90% 剩余，`state=ok`、`coverage=complete`）；ACU 计费档与企业席位无真实账号可验，仅有隔离测试。
 
 ### MiMo 登录与 Cookie
 

@@ -100,6 +100,34 @@ const save = host.subUsageRemote.descriptors.find(d => d.method === 'save');
 const patch = save.parameters[0].codec.schema.parse({ providerId: 'kimi-coding', keyUpdate: { action: 'keep' } });
 assert.equal(patch.providerId, 'kimi-coding');
 assert.throws(() => save.parameters[0].codec.schema.parse({ providerId: 'xai-oauth', keyUpdate: { action: 'keep' } }), /managed by the provider plugin/, 'xai-oauth 凭据由提供方插件管理');
+// 来源偏好补丁：Host 严格校验（未知条目 / 条目未声明的来源都拒绝），Client 只放行形状、由 Host 兜底。
+{
+ const hostSave = host.subUsageRemote.descriptors.find(d => d.method === 'save').parameters[0].codec.schema;
+ const clientSave = mounted.descriptors.find(d => d.method === 'save').parameters[0].codec.schema;
+ const patch = { expectedRevision: 'r1', sources: { disabled: { raccoon: ['ofm'] }, bindings: { 'kimi/k3': { linkedId: 'raccoon', source: 'ofm' } } } };
+ for (const codec of [hostSave, clientSave]) assert.deepEqual(codec.parse(patch).sources.disabled.raccoon, ['ofm'], '两端都放行合法的来源补丁');
+ assert.deepEqual(hostSave.parse(patch).sources.bindings['kimi/k3'], { linkedId: 'raccoon', source: 'ofm' });
+ assert.deepEqual(hostSave.parse({ sources: { disabled: {}, bindings: {} } }).sources, { disabled: {}, bindings: {} }, '空对象 = 全部清空');
+ assert.throws(() => hostSave.parse({ sources: { disabled: { nope: ['ofm'] } } }), /不是联动项/, 'Host 拒绝未知条目');
+ assert.throws(() => hostSave.parse({ sources: { bindings: { r1: { linkedId: 'raccoon', source: 'magpie' } } } }), /不支持来源/, 'Host 拒绝条目未声明的来源');
+ assert.throws(() => hostSave.parse({ sources: { disabled: {} }, extra: 1 }), /Invalid sources patch/, 'sources 补丁不接受顶层额外键');
+}
+// 被动接入（ingest）双端契约：save 只放行合法 hidden source；read/refresh query 放行 ingest:<source>。
+{
+ const hostSave = host.subUsageRemote.descriptors.find(d => d.method === 'save').parameters[0].codec.schema;
+ const clientSave = mounted.descriptors.find(d => d.method === 'save').parameters[0].codec.schema;
+ for (const codec of [hostSave, clientSave]) {
+  assert.deepEqual(codec.parse({ expectedRevision: 'r1', ingest: { hidden: ['relay-a', 'a.b_1'] } }).ingest.hidden, ['relay-a', 'a.b_1'], '两端都放行合法的 ingest 补丁');
+  assert.throws(() => codec.parse({ expectedRevision: 'r1', ingest: { hidden: ['bad:colon'] } }), /Invalid hidden ingest sources/, '非法 source 拒绝');
+  assert.throws(() => codec.parse({ expectedRevision: 'r1', ingest: { hidden: [] }, extra: 1 }), /Invalid ingest patch/, 'ingest 补丁不接受顶层额外键');
+ }
+ const hostRead = host.subUsageRemote.descriptors.find(d => d.method === 'read').parameters[0].codec.schema;
+ const clientRead = mounted.descriptors.find(d => d.method === 'read').parameters[0].codec.schema;
+ for (const codec of [hostRead, clientRead]) {
+  assert.deepEqual(codec.parse({ providerIds: ['ingest:relay-a'], force: false }).providerIds, ['ingest:relay-a'], '两端 query 放行合法 ingest id');
+ }
+ assert.throws(() => clientRead.parse({ providerIds: ['ingest:bad:colon'], force: false }), 'Client query 拒绝非法 ingest id');
+}
 // 未知 provider 的 save：parse 只校验形状，真正的拒绝在 persist 里（见 test-host-service），
 // 这样用户拿到的是可读原因，而不是网关的 "boundary validation" 通用报错。
 assert.equal(save.parameters[0].codec.schema.parse({ providerId: 'not-supported' }).providerId, 'not-supported', '未知 id 的形状合法，交由 persist 拒绝');

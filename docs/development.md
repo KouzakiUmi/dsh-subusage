@@ -277,7 +277,7 @@ foreach ($theme in @('dark', 'light')) {
 node scripts/check-browser-runtime.mjs
 ```
 
-浏览器检查需要工作区可解析 `playwright-core` 且已安装 Google Chrome；不会下载浏览器。它检查 Cookie 域/路径隔离、31 个开关（28 张提供商卡片——31 条路由里 Ark 4 条合并成一张——加 Ark 个人版 / Team 两个组开关、1 个默认隐藏开关与 1 个手动匹配开关）；预览桩下 11 个可见标签、19 个关闭开关（默认关闭 20 家减去桩里显式开启的 MiniMax 国际版）、无下拉列表和横向溢出，并将 PNG 写到 `debug/ui-preview/`。
+浏览器检查需要工作区可解析 `playwright-core` 且已安装 Google Chrome；不会下载浏览器。它检查 Cookie 域/路径隔离、**首屏「模型厂」分组内的 24 个开关**（设置页按分组 tab 渲染，聚合商 / 客户端代理 / OFM / 绑定与匹配诸组的开关要切 tab 才渲染）、预览桩下 11 个可见标签、14 个关闭开关、无下拉列表和横向溢出，并将 PNG 写到 `debug/ui-preview/`。数字口径与 `scripts/check-browser-runtime.mjs` 的断言一致；新增 provider 或调整分组时同步这三处。
 
 0.12.0 轮换池改进的专项验收（虚构 40 个账户、禁止 HTTP）：
 
@@ -323,7 +323,7 @@ node scripts/render-market-screenshots.mjs
 | `node tests/run-all.mjs` | pass | 含更新后的 `test-mimo-cookie-expiry.mjs`（正常态药丸已无文字，数字改在 title / aria-label） |
 | `node scripts/check-manifest.mjs` | pass | 打包白名单与 exports 未变 |
 | `node --check lib/*.js` | pass | 无源码转译 |
-| `node scripts/check-browser-runtime.mjs` | pass | 严格 Chrome、深浅主题 × 530 / 500 / 499 / 360：无横向溢出、无下拉列表、25 个开关 |
+| `node scripts/check-browser-runtime.mjs` | pass | 严格 Chrome、深浅主题 × 530 / 500 / 499 / 360：无横向溢出、无下拉列表（首屏分组 24 个开关；该数字按当前分组渲染口径校准，见下文「顺带修掉的既有问题」） |
 | 一次性画廊脚本（`debug/`，不入库） | pass | 15 种状态（充足 / 偏少 / 即将用尽 / 已用尽 / 受连累 / 未配置 / 需登录 / 失败 / 加载 / 缓存 / 仅余额 / Cookie 将到期 / Cookie 已过期 / AFP 四窗口）深浅各一张，目视核对配色与层级 |
 
 **顺带修掉的既有问题**：`check-browser-runtime.mjs` 的「预览桩下可见 provider 数」期望值停在 10，而预览桩实际可见 13 条（桩里显式开启 8 条 + 默认开启的 DeepSeek + Ark 的 4 条路由）。该断言在**未改动的 0.10.10 代码上同样失败**（用 `git stash` 复现），属期望值未随 provider 默认开关更新，已按实际构成改为 13 并在注释里写明组成。
@@ -402,7 +402,7 @@ node scripts/render-market-screenshots.mjs
 - 顺序约定：新 provider 一律**追加在 `PROVIDER_ORDER` 末尾**。本轮把 Codex 插在中间时，测试里三处按位置写的 `ids[N]` 断言全部错位（改用 id 字面量断言后恢复）；追加在末尾则不影响既有索引。
 - **真机验证（2026-10-09，Codex）**：用本机 `~/.codex/auth.json` 的真实 ChatGPT 登录向 `GET https://chatgpt.com/backend-api/wham/usage` 发一次只读请求，**HTTP 200**，实测 `primary_window.window_seconds=18000`、`secondary_window.window_seconds=604800`、`plan_type="plus"`、`credits={has_credits:false,balance:"0"}`。由此发现并修正两处只有真机才暴露的问题：**① `resets_at` 是 Unix 秒数而实现只接受字符串，导致重置时间被静默丢弃**（桩测试喂的是 ISO 串，所以一直是绿的）；② `plan_type` 未显示。教训：**桩测试里的字段类型必须来自真实响应**，否则"解析正确"只是自洽。验证脚本在 `debug/verify-codex-live.mjs`（debug/ 不入库）。
 - Codex 订阅用量：`tests/test-codex.mjs` 覆盖登录文件解析（`auth_mode` 门禁、`account_id` 可选、缺失/损坏不抛错、`CODEX_HOME` 覆盖路径）、窗口归一化（主/次窗口回退命名、`window_seconds` 判 30 天档、100% 判限流、单窗口 partial、`credits` 四类不显示、`plan_type` 档位、秒级与 ISO 两种重置时间、哨兵 0、非法百分比报错）、Host 端到端（默认开启即读取、Bearer 是 OAuth token 而非 API Key、响应不回显 token、拒绝本地凭据补丁、无登录文件时 no-key 文案点名 `codex login` 与 API Key 模式限制）与 Client 注册。**这是首个"凭据完全由外部 CLI 登录文件提供且默认开启"的 provider**；`tests/test-client-render.mjs` 里原先把 `openai-codex` 当"不支持的路由"的断言改用 `vrtx-gemini`，保留了那条覆盖。
-- 离线预览与浏览器像素验收（**2026-10-09 补做，此前因沙箱受限未做**）：`scripts/check-browser-runtime.mjs` 现可实际运行——本机 Chrome 154 启动正常，深浅主题 × 530/500/499/360px **八组全部通过**（无横向溢出、无下拉列表、开关与标签计数正确）。此前记录的 `chromium.launch: spawn EPERM` 不是 Chrome 的问题：**受限沙箱禁止命名管道**，而 Playwright 正是用 `--remote-debugging-pipe` 与浏览器通信；文件策略放开到完整访问后限制消失。该脚本的计数随后续批次更新（**当前** 31 个开关 / 11 个可见标签 / 预览桩下 19 个开关关闭，与 `scripts/check-browser-runtime.mjs` 的断言一致）。
+- 离线预览与浏览器像素验收（**2026-10-09 补做，此前因沙箱受限未做**）：`scripts/check-browser-runtime.mjs` 现可实际运行——本机 Chrome 154 启动正常，深浅主题 × 530/500/499/360px **八组全部通过**（无横向溢出、无下拉列表、开关与标签计数正确）。此前记录的 `chromium.launch: spawn EPERM` 不是 Chrome 的问题：**受限沙箱禁止命名管道**，而 Playwright 正是用 `--remote-debugging-pipe` 与浏览器通信；文件策略放开到完整访问后限制消失。该脚本的计数随后续批次更新（**当时**为 31 个开关 / 11 个可见标签 / 预览桩下 19 个开关关闭；后续批次又随 provider 增减与分组 tab 调整过，现行数字见上文「浏览器检查」一段）。
 
 ### 0.11.0 验证记录：Command Code 多账户额度与设置页账户区
 

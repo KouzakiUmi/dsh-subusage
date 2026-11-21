@@ -43,21 +43,24 @@ try {
       };
     });
     assert.equal(info.overflow, false, `${theme}/${width} 不得横向溢出：${JSON.stringify(info.overflowNodes)}`);
-    // 预览桩下可见 11 条 = 桩里显式开启的 8 条（zai/kimi/mimo/opencode/commandcode/minimax/minimax-cn/xai-oauth）
-    // + 默认开启的 deepseek 与 deepseek-account + Ark 的代表标签 1 条（DeepSeek 两入口与 Ark 均不在桩的
-    // visibility.providers 里，按默认开关放行；余额型不按路由收起，Ark 在订阅状态未知时只显示组代表，
-    // configured=false 也不影响）。openai-codex 与其余默认关闭各家（共 19 家）不可见。
-    assert.equal(info.providerCount, 11, '预览桩下的可见 provider 数');
+    // 预览桩下可见 12 条 = 桩里显式开启的 8 条（zai/kimi/mimo/opencode/commandcode/minimax/minimax-cn/xai-oauth）
+    // + 默认开启的 deepseek / deepseek-account / devin + Ark 的代表标签 1 条（DeepSeek 两入口、Devin 与 Ark
+    // 均不在桩的 visibility.providers 里，按默认开关放行；余额型不按路由收起，Ark 在订阅状态未知时只显示
+    // 组代表，configured=false 也不影响）。openai-codex 与其余默认关闭各家不可见。
+    // ⚠️ 预览 HTML 由 render-ui-preview.mjs 生成：改完 Client 必须先重新生成，否则量的是旧快照。
+    assert.equal(info.providerCount, 12, '预览桩下的可见 provider 数');
     assert.equal(info.selectedProvider, 'subusage-tab-xiaomi-token-plan-cn', '标签选中态必须匹配当前详情');
     assert.equal(info.tabsVisible, true, '窄屏仍使用按钮导航');
     assert(info.tabWidths.every(width => width > 0), '所有标签均有可点击区域');
     assert.equal(info.selectCount, 0, '整个设置页不使用下拉列表');
-    // 原有 31 个开关 + 默认关闭的手动匹配开关。
-    assert.equal(info.switches.length, 32, '提供商、Ark Team、默认隐藏与手动匹配开关');
+    // 当前设置页按分组 tab 渲染，首屏「模型厂」组里出现 25 个开关（普通提供商卡片 + Ark 个人版 / Team 两个组开关）；
+    // 聚合商 / 客户端代理 / OFM / 绑定与匹配诸组的开关要切 tab 才渲染，不计入这一次查询。
+    // 该期望值随 provider 与分组口径变化：新增 Devin（默认开启）后为 25。
+    assert.equal(info.switches.length, 25, '模型厂商家、Ark Team、默认隐藏与手动匹配开关');
     assert(info.switches.every(item => item.label), '开关有无障碍名称');
-    // 默认关闭 21 条 − 桩里显式打开的 MiniMax 国际版 1 条 = 20 条路由；
-    // 两条 Team 路由共用一个开关，加上默认关闭的手动匹配，界面有 20 个关闭开关。
-    assert.equal(info.switches.filter(item => item.state === 'false').length, 20, '预览桩下关闭的 20 个开关');
+    // 预览桩的 visibility.providers 只显式开了 8 家，其余按注册默认值（多数开启）放行，
+    // 所以关闭态在首屏只剩 14 个：默认关闭的卡片 + Team 组开关 + 默认隐藏 + 手动匹配。
+    assert.equal(info.switches.filter(item => item.state === 'false').length, 14, '预览桩下关闭的开关');
     await page.screenshot({ path: file.replace(/\.html$/, '.png'), fullPage: true });
     await context.close();
     console.log(`PASS ${theme}/${width} 提供商开关、可换行按钮、无下拉、无溢出`);

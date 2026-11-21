@@ -18,7 +18,7 @@
 
 </div>
 
-> **1.0.0**：自建 New API / One API 站点额度（provider + 一等声明式适配器：填站点根与推理同一把 sk- Key 即完成接入，字段映射与 500000 quota = 1 Credits 换算内置，探测自动识别）、自定义连接**点选映射器**、鉴权数据落盘加密、QuotaEntry 统一契约与一体化额度平台。[查看更新记录](docs/changelog.md)。
+> **1.0.1**：读取与拉取彻底解耦——额度暂存落盘、可重试失败自动重拉、Host 后台定时扫描（拉取不再挂在任何 UI 事件上）、Devin proto3 零值省略修复（周用尽不再显示 100%）；被动接入 ingest、药丸双外观、窗口排序与 Unified Router 回退移除。1.0.0 的架构底座见 [更新记录](docs/changelog.md)。
 >
 > **版本间可能出现 bug**——发现异常请[回报 issue](https://github.com/KouzakiUmi/dsh-subusage/issues)。报告/药丸缺数据时会写 `omitted` 计数或读取失败原因，不把未知当充足；数字只作参考，不是计费依据。
 
@@ -49,6 +49,8 @@ dsh plugin --profile web add dsh-subusage
 
 ### 看余额：金额直接显示，单位不混淆
 
+药丸外观可切换：**经典**（默认，全圆胶囊带描边）或**沉浸式**（与右侧模型选择器同高、同圆角、无边框、悬停同底色），在「订阅用量 → 绑定与匹配」里选，只改外观、不动读数。
+
 无套餐窗口且数据完整时，药丸直接显示金额。人民币、美元与 credits 各按自己的规则展示；**余额不等于订阅额度，也不能盖过已耗尽的套餐**。DeepSeek API 与本机账号有各自的开关、凭据来源与余额。
 
 ### 管账户：需要时展开，不让长列表占满界面
@@ -59,21 +61,22 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 完整的架构分层、数据流与模块地图见 [docs/architecture.md](docs/architecture.md)（做介绍 / 演示时可按那一篇的顺序取材）。这里挑最值得展示的：
 
-- **32 条内置额度入口 + 19 条联动项**：从 DeepSeek、Kimi、火山方舟到 Codex、Copilot、自建 New API / one-api 站，一家一条凭据链、一套单位口径。
+- **33 条内置额度入口 + 19 条联动项**：从 DeepSeek、Kimi、火山方舟到 Codex、Devin、Copilot、自建 New API / one-api 站，一家一条凭据链、一套单位口径。
 - **零代码接入任意新上游**：填 Base URL → 测试连接 → 探测自动推导字段映射 → 一键套用 → 保存即得药丸；探测认不全时直接点选响应里的字段、选「它是什么」就自动生成映射，可逐字段锁定，接入配方（Recipe）可导出分享。New API / One API 站点有专门的一等入口：填站点根与推理同一把 sk- Key 即完成（字段映射与单位换算内置，`/v1` 尾缀自动去除），不用走通用自定义；同一入口可接入多个站点。
 - **统一条目模型（QuotaEntry）**：百分比窗口、美元余额、积分包、席位池出边界都是同一套元素——药丸、弹层、Go 面板、Agent 工具四端同口径渲染。
 - **秘密落盘加密**：API Key、OAuth 记录、会话 Cookie 全部 AES-256-GCM 加密后写盘；公开设置只有引用名，没有秘密值。
 - **多 Key 监控**：每家最多 8 个凭据引用名逐 Key 独立查询与缓存，主 Key 管药丸、额外 Key 管排障与对账。
+- **额度暂存层**：读到的结果固化到 `~/.dsh/dsh-subusage-cache.json`（0600，不含凭据）。打开设置先显示上次读数、不触发上游；真正的拉取只在你刷新、切到某家或看药丸时发生。
 - **路由归属三处同口径**：内置别名、手动映射、路由绑定、Magpie 分组绑定在同一张表、同一套解析顺序，切模型药丸立刻跟着切。
-- **235 项隔离回归**：桩网络、隔离文件系统、双端契约比对，`npm run check` 一条命令；30 个 provider 归一化函数已模块化，可在不触碰 DSH 核心包的情况下独立测试。
+- **256 项隔离回归**（`npm run check` 实测 PASS / 用例计数）：桩网络、隔离文件系统、双端契约比对，一条命令跑完；31 个 provider 归一化函数已模块化，可在不触碰 DSH 核心包的情况下独立测试。
 
 ## 支持什么
 
-**32 条数据入口，新安装默认开启 11 条。** 按使用场景，主要分为：
+**33 条数据入口，新安装默认开启 12 条。** 按使用场景，主要分为：
 
 | 你想看什么 | 代表提供商 |
 |---|---|
-| 订阅窗口与重置时间 | Kimi、MiMo、Codex、GitHub Copilot、SuperGrok、MiniMax、Z.ai、OpenCode Go、OpenDesign |
+| 订阅窗口与重置时间 | Kimi、MiMo、Codex、Devin、GitHub Copilot、SuperGrok、MiniMax、Z.ai、OpenCode Go、OpenDesign |
 | 账号钱包与 API 余额 | DeepSeek API / 账号、SiliconFlow、Novita、Hyperbolic、DeepInfra |
 | 套餐、余额与多层预算 | Command Code、NanoGPT、OpenRouter、ZenMux、LiteLLM、APIGOTO、New API |
 | 账号级套餐与企业席位 | 火山方舟 Agent Plan / Coding Plan |
@@ -106,6 +109,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 | 官方 `arkcli` | `arkcli-agent-plan`、`arkcli-coding-plan`、`arkcli-agent-plan-team`、`arkcli-coding-plan-team` → 同名入口 | 直接匹配四条路由；个人版与 Team 检测独立，Team 默认关闭；额度需 IAM AK/SK，而非推理 API Key。 |
 | `@mars-sea/dsh-commandcode-provider` | `commandcode` → `commandcode` | 复用凭据来源、账户列表与账号切换；支持固定账户和轮换池摘要。自动轮换时的用量不跟随每次请求实际服务账号。 |
 | `dsh-grok-kit` / 官方 Grok CLI | `xai-oauth` → `xai-oauth` | 共享 Grok 登录文件；token 过期时可借 `dsh-grok-kit` 的登录链续约，再读取 X / SuperGrok 额度。 |
+| `dsh-devin-provider` | `devin` → `devin` | 只读它的登录态（多账号按它当前激活的账号）调用官方 `GetUserStatus`；不在本插件登录、续期或写回它的状态文件。 |
 | `dsh-codex-connect` / DSH 内置 Codex 路由 / 官方 Codex CLI | `openai-codex` → `openai-codex` | 匹配 Codex 药丸，支持读取 CLI 的 ChatGPT 登录文件；API Key 登录不能读取 ChatGPT 订阅额度。检测默认关闭。 |
 | `dsh-codex-subscription` | 其 OAuth 用于 `openai-codex` 额度入口 | 优先只读活动账号记录，兼容旧 OAuth 引用；不迁移或续约凭据。不额外假定它注册的模型路由名，名称不同时使用手动绑定。 |
 | `@inventec/dsh-copilot-auth` | `github-copilot` → `github-copilot` | 只读该插件写入 DSH 凭据库的 OAuth 记录；登录和续约由提供方负责。检测默认关闭。 |
@@ -124,12 +128,23 @@ OpenDesign 药丸按当前路由标注计费来源：套餐模型显示「使用
 | [`dsh-connect-workbuddy`](https://github.com/dingminhua/dsh-connect-workbuddy) | `workbuddy`、`workbuddy-global` | 按区域与账号读取余额；完整积分包只归属已确认的当前账号。 |
 | [`dsh-raccoon-connect`](https://github.com/zhlcba/dsh-raccoon-connect)、[`dsh-loomy-connect`](https://github.com/gdrpzym/dsh-loomy-connect) | `raccoon`、`loomy` | 独立 `/status` 的单当前登录；药丸在接口缺席时回落 OFM。Loomy 保留本地积分缓存时间。 |
 | Our Free Model | 十个 `ofm-*` 入口 | 复用账号索引与 `usage.badge`：小浣熊、Loomy、Qoder 国际/中国版、LobsterAI、TRAE、Cline、MiniMax Code、ZCode、Gemini；逐账号显示积分、额度包与鉴权元数据。[范围与验证](docs/ofm.md) |
-| EAC 三渠道（`dsh-eac-router`） | `raccoon`、`loomy`、`ofm-qodercn` 的回退来源 | 读它挂在 `/api/eac-router` 的只读 `credits.balances`。**不新增并列条目**：独立插件与 OFM 都缺席时，药丸才回退到 EAC；全量报告与工具查询不回落。 |
 | [Magpie 聚合网关](https://github.com/yetone/magpie)（本机 `http://127.0.0.1:3425`） | `magpie`（路由 `magpie` / `magpie-responses` / `magpie-anthropic`） | 只读 `GET /v1/magpie/quotas`（`kept=1` 缓存快照），一张上游订阅卡一行、按 provider 分组；`usage/requests` + `concurrency` 给出 auto 组在途/上次命中的实际上游。回环免鉴权，不发写请求。 |
 
 Antigravity 的两个提供方读取同一份 Google 配额，只出一条 `antigravity`：`agyQuota` 在场优先，否则回落 `antigravityAuth`。联动没有普通提供商凭据卡片，登录与账号管理由提供方负责。Antigravity 在管理区「客户端代理」分组里另有独立开关，默认开启；关闭后停止查询并隐藏药丸。
 
-EAC 三渠道读的是 Loomy / Raccoon / Qoder 中国版的同一批账号，所以三个渠道不会各出两条：`raccoon` / `loomy` 的顺序是**独立 connect 插件 → Our Free Model → EAC**，`ofm-qodercn` 是 **OFM → EAC**。EAC 未安装或后端未就绪时按「这轮没有这条通道」处理；它只报余额与积分包，未公开的时间单位不做换算。
+**来源不再自动回落**：每条订阅的主来源是「本机直取 → 独立插件」或「本机直取 → Our Free Model」，缺数据就如实报缺席并给安装指引；要把某条模型路由切换到 Our Free Model 等备选来源，可在 **设置 → 订阅用量 → 绑定与匹配 → 来源** 启用或显式绑定。
+
+### 外部插件被动接入
+
+其他 DSH 插件可以直接把额度快照推送给本插件展示，无需在本插件中配置凭据或轮询地址。推送到达后会持久化为独立卡片，并在 **设置 → 订阅用量 → 绑定与匹配 → 外部接入** 列出；这里的开关只控制是否显示，不会删除或改动推送方的数据，数据更新与撤回由推送方插件负责。
+
+插件作者可在同进程内通过 Cordis 服务推送：
+
+```js
+const subUsage = ctx.get("subUsage");
+subUsage?.ingest({ source: "my-relay", label: "My Relay", windows: [{ kind: "5h", percent: 42 }], extras: [{ kind: "balance", value: "12.30 CNY" }], ttlMs: 600_000 });
+// 需要移除卡片与持久化数据时调用：subUsage?.revokeIngest("my-relay");
+```
 
 积分包统一显示为分组摘要：已用尽与能确认已过期的包隐藏，其余按今天到期、3 天内到期、临时额度、周期/套餐与永久额度聚合。不同账号、不同单位不混合计算。
 
@@ -164,18 +179,19 @@ OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM
 
 ## 支持的数据 / Supported data
 
-共 **32 条 provider id**：新安装**有效默认开启 11 条、关闭 21 条**。另有 **19 条联动项**：Antigravity 一条、Trae 三块面板、WorkBuddy 两区域、独立 Raccoon / Loomy 两条、[OFM 十个渠道](docs/ofm.md)及 Magpie 本地聚合网关一条。联动项没有自己的凭据槽或普通设置卡片，Antigravity 另有独立开关。清单取自 [Host](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 归一化为准：Ark 个人版两路默认开启，Team 两路独立控制且默认关闭。展示顺序与短名取自 [Client](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
+共 **33 条 provider id**：新安装**有效默认开启 12 条、关闭 21 条**。另有 **19 条联动项**：Antigravity 一条、Trae 三块面板、WorkBuddy 两区域、独立 Raccoon / Loomy 两条、[OFM 十个渠道](docs/ofm.md)及 Magpie 本地聚合网关一条。联动项没有自己的凭据槽或普通设置卡片，Antigravity 另有独立开关。清单取自 [Host](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 归一化为准：Ark 个人版两路默认开启，Team 两路独立控制且默认关闭。展示顺序与短名取自 [Client](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
 
 | 提供商 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|---|
 | DeepSeek API | `deepseek` | 余额（账户） | Bearer，与推理同一把 Key | 开 |
 | DeepSeek 账号 | `deepseek-account` | 余额（本机账号充值） | 复用 DSH `deepseekAccount` 登录态，无独立 Key | 开 |
-| Z.ai（中国） | `zai-coding-cn` | 订阅窗口 | Bearer（团队档另加组织 / 项目请求头） | 开 |
+| Z.ai（中国） | `zai-coding-cn` | 订阅窗口 + 账户余额 | Bearer（团队档另加组织 / 项目请求头） | 开 |
 | Kimi Coding | `kimi-coding` | 订阅窗口 | Bearer | 开 |
-| Xiaomi MiMo | `xiaomi-token-plan-cn` | 周期额度池 | 官方平台 Cookie（含登录流程与手机扫码登录） | 开 |
+| Xiaomi MiMo | `xiaomi-token-plan-cn` | 周期额度池 + 账户余额 | 官方平台 Cookie（含登录流程与手机扫码登录） | 开 |
 | OpenCode Go | `opencode-go` | 订阅窗口 | Bearer | 开 |
 | Command Code | `commandcode` | 5 小时 / 周 / 月额度池 | 提供方插件的凭据链 | 开 |
 | SuperGrok | `xai-oauth` | 周期池 | 共享 Grok CLI 登录文件，过期经 grok-kit 续约 | 开 |
+| Devin | `devin` | 每日 / 每周订阅窗口 | 只读 `dsh-devin-provider` 自己的登录态（凭据库 grant / devin CLI / 引用名），调用官方 `GetUserStatus` | 开 |
 | Codex (ChatGPT) | `openai-codex` | ChatGPT 订阅窗口 | 只读 Subscription 独立 OAuth（0.13.0 起）或 Codex CLI 登录文件 | 关 |
 | GitHub Copilot | `github-copilot` | 月度高级请求池（免费档为聊天 / 补全月计数） | 只读 Copilot 提供方（`dsh-copilot-auth`）存入 DSH 凭据库的 OAuth 记录，调用 GitHub 私有额度接口 | 关 |
 | MiniMax（中国） | `minimax-cn` | 短周期 / 周 | Bearer | 开 |
@@ -220,6 +236,7 @@ OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM
 | 小米 MiMo | 余额 + 套餐额度 | 真实平台会话 Cookie（含自动登录；手机上可用小米账号扫码登录，全程不需要浏览器） |
 | Command Code | 月额度 | 提供方插件的凭据链 |
 | SuperGrok | 统一周池 + 加量余额 | 真实 `~/.grok/auth.json` |
+| Devin | 2026-11-16 本机真机只读：`POST https://server.codeium.com/.../GetUserStatus` **HTTP 200**，Pro 档每日剩余 81% / 每周 90%（重置 2026-11-16 08:00Z / 2026-11-22 08:00Z），套餐周期至 2026-12-05，`overageBalanceMicros` 实测为**字符串** `"-77928"`；`state=ok`、`coverage=complete` | 复用 `dsh-devin-provider` 写入 DSH 凭据库的 grant 记录（`dsh-devin-provider/<accountId>` 的 `payload.key`），只读不续期；CLI 模式读 `%APPDATA%\devin\credentials.toml`，引用模式按它声明的 `apiKeyRef` 解析 |
 | Codex (ChatGPT) | 主 / 次窗口 + 档位 | 真实 `~/.codex/auth.json`（本插件默认关闭） |
 | GitHub Copilot | 2026-10-23 真机联调：真实凭据库记录的长期 token 调 `GET /copilot_internal/user` **HTTP 200**（个人档 `premium_interactions` 月池 1500 / 已用 744，重置 2026-11-01；chat / completions 为 unlimited 不画窗口）；企业版、免费档与组织席位仅有隔离测试 | 复用 `@inventec/dsh-copilot-auth` 写入 DSH 凭据库的 OAuth 记录（`refresh` 长期 token），只读不续期 |
 | OpenDesign | 历史接口实测（2026-10-18 / 20）：真实 workspaceId、Design Plan 扁平窗口、套餐余额 / 总额度（钱包合计）及零余额（当时界面文案为「月额度剩余 / 余额」）；本次认证失效修复只做隔离回归，未验收当前 GUI | 控制台会话 Cookie：「登录并自动导入」实测可用（2026-10-24 确认，Cloudflare 人机验证在弹出窗口中由用户完成），手动导入仍是备选 |
@@ -324,6 +341,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | SuperGrok | [`dsh-grok-kit`](https://github.com/KouzakiUmi/dsh-grok-kit) | 运行 `grok login`，登录文件 `~/.grok/auth.json` |
 | Codex（ChatGPT 订阅） | [`dsh-codex-connect`](https://github.com/franksong2702/dsh-codex-connect) 或 [`dsh-codex-subscription`](https://github.com/WSL043/dsh-codex-subscription)（0.13.0 起兼容） | Connect / CLI：`codex login`；Subscription：在其设置页独立 OAuth 登录，无需 CLI |
 | GitHub Copilot | [`@inventec/dsh-copilot-auth`](https://github.com/iasiv5/dsh-copilot-auth)（内置 `github-copilot` 路由的设备码登录） | 在其设置页完成设备码登录；本插件复用凭据库里的这条 OAuth 记录，无需另行登录 |
+| Devin | [`dsh-devin-provider`](https://www.npmjs.com/package/dsh-devin-provider) | 在其设置页完成登录（浏览器 PKCE / 导入本机 `devin` CLI 登录 / API Key 或凭据引用），本插件复用它的登录态读取额度，无需另行登录 |
 
 > **Codex 默认关闭**：它的提供方插件本身就带一个用量药丸，两个并排只是重复信息。想要本插件这一份（比如想把 Codex 和别家放在一起看）可以在**提供商管理**里手动开启。
 >
@@ -333,12 +351,12 @@ dsh plugin --profile <profile> remove dsh-subusage
 
 - **设置页路径**：设置 → **订阅用量** → 提供商管理。管理区按来源分为横向 tab：「模型厂」（自研模型订阅）、「聚合商」（只做路由/中转的上游与本地 Magpie 网关）、「客户端代理」（Antigravity、Trae、WorkBuddy、小浣熊、Loomy 等不提供 API、由第三方插件或本机直取读额度的客户端）、「OFM」（十个渠道）、「自定义连接」、「绑定与匹配」（显示与匹配开关、provider 映射、路由绑定与 Magpie 分组绑定，固定在最后一页）。每家订阅都有独立的检测开关与「配置」按钮；编辑器在当前项下方展开，不会切换上方正在查看的用量。「没有检测到API的默认隐藏」默认开启；首次没有可见条目时管理区自动展开。关闭的提供商仍可配置凭据，只是不会发起用量请求。
 - **凭据从哪来**：每一类凭据的**官网入口、环境变量名与界面填入位置**都写在[凭据获取指引](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/credentials.md)——包括火山的 IAM AK/SK（子用户还要挂 `ArkReadOnlyAccess` 且不限制到项目）、MiMo 的平台会话 Cookie、以及各家 API Key 的对照表。**注意推理 Key 与额度凭据不通用。**
-- **默认开关策略**：新安装默认开启 11 条、默认关闭 21 条（**Codex 默认关闭**——它的提供方插件自带用量药丸；GitHub Copilot、火山 Team 检测与 New API 自建站点检测也默认关闭）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
+- **默认开关策略**：新安装默认开启 12 条、默认关闭 21 条（**Codex 默认关闭**——它的提供方插件自带用量药丸；GitHub Copilot、火山 Team 检测与 New API 自建站点检测也默认关闭）；开关即时保存，升级保留已保存的开关，不重算默认值。默认隐藏只影响显示，不会自动开启被关闭的提供商。
 - **火山方舟共用凭据、分组检测**：4 条路由共用同一组 IAM AK/SK，所以设置页只呈现**一张卡片**。其中「个人版」开关控制 Agent Plan / Coding Plan，独立的「Team 检测」开关控制两条团队版路由且默认关闭；两组互不影响。这些 provider id 并没有合并——药丸仍按 id 匹配路由。旧插件 `@volcengine/ark-plan-api` 的两个国内路由（`ark-coding-plan-cn` / `ark-agent-plan-cn`）**已移除**：它们与 arkcli 的路由查同一份订阅，并列显示只会让人以为买了两个套餐；装了旧插件的用户，药丸仍按那两个 id 显示同一份数据（入口归并到 arkcli 路由）。
 - **火山方舟不按路由收起**：它的额度走**账号级管控面**，一组 AK/SK 就能查到名下所有套餐（`GetCodingPlanUsage` 与 `GetAFPUsage` 是同一套协议、同一组凭据）。推理路由装没装只影响模型能不能用，**不影响额度能不能查**——所以只持有 Coding Plan、却没在 DSH 里配 coding-plan 路由时，那条额度照样会显示（前提是配了 AK/SK）。
 - **凭据来源优先级**（`inherit` 模式）：**DSH 路由实际声明的 `apiKeyEnv` → 该提供商额外配置的监控引用名 → 内置环境变量名 → 启动环境 → 旧手动配置兜底**。客户端 Models 页保存的自定义 Key 写进路由的 `apiKeyEnv`，药丸与用量跟随它。切到自定义（`manual`）模式时优先使用保存的手动 Key；删除手动 Key 后自动回到继承。界面会区分这些来源。
 - **多 Key 监控**：每个提供商可在「连接与凭据」里额外添加最多 8 个凭据引用名（环境变量名，如 `KIMI_SECOND_KEY`），各自独立读取额度并展示；只保存引用名，不保存 Key 值。药丸与用量面板始终显示当前路由实际使用的那个 Key——切换 Key 仍由 DSH 模型设置决定。
-- **不接受本地 Key 的提供商**：`commandcode`（凭据链属提供方插件）、`xai-oauth`、`openai-codex`（只读各自 CLI 的登录文件）、`github-copilot`（只读 Copilot 提供方存入凭据库的 OAuth 记录），以及 MiMo（Cookie 会话）。
+- **不接受本地 Key 的提供商**：`commandcode`（凭据链属提供方插件）、`xai-oauth`、`openai-codex`（只读各自 CLI 的登录文件）、`devin`（只读 Devin Provider 自己的登录态）、`github-copilot`（只读 Copilot 提供方存入凭据库的 OAuth 记录），以及 MiMo（Cookie 会话）。
 - **保存与验证分离**：凭据先确认持久化，再独立做在线验证；检测关闭的提供商只保存凭据、不发起验证，验证失败不代表保存失败。
 - **出错时在卡片上修**：MiMo 未登录 / Cookie 被拒 → 「登录并自动导入」；Cookie 临近到期或已过期 → 「重新登录」；其他家缺凭据 → 「配置凭据」（展开该厂商编辑器并滚动过去）。正常状态不显示行动条。
 
@@ -362,6 +380,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | SuperGrok | 无 | `xai-oauth` 路由；读取 dsh-grok-kit / Grok CLI 共享的 OAuth 登录文件 `~/.grok/auth.json`（旧版 `~/.dsh/.xai-oauth-auth.json`），不保存凭据。access token 过期时**借 dsh-grok-kit（≥0.2.0）的官方登录链自动续约**——同一文件、同一把写锁、compare-and-write，不会顶掉共享登录态（本插件绝不自行裸 POST 刷新）；未安装 grok-kit 或续约失败时才提示手动重新登录。API Key（`XAI_API_KEY`）取不到订阅周池 |
 | Codex | 无 | `openai-codex` 路由；0.13.0 起优先只读 Subscription 活动 OAuth 账号，再回退 CLI 文件（`$CODEX_HOME/auth.json` 或 `~/.codex/auth.json`，要求 `auth_mode` 为 `chatgpt`）；不保存或刷新 token，续约由所属插件负责 |
 | GitHub Copilot | 无 | `github-copilot` 路由；只读凭据库记录 `llm-pi-ai/github-copilot` 中的长期 GitHub OAuth token（`refresh`），以 `Authorization: token …` 调用 `GET https://api.github.com/copilot_internal/user`（企业版按记录里的 `enterpriseUrl` 换 `api.<域名>`）；不用它铸造会话令牌、不保存或续期，登录与续约由 Copilot 提供方负责。私有接口，字段可能变化 |
+| Devin | 无 | `devin` 路由；按 `dsh-devin-provider` 的 `resolveCredential` 同序只读它的登录态——`cli` 模式读 `%APPDATA%\devin\credentials.toml`（`windsurf_api_key`，缺失回落保存的 grant）、`reference` 模式按它声明的 `apiKeyRef` 走凭据服务/启动环境、其余模式读凭据库 grant `dsh-devin-provider/<accountId>` 的 `payload.key`；多账号只读它当前激活的那个。以 Connect JSON 协议 `POST .../GetUserStatus` 取每日 / 每周剩余百分比，不登录、不续期、不写回 |
 | 火山方舟 Ark（4 条路由） | `VOLC_ACCESSKEY` + `VOLC_SECRETKEY` | 额度查询要 **IAM Access Key 的 AK/SK 配对**，与推理 API Key（`ARKCLI_*_API_KEY` / `ARK_*_API_KEY`）**不是同一套**；4 条路由共用一组 AK/SK。这一组 AK/SK 能**同时**查到 Agent Plan 与 Coding Plan（含团队版席位）——不存在「Coding Plan 专用查询 key」 |
 | SiliconFlow | `SILICONFLOW_API_KEY` | 余额型：`GET /v1/user/info` 返回账户余额，**与推理是同一把 Key** |
 | OpenRouter | `OPENROUTER_API_KEY` | key 限额与用量用推理 key 即可；**账户余额需要 management / provisioning key**，普通 key 会被 403 拒——此时静默降级为只显示限额，不判失败 |
@@ -389,6 +408,7 @@ xiaomi-token-plan-cn     XIAOMI_TOKEN_PLAN_CN_API_KEY   （界面走官方平台
 opencode-go              OPENCODE_GO_API_KEY            （回退 OPENCODE_API_KEY）
 commandcode              COMMANDCODE_API_KEY
 xai-oauth                —                              （OAuth 登录文件）
+devin                    —                              （dsh-devin-provider 的登录态：凭据库 grant / CLI toml / 引用名，只读）
 openai-codex             —                              （OAuth 登录文件）
 github-copilot           —                              （凭据库 OAuth 记录 llm-pi-ai/github-copilot，只读）
 minimax                  MINIMAX_API_KEY
@@ -454,7 +474,7 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 | 参数 | 类型 | 说明 |
 |---|---|---|
 | `providers` | `string[]`（可选） | 限定范围。可传本插件的 provider id（`deepseek`、`zai-coding-cn`、`kimi-coding`…），也可直接传厂商名（`zai`、`kimi`、`mimo`、`minimax`、`commandcode`、`grok`、`codex`、`ark`、`deepseek`…）；大小写与 `-` `.` `_` 都无关。省略即读取全部 |
-| `refresh` | `boolean`（可选） | `true` 绕过最多 60 秒的缓存，仅在确需最新数字时使用 |
+| `refresh` | `boolean`（可选） | `true` 绕过缓存与磁盘暂存、直接打上游，仅在确需最新数字时使用 |
 
 调用约定（无可读条目时返回汇总与下一步，不伪造额度）：
 

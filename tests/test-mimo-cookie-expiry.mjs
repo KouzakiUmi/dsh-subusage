@@ -165,7 +165,16 @@ const soon = renderPill({ ...quota, ...inMs(90 * 60 * 1000) });
 assert.ok(text(soon).includes("Cookie expiring"), "即将到期时药丸用短词，避免撑爆输入区");
 assert.ok(!text(soon).includes("Cookie expires in"), "药丸短词不复述完整倒计时");
 assert.ok(json(soon).includes("rgba(234,179,8,.10)"), "临近到期使用黄色提示底色");
-assert.ok(json(soon).includes("rgba(234,179,8,.45)"), "临近到期药丸描边随档位着色");
+// issue #7 起药丸与模型选择器统一外观：不再自带 1px 描边，告警档位改用文字色表达。
+// 经典式（默认）：描边随档位着色，保持原行为。
+assert.ok(json(soon).includes("rgba(234,179,8,.45)"), "临近到期药丸描边随档位着色（经典式）");
+// 沉浸式：没有描边，档位改用文字色表达（与模型选择器同一套外观）。
+{
+  const immersiveStates = (entry) => { states = [entry ? { entry, updatedAt: 0 } : null, null, undefined, false, false]; index = 0; return UsagePill({ providerId: M, label: "MiMo", readEntry: () => {}, t, getLocale, pillStyle: "immersive" }); };
+  const immersiveSoon = json(immersiveStates({ ...quota, ...inMs(90 * 60 * 1000) }));
+  assert.ok(immersiveSoon.includes("#eab308"), "沉浸式用文字色表达档位");
+  assert.ok(!immersiveSoon.includes("rgba(234,179,8,.45)"), "沉浸式不再画描边");
+}
 const urgent = renderPill({ ...quota, ...inMs(10 * 60 * 1000) });
 assert.ok(text(urgent).includes("Cookie expiring") && json(urgent).includes("rgba(249,115,22,.10)"), "30 分钟内升级为橙色紧急提示");
 assert.ok(json(urgent).includes("Cookie expires in 10 min"), "完整倒计时仍在 title / aria-label");

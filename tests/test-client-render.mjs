@@ -190,6 +190,60 @@ assert.ok(visibleText(monthlyRow).includes("planSnapshotLimit"));
 }
 // 按钮导航、提供商开关、套餐单选按钮；整个设置页不使用 select/option。
 const flattenNodes = (node) => Array.isArray(node) ? node.flatMap(flattenNodes) : node && typeof node === "object" ? [node, ...flattenNodes(node.children || [])] : [];
+// 药丸外观有两套（`visibility.pillStyle`），默认经典、沉浸可选：
+// · classic（默认）= 改动前的全圆胶囊 + 1px 描边 + 600 粗体，一切都在 inline 里；
+// · immersive = 与右侧模型选择器同一套（定高 28 / 8px 圆角 / 无边框 / 400 字重 / 次级文字色 /
+//   悬停中性底）。它的几何与常态配色必须在 PILL_CSS 里——inline 写不出 `:hover`——所以
+//   inline 只剩布局与告警染色。两套都要钉住，否则任一侧被"顺手统一"都没人发现。
+{
+	const renderWithStyle = (entry, style) => {
+		const previous = pill.props.pillStyle;
+		pill.props.pillStyle = style;
+		try {
+			return flattenNodes(renderPill(entry));
+		} finally {
+			if (previous === undefined) delete pill.props.pillStyle; else pill.props.pillStyle = previous;
+		}
+	};
+	const buttonOf = nodes => nodes.find(n => n?.props?.type === "button");
+	const spanOf = nodes => nodes.find(n => n?.props?.className === "dsh-subusage-pill");
+	const calmEntry = { state: "ok", windows: [{ kind: "5h", percent: 30, status: "ok" }], extras: [] };
+	const hotEntry = { state: "ok", windows: [{ kind: "5h", percent: 100, status: "rate-limited" }], extras: [] };
+
+	// ① 经典（默认，且不认识的值也退回它）：保持原样。
+	const classicNodes = flattenNodes(renderPill(calmEntry));
+	const classic = buttonOf(classicNodes);
+	assert.ok(classic, "经典药丸要渲染出来");
+	assert.equal(classic.props.style.borderRadius, 999, "经典是全圆胶囊");
+	assert.ok(String(classic.props.style.border).includes("1px solid"), "经典带 1px 描边");
+	assert.equal(classic.props.style.fontWeight, 600, "经典是 600 粗体");
+	assert.equal(classic.props.style.minHeight, 26, "经典用 minHeight 26");
+	assert.equal(spanOf(classicNodes)?.props?.["data-style"], "classic", "默认标记为 classic");
+	assert.equal(buttonOf(renderWithStyle(calmEntry, "no-such-style")).props.style.borderRadius, 999, "未知取值退回经典");
+
+	// ② 沉浸：几何 / 常态配色交给 CSS，inline 不许再自带。
+	const immersiveNodes = renderWithStyle(calmEntry, "immersive");
+	const immersive = buttonOf(immersiveNodes);
+	assert.ok(immersive, "沉浸药丸要渲染出来");
+	const style = immersive.props.style || {};
+	assert.equal(immersive.props["data-tinted"], undefined, "data-tinted 在 span 上");
+	assert.equal(spanOf(immersiveNodes)?.props?.["data-style"], "immersive", "沉浸标记写进 data-style");
+	assert.equal(spanOf(immersiveNodes)?.props?.["data-tinted"], "false", "常态标记为非告警（CSS 悬停分支据此生效）");
+	assert.equal(style.borderRadius, undefined, "圆角交给 PILL_CSS（--dsw-radius-sm），inline 不写 999");
+	assert.equal(style.border, undefined, "无边框由 CSS 保证");
+	assert.equal(style.fontWeight, undefined, "字重交给 CSS（400）");
+	assert.equal(style.height, undefined, "定高交给 CSS（28px）");
+	assert.equal(style.minHeight, undefined, "不再用 minHeight 撑高（那会与模型 chip 差 1–3px）");
+	assert.equal(style.background, undefined, "常态不写内联背景，否则 CSS 悬停底色永远盖不上");
+	assert.equal(style.color, undefined, "常态文字色交给 CSS（次级色）");
+
+	// ③ 告警态两套都仍内联染色：额度状态是信息，不能被「统一外观」抹成中性。
+	for (const [name, nodes] of [["经典", flattenNodes(renderPill(hotEntry))], ["沉浸", renderWithStyle(hotEntry, "immersive")]]) {
+		const button = buttonOf(nodes);
+		assert.ok(button?.props?.style?.background, `${name}：告警态保留内联背景`);
+		assert.ok(button?.props?.style?.color, `${name}：告警态保留内联文字色`);
+	}
+}
 const settings = { revision: "public-1", zai: { type: 1 }, hasKeys: { "zai-coding-cn": true }, keyModes: {}, xiaomi: { hasCookie: true } };
 const usageStore = { subscribe: () => () => {}, getSnapshot: () => ({ settings, configured: {}, entries: [] }) };
 for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", "xai-oauth", "opendesign"]) {
@@ -199,7 +253,7 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
   assert.equal(selects.length, 0, "设置页不使用任何下拉列表");
   // 火山方舟的 4 条路由在设置页合并成一张卡片，但个人版 / Team 各有一个开关；
   // 6 家中转聚合商在「聚合商」分组，显示与匹配开关在最后一页「绑定与匹配」。
-  assert.equal(all.filter(n => n.props?.role === "switch").length, 24, "模型厂区内普通提供商与 Ark Team 开关均可见");
+  assert.equal(all.filter(n => n.props?.role === "switch").length, 25, "模型厂区内普通提供商与 Ark Team 开关均可见");
   if (provider === "xiaomi-token-plan-cn") {
     assert.ok(visibleText(section).includes("小米扫码登录")); assert.ok(visibleText(section).includes("浏览器登录并导入")); assert.ok(visibleText(section).includes("手动导入"));
     assert.ok(visibleText(section).includes("不会自动导入")); assert.ok(visibleText(section).includes("清除登录凭据"));
@@ -437,6 +491,11 @@ for (const provider of ["zai-coding-cn", "xiaomi-token-plan-cn", "commandcode", 
 	});
 	assert.ok(visibleText(cascadeRow).includes("每周"), "连坐来源用窗口名而不是 [week]");
 	assert.ok(!visibleText(cascadeRow).includes("[week]"), "连坐说明不得泄漏内部 kind");
+	// 连坐 ≠ 自身用尽：窗口自己的读数必须保留，否则「本来还剩 99%」会被显示成 100% 已用。
+	const cascadeBar = flattenNodes(cascadeRow).find(n => n.props?.role === "progressbar");
+	assert.equal(cascadeBar.props["aria-valuenow"], 99, "连坐窗口的进度条按自己的剩余填充，不压成 0");
+	assert.ok(visibleText(cascadeRow).includes("99%"), "连坐窗口的大数字仍报自己的剩余百分比");
+	assert.ok(visibleText(cascadeRow).includes(plugin.__test.zh.badgeBlocked), "连坐用「受连累」徽标，而不是「已用尽」");
 }
 // Command Code 自动轮换池健康摘要：三态文案 + 池耗尽时药丸染红。
 {
@@ -529,12 +588,116 @@ console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/
  stateValues = ["kimi-coding", plugin.__test.draftFor(settings, "kimi-coding"), false, false, false, null, null, { jobId: null, state: "idle" }, false, "kimi-coding", "custom"]; stateIndex = 0;
  const section = plugin.__test.SubusageSection({ usageStore: mappingStore, t: key => key, getLocale: () => "zh" });
  const all = flattenNodes(section);
- // 每个订阅一个映射下拉；同页还有 Magpie 绑定的「前缀 / 分组」两个下拉（候选不含已绑定路由的断言只看映射下拉）。
- assert.equal(all.filter(node => node.type === "select").length, plugin.__test.PROVIDER_ORDER.length + 2);
- const mapSelects = all.filter(node => node.type === "select" && !["本机路由", "Magpie 渠道分组"].includes(node.props["aria-label"]));
+ // 每个订阅一个映射下拉；同页还有来源绑定的「模型路由 / 条目 · 来源」与 Magpie 绑定的「前缀 / 分组」四个下拉
+ // （候选不含已绑定路由的断言只看映射下拉）。
+ assert.equal(all.filter(node => node.type === "select").length, plugin.__test.PROVIDER_ORDER.length + 4);
+ const mapSelects = all.filter(node => node.type === "select" && !["本机路由", "Magpie 渠道分组", "模型路由", "条目 · 来源"].includes(node.props["aria-label"]));
  const mapOptions = mapSelects.flatMap(node => flattenNodes(node).filter(child => child.type === "option"));
  assert.ok(mapOptions.some(node => node.props.value === "free-route"));
  assert.ok(!mapOptions.some(node => node.props.value === "custom-kimi"));
  assert.ok(all.some(node => node.props?.["aria-label"] === "移除 custom-kimi-alt"));
  delete settings.visibility;
+ // 来源区块：逐来源开关 + 按路由绑定来源，共用最后一页。
+ settings.sources = { available: { raccoon: ["local", "ofm"], loomy: ["local"], trae: ["local", "plugin", "ofm"] }, labels: { local: "本机直取", ofm: "Our Free Model", plugin: "独立插件" }, disabled: { raccoon: ["ofm"] }, bindings: { "route-x": { linkedId: "trae", source: "ofm" } } };
+ stateIndex = 0;
+ stateValues = ["kimi-coding", plugin.__test.draftFor(settings, "kimi-coding"), false, false, false, null, null, { jobId: null, state: "idle" }, false, "kimi-coding", "custom"];
+ const withSources = flattenNodes(plugin.__test.SubusageSection({ usageStore: mappingStore, t: key => key, getLocale: () => "zh" }));
+ const sourceSwitches = withSources.filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("启用来源 "));
+ // 只有「可用来源 ≥ 2」的条目出现开关（loomy 只有 1 个，不出现）；raccoon 两个、trae 三个。
+ assert.deepEqual(sourceSwitches.map(n => String(n.props["aria-label"]).slice("启用来源 ".length)), ["小浣熊 · 本机直取", "小浣熊 · Our Free Model", "Trae · 本机直取", "Trae · 独立插件", "Trae · Our Free Model"]);
+ // 已停用的那个开关处于关闭态（aria-checked=false），其余为开。
+ assert.deepEqual(sourceSwitches.map(n => n.props["aria-checked"]), [true, false, true, true, true]);
+ // 绑定行渲染成「条目 · 来源」文本，并带移除按钮。
+ assert.ok(withSources.some(n => n.children?.includes?.("Trae · Our Free Model")), "已绑定行显示条目与来源名");
+ assert.ok(withSources.some(n => n.props?.["aria-label"] === "移除 route-x"));
+ // 来源绑定的两个下拉（模型路由 / 条目 · 来源）都在。
+ const sourceSelects = withSources.filter(n => n.type === "select" && ["模型路由", "条目 · 来源"].includes(n.props["aria-label"]));
+ assert.equal(sourceSelects.length, 2, "来源绑定提供路由与来源两个下拉");
+ delete settings.sources;
+}
+
+// 药丸外观开关在「绑定与匹配」页：经典 / 沉浸式两档分段选择，只写显示设置。
+{
+	const pillSettings = { revision: "public-2", zai: { type: 1 }, hasKeys: {}, keyModes: {}, xiaomi: { hasCookie: true }, visibility: { hideWithoutApi: true } };
+	let savedPatch = null;
+	const pillStore = {
+		...usageStore,
+		getSnapshot: () => ({ settings: pillSettings, configured: {}, entries: [] }),
+		save: async (patch) => { savedPatch = patch; return { settings: pillSettings }; }
+	};
+	stateValues = ["kimi-coding", plugin.__test.draftFor(pillSettings, "kimi-coding"), false, false, false, null, null, { jobId: null, state: "idle" }, false, "kimi-coding", "custom"];
+	stateIndex = 0;
+	const tree = plugin.__test.SubusageSection({ usageStore: pillStore, t: key => key, getLocale: () => "zh" });
+	const buttons = flattenNodes(tree).filter(node => node.type === "button");
+	const classic = buttons.find(b => b.props?.["aria-pressed"] === true && visibleText(b).includes("经典"));
+	assert.ok(classic, "默认选中「经典」");
+	const immersive = buttons.find(b => visibleText(b).includes("沉浸式"));
+	assert.ok(immersive, "「沉浸式」是可选的一档");
+	assert.equal(immersive.props["aria-pressed"], false, "未选中时 aria-pressed 为 false");
+	// 默认设置里没有 pillStyle 时按经典处理，不能渲染成「沉浸式」已选。
+	assert.equal(flattenNodes(tree).some(n => n.props?.["aria-label"] === "药丸外观"), true, "分段选择带可读 label");
+}
+
+// 被动接入（ingest）「外部接入」区块：有源渲染 label/时间/错误/陈旧与开关、点击保存正确补丁、无源空态、其它分组不渲染、顶部 tab 安全兼容。
+{
+	const now = Date.now();
+	const ingestSources = [
+		{ source: "relay-ok", label: "Relay OK", state: "ok", receivedAt: now - 5 * 60_000 },
+		{ source: "relay-stale", label: "Relay Stale", state: "ok", receivedAt: now - 15 * 60_000, ttlMs: 5 * 60_000 },
+		{ source: "relay-err", label: "Relay Err", state: "error", receivedAt: now - 2 * 60_000, error: "上游 503" }
+	];
+	const ingestSettings = {
+		revision: "ingest-rev-1", zai: { type: 1 }, hasKeys: {}, keyModes: {},
+		xiaomi: { hasCookie: false }, visibility: { hideWithoutApi: true },
+		ingest: { hidden: ["relay-err"], sources: ingestSources }
+	};
+	const ingestEntries = [
+		{ providerId: "ingest:relay-ok", label: "Relay OK", state: "ok", freshness: "fresh", coverage: "complete", windows: [{ kind: "5h", percent: 25, status: "ok" }], extras: [] },
+		{ providerId: "ingest:relay-stale", label: "Relay Stale", state: "ok", freshness: "stale", coverage: "complete", windows: [{ kind: "5h", percent: 50, status: "ok" }], extras: [] }
+	];
+	const savedPatches = [];
+	const ingestStore = {
+		...usageStore,
+		getSnapshot: () => ({ settings: ingestSettings, configured: {}, entries: ingestEntries }),
+		save: async (patch) => { savedPatches.push(patch); return { settings: { ...ingestSettings, revision: "ingest-rev-2", ingest: { ...ingestSettings.ingest, hidden: patch.ingest.hidden } } }; }
+	};
+	stateValues = ["kimi-coding", plugin.__test.draftFor(ingestSettings, "kimi-coding"), false, false, false, null, null, { jobId: null, state: "idle" }, false, "ingest:relay-ok", "custom"];
+	stateIndex = 0;
+	const tree = plugin.__test.SubusageSection({ usageStore: ingestStore, t: key => key, getLocale: () => "zh" });
+	const nodes = flattenNodes(tree);
+	const allText = visibleText(tree);
+	assert.ok(allText.includes("外部接入"), "绑定与匹配页渲染「外部接入」分组标题");
+	assert.ok(allText.includes("Relay OK") && allText.includes("relay-ok") && allText.includes("最后推送 5 分钟前"), "正常源渲染 label、source 与相对推送时间");
+	assert.ok(allText.includes("Relay Stale") && allText.includes("15 分钟未更新"), "stale 源副文案补 N 分钟未更新");
+	assert.ok(allText.includes("Relay Err") && allText.includes("上游 503"), "error 源副文案补失败原因");
+	const ingestSwitches = nodes.filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("显示外部接入 "));
+	assert.deepEqual(ingestSwitches.map(n => n.props["aria-label"]), ["显示外部接入 Relay OK", "显示外部接入 Relay Stale", "显示外部接入 Relay Err"]);
+	assert.deepEqual(ingestSwitches.map(n => n.props["aria-checked"]), [true, true, false], "未隐藏为开，hidden 中为关");
+	// 顶部用量 tab 兼容 ingest:<source> 且不崩溃（PROVIDER_ORDER 未被污染）。
+	const tabs = nodes.filter(n => n.props?.role === "tab" && String(n.props.id ?? "").startsWith("subusage-tab-ingest:"));
+	assert.deepEqual(tabs.map(n => n.props.id), ["subusage-tab-ingest:relay-stale", "subusage-tab-ingest:relay-ok"], "未隐藏的外部源进入顶部 tab（stale 排前）");
+	assert.ok(!tabs.some(n => n.props.id === "subusage-tab-ingest:relay-err"), "已隐藏的外部源不出现在顶部 tab");
+
+	// 点击正常源开关 → 写入 hidden 补丁；点击已隐藏源开关 → 从 hidden 移除。
+	ingestSwitches[0].props.onClick();
+	assert.deepEqual(JSON.parse(JSON.stringify(savedPatches[0])), { expectedRevision: "ingest-rev-1", ingest: { hidden: ["relay-err", "relay-ok"] } }, "关闭外部源发出正确 save 补丁");
+	ingestSwitches[2].props.onClick();
+	assert.deepEqual(JSON.parse(JSON.stringify(savedPatches[1])), { expectedRevision: "ingest-rev-1", ingest: { hidden: [] } }, "重新开启外部源发出移除补丁");
+
+	// 无源时渲染空态且不放假开关。
+	const emptyIngestSettings = { ...ingestSettings, ingest: { hidden: [], sources: [] } };
+	const emptyIngestStore = { ...ingestStore, getSnapshot: () => ({ settings: emptyIngestSettings, configured: {}, entries: [] }) };
+	stateValues = ["kimi-coding", plugin.__test.draftFor(emptyIngestSettings, "kimi-coding"), false, false, false, null, null, { jobId: null, state: "idle" }, false, "kimi-coding", "custom"];
+	stateIndex = 0;
+	const emptyTree = plugin.__test.SubusageSection({ usageStore: emptyIngestStore, t: key => key, getLocale: () => "zh" });
+	const emptyNodes = flattenNodes(emptyTree);
+	assert.ok(visibleText(emptyTree).includes('还没有插件推送额度数据。其他插件可以调用 ctx.get("subUsage").ingest({...})。'), "无源时显示空态指引");
+	assert.equal(emptyNodes.filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("显示外部接入 ")).length, 0, "无源时不放假开关");
+
+	// 切到其它分组不渲染「外部接入」区块。
+	stateValues = ["kimi-coding", plugin.__test.draftFor(ingestSettings, "kimi-coding"), false, false, false, null, null, { jobId: null, state: "idle" }, false, "kimi-coding", "subscriptions"];
+	stateIndex = 0;
+	const otherTree = plugin.__test.SubusageSection({ usageStore: ingestStore, t: key => key, getLocale: () => "zh" });
+	assert.equal(flattenNodes(otherTree).filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("显示外部接入 ")).length, 0, "切到订阅分组不渲染外部接入开关");
+	console.log("PASS 外部接入设置区块：有源渲染/状态副文案/双向开关补丁/无源空态/分组隔离/顶部tab兼容");
 }

@@ -8,14 +8,24 @@ const account = (id, selected = false) => ({ id, accountName: `${id}@example.tes
 const cn = { status: 'signed-in', accountId: 'a', accountName: 'a@example.test', accounts: [account('a', true), account('b'), account('c')], credits: { available: 9999 }, pool: { enabled: true, accounts: [{ accountId: 'a', current: false }, { accountId: 'b', current: true }] } };
 function harness(reply, options = {}) {
  const calls = [];
+ // 需要在用例里指定「来源绑定 / 逐来源停用」时给 settings：io 对配置文件返回它，其余路径照旧缺席。
+ const settings = options.settings;
+ const settingsIo = settings === undefined ? io : {
+  ...io,
+  readFileSync(path) {
+   if (path === 'memory/config') return JSON.stringify(settings);
+   throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+  }
+ };
+ const { settings: _settings, ...rest } = options;
  const service = new SubUsageService({ get: name => name === 'webServer' ? { getOrigin: () => 'http://127.0.0.1:4321' } : undefined }, {
-  io, configPath: 'memory/config', now: () => now, resolveCredentials: async () => undefined, resolveEnvironment: () => undefined,
+  io: settingsIo, configPath: 'memory/config', now: () => now, resolveCredentials: async () => undefined, resolveEnvironment: () => undefined,
   fetch: async (url, init) => {
    const u = new URL(url); calls.push({ url: u, init });
    const value = await reply(u);
    if (value === undefined) return { ok: false, status: 404, text: async () => '' };
    return { ok: true, status: 200, text: async () => JSON.stringify(value) };
-  }, ...options
+  }, ...rest
  });
  return { service, calls };
 }
@@ -90,15 +100,24 @@ function harness(reply, options = {}) {
 {
  let ofmReads = 0;
  const ofm = { provider: 'raccoon', generatedAt: now, accounts: ['a', 'b'].map(id => ({ accountId: id, nickname: id, balance: { total: 10, packages: [{ name: '积分', active: true, remaining: 10, total: 10, unit: '积分' }] } })) };
- const { service, calls } = harness(() => undefined, { resolveOfmUsage: async channel => { assert.equal(channel, 'raccoon'); ofmReads++; return ofm; } });
- const linked = await service.readLinked({ providerIds: ['raccoon'], force: false });
+ // 回落不再是自动的：把这条路由的来源显式绑定到 OFM 才会读 OFM。
+ const { service, calls } = harness(() => undefined, {
+  settings: { sources: { bindings: { 'route-raccoon': { linkedId: 'raccoon', source: 'ofm' } } } },
+  resolveOfmUsage: async channel => { assert.equal(channel, 'raccoon'); ofmReads++; return ofm; }
+ });
+ const linked = await service.readLinked({ providerIds: ['raccoon'], force: false, routeId: 'route-raccoon' });
  assert.equal(linked.entries[0].providerId, 'raccoon');
  assert.equal(linked.entries[0].linkedAccounts.length, 2);
  assert(linked.entries[0].label.includes('OFM'));
- assert(calls[0].url.pathname === '/plugins/dsh-raccoon-connect/status');
+ // 绑定到 OFM 后就不再触碰独立插件的路由（来源是单选的，不是「先试插件再回落」）。
+ assert.equal(calls.length, 0, '绑定 OFM 后不请求独立插件');
+ // 未绑定该路由（或没给 routeId）：不自动回落，如实报缺席并说清该装哪个插件。
+ const unbound = await service.readLinked({ providerIds: ['raccoon'], force: false, routeId: 'route-other' });
+ assert.equal(unbound.entries[0].state, 'error');
+ assert(unbound.entries[0].error.includes('dsh-raccoon-connect'), '未绑定时给安装指引，而不是换成 OFM 的数字');
  const report = await service.quota({ providerIds: ['小浣熊'] });
- assert.deepEqual(report.providers.map(row => row.providerId), ['ofm-raccoon', 'ofm-raccoon'], '全量/厂商查询不把药丸回落结果重复报告为独立来源');
- assert.equal(ofmReads, 2);
+ assert.deepEqual(report.providers.map(row => row.providerId), ['ofm-raccoon', 'ofm-raccoon'], '全量/厂商查询只报 ofm-raccoon 自己的来源，不把药丸绑定结果重复成独立来源');
+ assert.equal(ofmReads, 2, '全量查询按 ofm-raccoon 自己的来源各读一次，药丸那次绑定不额外放大');
  await service.dispose();
 }
 {

@@ -198,7 +198,9 @@ const CASES = [
 			routeContext: { provider: 'devin', providerName: 'Devin', account: 'd@x.dev', model: 'swe-2', req: 'devin/swe-2', at: '2026-11-06T01:32:00Z', cardId: 'm-devin' }
 		}
 	},
-	{ name: '读取失败', entry: { providerId: 'kimi-coding', state: 'error', error: '读不到额度，请检查登录状态后重试。', windows: [], extras: [], coverage: 'partial', freshness: 'unknown' } }
+	{ name: '读取失败', entry: { providerId: 'kimi-coding', state: 'error', error: '读不到额度，请检查登录状态后重试。', windows: [], extras: [], coverage: 'partial', freshness: 'unknown' } },
+	// Devin：每日 + 每周两窗，外加套餐名、周期结束日与负超额（照抄 GetUserStatus 的字段口径）。
+	{ name: 'Devin 双窗口 + 周期/超额', entry: { providerId: 'devin', state: 'ok', windows: [window('day', 19), window('week', 10)], extras: [{ kind: 'plan', value: 'Pro' }, { kind: 'note', value: '套餐周期至 2026-12-05（还有 20 天）' }, { kind: 'note', value: '超额余额 −$0.08' }] } }
 ];
 
 // 收起状态的上限：正文只该剩「结论 + 窗口 + 关键金额」。超出说明又有东西被铺开了。
