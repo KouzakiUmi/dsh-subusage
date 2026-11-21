@@ -75,7 +75,9 @@ const disk = files => ({
 		["/v/state.json", JSON.stringify({ ...state, activeAccountId: "devin-2" })],
 		["/appdata/devin/credentials.toml", toml]
 	]));
-	const cli = await devinProviderCredentials({ io: cliDisk, credentials: { readRecord: async () => undefined }, statePath: "/v/state.json", env: { APPDATA: "/appdata" } });
+	// 路径随平台分支（win32 读 APPDATA、其余读 XDG_DATA_HOME），两边指到同一虚目录才能跨平台。
+	const cliEnv = { APPDATA: "/appdata", XDG_DATA_HOME: "/appdata" };
+	const cli = await devinProviderCredentials({ io: cliDisk, credentials: { readRecord: async () => undefined }, statePath: "/v/state.json", env: cliEnv });
 	assert.equal(cli.key, "cli-key");
 	assert.equal(cli.source, "devin-cli");
 	// CLI 文件临时不在时回落到保存的 grant（与 devin 插件 resolveCredential 同序）。
@@ -83,7 +85,7 @@ const disk = files => ({
 		["/v/state.json", JSON.stringify({ ...state, activeAccountId: "devin-2" })],
 		["/appdata/devin/credentials.toml", 'windsurf_api_key = ""\n']
 	]));
-	assert.equal((await devinProviderCredentials({ io: cliFallback, credentials: { readRecord: async () => ({ kind: "grant", payload: { key: "stale-grant" } }) }, statePath: "/v/state.json", env: { APPDATA: "/appdata" } })).key, "stale-grant");
+	assert.equal((await devinProviderCredentials({ io: cliFallback, credentials: { readRecord: async () => ({ kind: "grant", payload: { key: "stale-grant" } }) }, statePath: "/v/state.json", env: cliEnv })).key, "stale-grant");
 
 	// reference 模式：走它声明的凭据引用名（凭据服务优先，超集不存在时才看启动环境）。
 	const refState = JSON.stringify({ accounts: [{ id: "devin-3", authMode: "reference", apiKeyRef: "DEVIN_API_KEY" }], activeAccountId: "devin-3" });
