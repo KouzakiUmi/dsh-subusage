@@ -10,11 +10,12 @@ import { readFileSync } from "node:fs";
 import { loadHostModule } from "./helpers.mjs";
 
 const { SubUsageService, normalizeZai, normalizeMimo, zaiBalanceExtras } = await loadHostModule();
-const Z = "zai-coding-cn", M = "xiaomi-token-plan-cn";
+const Z = "zai-coding-cn", G = "zai-cn", M = "xiaomi-token-plan-cn";
 
 const QUOTA_URL = "monitor/usage/quota/limit";
 const BALANCE_URL = "query-customer-account-report";
 const quotaBody = { data: { level: "pro", limits: [{ type: "CREDIT_LIMIT", unit: 3, percentage: 12 }, { type: "CREDIT_LIMIT", unit: 6, percentage: 20 }] } };
+const timeLimitQuota = { data: { limits: [{ type: "TIME_LIMIT", percentage: 71, currentValue: 715, usage: 1000, usageDetails: [{ modelCode: "search-prime", usage: 715 }, { modelCode: "web-reader", usage: 0 }, { modelCode: "zread", usage: 0 }] }] } };
 const cancelledQuota = { data: { level: "pro" } };
 const balanceBody = { code: 200, msg: "操作成功", success: true, data: { balance: "13.387515800", availableBalance: "13.387515800", frozenBalance: 0 } };
 
@@ -71,7 +72,88 @@ function harness({ providers = [Z], respond } = {}) {
 	console.log("PASS Z.ai 窗口与余额并存");
 }
 
-// ── [3] 两路都没有新数据 → 整条失败（旧暂存不得把失败静默成成功）─────────────
+// ── [3] Z.ai 通用平台：TIME_LIMIT 工具调用窗 → plan extra ──────────────────
+{
+	const mixedQuota = { data: { level: "pro", limits: [{ type: "TOKENS_LIMIT", percentage: 25 }, ...timeLimitQuota.data.limits] } };
+	const h = harness({ providers: [G], respond: url => (url.includes(BALANCE_URL) ? balanceBody : mixedQuota) });
+	const entry = (await h.service.refresh({ providerIds: [G], force: true })).entries[0];
+	assert.equal(entry.state, "ok");
+	assert.deepEqual(entry.windows, [], "通用平台不把 Coding Plan 的 TOKENS 窗混进来");
+	assert.equal(entry.coverage, "complete");
+	assert.equal(entry.subscribed, undefined, "通用入口不推断 Coding Plan 状态");
+	const tool = entry.extras.find(x => x.kind === "plan" && /月度调用/.test(x.value));
+	assert.ok(tool, "TIME_LIMIT 要聚合成一条可读的 plan 附加行");
+	assert.match(tool.value, /715\/1000（71%）/, "报出已用与总量");
+	assert.match(tool.value, /search-prime 715 \/ web-reader 0 \/ zread 0/, "带上模型明细");
+	h.service.dispose();
+	console.log("PASS Z.ai 通用平台入口：TIME_LIMIT 工具调用窗可见");
+}
+
+for (const failed of ["quota", "balance"]) {
+	for (const warm of [false, true]) {
+		let outage = !warm;
+		const h = harness({ providers: [G], respond: url => {
+			const isBalance = url.includes(BALANCE_URL);
+			if (outage && (isBalance ? "balance" : "quota") === failed) return { http: 500 };
+			return isBalance ? balanceBody : timeLimitQuota;
+		} });
+		const refresh = async () => (await h.service.refresh({ providerIds: [G], force: true })).entries[0];
+		if (warm) {
+			assert.equal((await refresh()).coverage, "complete");
+			outage = true;
+			h.tick(120000);
+		}
+		const entry = await refresh();
+		assert.equal(entry.state, "ok");
+		assert.equal(entry.coverage, "partial", `${failed} 一路失败，warm=${warm}`);
+		assert.equal(entry.extras.some(row => row.kind === "balance"), warm || failed !== "balance");
+		assert.equal(entry.extras.some(row => /月度调用/.test(row.value)), warm || failed !== "quota");
+		h.service.dispose();
+	}
+}
+
+{
+	let quota = timeLimitQuota, balance = balanceBody;
+	const h = harness({ providers: [G], respond: url => url.includes(BALANCE_URL) ? balance : quota });
+	const refresh = async () => (await h.service.refresh({ providerIds: [G], force: true })).entries[0];
+	assert.equal((await refresh()).coverage, "complete");
+	for (const malformed of [{ success: false, code: 500, data: {} }, { data: null }, { data: { limits: "bad" } }, { data: { limits: [{ type: "TIME_LIMIT" }] } }]) {
+		quota = malformed;
+		h.tick(120000);
+		const entry = await refresh();
+		assert.equal(entry.coverage, "partial");
+		assert.ok(entry.extras.some(row => /月度调用/.test(row.value)), "坏响应不替换上次可用工具用量");
+	}
+	balance = { data: {} };
+	h.tick(120000);
+	assert.equal((await refresh()).state, "error", "两路都没有新鲜有效数据");
+	quota = { code: 200, success: true, data: {} };
+	balance = balanceBody;
+	h.tick(120000);
+	assert.equal((await refresh()).coverage, "complete", "成功响应可以没有工具额度");
+	quota = { http: 401 };
+	h.tick(120000);
+	assert.equal((await refresh()).errorCode, "subusage/auth", "凭据被拒时不使用暂存降级");
+	h.service.dispose();
+}
+
+{
+	const h = harness({ providers: [G], respond: url => {
+		if (!url.includes(BALANCE_URL)) return timeLimitQuota;
+		return url.includes("//open.bigmodel.cn") ? { success: false, code: 500 } : balanceBody;
+	} });
+	const entry = (await h.service.refresh({ providerIds: [G], force: true })).entries[0];
+	assert.equal(entry.coverage, "complete", "余额主域业务失败时仍尝试备用域");
+	assert.equal(h.calls.filter(call => call.url.includes(BALANCE_URL)).length, 2);
+	h.service.dispose();
+	const limited = harness({ providers: [G], respond: url => url.includes(BALANCE_URL) ? { http: 429 } : { data: null } });
+	const failure = (await limited.service.refresh({ providerIds: [G], force: true })).entries[0];
+	assert.equal(failure.errorCode, "subusage/rate-limit", "坏响应不能掩盖另一端的可重试错误");
+	assert.equal(failure.retryable, true);
+	limited.service.dispose();
+}
+
+// ── [4] 两路都没有新数据 → 整条失败（旧暂存不得把失败静默成成功）─────────────
 {
 	let phase = "ok";
 	const h = harness({ respond: url => {
@@ -117,6 +199,9 @@ function harness({ providers = [Z], respond } = {}) {
 	assert.deepEqual(zaiBalanceExtras(undefined), []);
 	// 无窗口 + 无余额 → 仍抛错
 	assert.throws(() => normalizeZai(cancelledQuota), /no coding-plan windows/);
+	const balanceOnly = normalizeZai(undefined, undefined, { balanceBody });
+	assert.equal(balanceOnly.coverage, "partial", "只有余额端点成功时必须标 partial");
+	assert.equal(balanceOnly.extras.find(x => x.kind === "balance").value, "13.39 CNY");
 	console.log("PASS Z.ai 余额归一化边界（字符串/数字/0/冻结/缺失）");
 }
 

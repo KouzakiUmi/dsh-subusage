@@ -2,6 +2,14 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
+## 工作区未发布：Z.ai 通用平台入口
+
+- 新增 `zai-cn`，绑定 `ZAI_API_KEY`，与 `zai-coding-cn` 分离，避免通用平台 Key 无法配置或被错误归入 Coding Plan。
+- 通用入口固定读取中国站 `type=1` 额度端点与财务中心余额；过滤 Coding Plan 的 `TOKENS_LIMIT` / `CREDIT_LIMIT` 窗口，保留 `TIME_LIMIT` MCP 工具月度调用窗及模型明细。
+- `zai` / `zhipu` / `bigmodel` 路由别名、Client / Go 面板归并、Host/Client provider 表与文档同步。
+- 任一路读取失败或使用旧暂存时，通用入口标记为部分数据；通用入口不推断 Coding Plan 的订阅状态。
+- 回归：[test-source-decoupling.mjs](../tests/test-source-decoupling.mjs) 覆盖 `TIME_LIMIT`、单路失败与暂存回落。
+
 ## 1.0.1：读取与拉取彻底解耦
 
 ### 修复：Devin 周额度用尽显示成「5 小时 100%」

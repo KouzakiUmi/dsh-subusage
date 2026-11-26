@@ -55,12 +55,12 @@ const okFetch = calls => async (url, options) => {
 	assert.equal(mixed.providers[0].state, "error");
 	assert.ok(mixed.providers[0].error.includes("不认识提供商名「nope」"), "要说出是哪个名字不认识");
 	assert.ok(mixed.providers[0].error.includes("zai") && mixed.providers[0].error.includes("省略 providers"), "要给出可用的写法与下一步");
-	assert.equal((await h.service.quota({ providerIds: ["nope"] })).providers.length, 34, "一个都没认出来时给说明 + 全部 33 条数据");
-	assert.equal((await h.service.quota()).providers.length, 33, "缺省读全部 33 家");
+	assert.equal((await h.service.quota({ providerIds: ["nope"] })).providers.length, 35, "一个都没认出来时给说明 + 全部 34 条数据");
+	assert.equal((await h.service.quota()).providers.length, 34, "缺省读全部 34 家");
 	// 别名：厂商名、大小写与分隔符都无关；一个别名命中多条路由就全给（各自带真实状态，不猜也不吞）。
 	const aliased = await h.service.quota({ providerIds: ["zai"] });
-	assert.equal(JSON.stringify(aliased.providers.map(p => p.providerId)), JSON.stringify(["zai-coding-cn", "zai-coding"]), "zai 命中中国版与国际版两条");
-	assert.equal(JSON.stringify((await h.service.quota({ providerIds: ["Z.AI"] })).providers.map(p => p.providerId)), JSON.stringify(["zai-coding-cn", "zai-coding"]), "大小写与分隔符无关");
+	assert.equal(JSON.stringify(aliased.providers.map(p => p.providerId)), JSON.stringify(["zai-coding-cn", "zai-cn", "zai-coding"]), "zai 命中中国版 Coding、中国版通用与国际版三条");
+	assert.equal(JSON.stringify((await h.service.quota({ providerIds: ["Z.AI"] })).providers.map(p => p.providerId)), JSON.stringify(["zai-coding-cn", "zai-cn", "zai-coding"]), "大小写与分隔符无关");
 	assert.equal(JSON.stringify((await h.service.quota({ providerIds: ["zai_coding_cn"] })).providers.map(p => p.providerId)), JSON.stringify(["zai-coding-cn"]), "归一化后按 id 命中");
 	assert.equal((await h.service.quota({ providerIds: ["ark"] })).providers.length, 4, "ark 命中全部 4 条路由");
 	assert.equal(JSON.stringify((await h.service.quota({ providerIds: ["Kimi"] })).providers.map(p => p.providerId)), JSON.stringify(["kimi-coding"]));

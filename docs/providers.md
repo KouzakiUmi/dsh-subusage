@@ -11,7 +11,7 @@
 
 ## 1. 清单与默认开关
 
-33 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 12 条、关闭 21 条**，与注册元数据的 12 开 / 21 关一致：火山个人版两条默认开启，Team 两条由独立的 `visibility.arkTeam` 控制且默认关闭，不再随 `visibility.ark` 打开。Codex 仍默认关闭，避免与提供方自带药丸重复；New API 自建站点需自填站点地址，也默认关闭。设置页里这 33 条合并成 **30 张卡片**（火山方舟 4 条路由合并成一张）；历史已保存开关继续合并，未显式配置过 `arkTeam` 的旧配置按关闭迁移。
+34 条 provider id 的总表（提供商 / id / 额度类型 / 鉴权 / 新安装默认开关）见 [README 的「支持的数据」](../README.md#支持的数据--supported-data)。新安装的**有效默认值为开启 13 条、关闭 21 条**，与注册元数据的 13 开 / 21 关一致：火山个人版两条默认开启，Team 两条由独立的 `visibility.arkTeam` 控制且默认关闭，不再随 `visibility.ark` 打开。Codex 仍默认关闭，避免与提供方自带药丸重复；New API 自建站点需自填站点地址，也默认关闭。设置页里这 34 条合并成 **31 张卡片**（火山方舟 4 条路由合并成一张）；历史已保存开关继续合并，未显式配置过 `arkTeam` 的旧配置按关闭迁移。
 
 新增厂商须同时改 `PROVIDERS`、`PROVIDER_META` / `PROVIDER_ORDER`、帮助文案、README 与默认值测试；未获明确需求的新订阅商一律 `defaultEnabled: false`，原有偏好通过存储合并保留。
 
@@ -27,7 +27,7 @@
 |---|---|---|
 | DeepSeek API（`deepseek`） | 无窗口（余额型） | 账户余额（`balance_infos` 的币种与总额）；`is_available=false` 提示充值，不显示成 0 |
 | DeepSeek 账号（`deepseek-account`） | 无窗口（余额型） | 复用本机 `deepseekAccount` 服务返回的充值余额；默认开启、无独立 Key。别名 `deepseek-official` 指向本条 |
-| Z.ai（中国 / 国际） | 5 小时、每周（按响应） | Token / Credits 配额、套餐档 |
+| Z.ai（中国 / 国际） | 5 小时、每周（按响应）；通用中国入口另有 MCP 工具月窗 | Token / Credits 配额、套餐档；`zai-cn` 过滤 Coding Plan 窗口，保留 `TIME_LIMIT` 的调用总量、百分比与模型明细，并独立读取账户余额 |
 | Kimi | 5 小时 + 7 天或月度（按账户下发） | 已用百分比、套餐档 |
 | Xiaomi MiMo | 本周期额度池 | 用量明细、重置时间、套餐与余额。**没有窗口时（无订阅或套餐读不到）才回落到纯余额药丸**，套餐仍可读时窗口优先 |
 | OpenCode Go | 滚动、每周、每月 | 已用百分比、重置时间 |
