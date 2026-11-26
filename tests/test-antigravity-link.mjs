@@ -111,7 +111,7 @@ function harness(agy, options = {}) {
 	await service.quota({ providerIds: ["agy"], force: true });
 	assert.deepEqual(calls[1], { force: true }, "refresh 要透传给提供方插件");
 	assert.deepEqual((await service.quota({ providerIds: ["antigravity-acp"] })).providers.map(p => p.providerId), ["antigravity"], "别名按大小写与分隔符归一");
-	// 不点名：33 家 + 联动 1 家。
+	// 不点名：34 家 + 联动 1 家。
 	const all = await service.quota();
 	assert.equal(all.providers.length, 35);
 	assert.ok(all.providers.some(p => p.providerId === "antigravity"));

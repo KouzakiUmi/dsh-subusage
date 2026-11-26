@@ -105,7 +105,7 @@ function harness(services = {}, options = {}) {
 		const view = await service.quota({ providerIds: [name] });
 		assert.deepEqual(view.providers.map(p => p.providerId), ["antigravity"], `${name} → antigravity`);
 	}
-	// 不点名：33 家 + 联动 1 家。
+	// 不点名：34 家 + 联动 1 家。
 	const all = await service.quota();
 	assert.equal(all.providers.length, 35);
 	for (const entry of all.providers) for (const [key, value] of Object.entries(entry)) assert.notEqual(value, undefined, `${entry.providerId}.${key} 不得是 undefined`);

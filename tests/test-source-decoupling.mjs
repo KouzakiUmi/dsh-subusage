@@ -10,11 +10,12 @@ import { readFileSync } from "node:fs";
 import { loadHostModule } from "./helpers.mjs";
 
 const { SubUsageService, normalizeZai, normalizeMimo, zaiBalanceExtras } = await loadHostModule();
-const Z = "zai-coding-cn", M = "xiaomi-token-plan-cn";
+const Z = "zai-coding-cn", G = "zai-cn", M = "xiaomi-token-plan-cn";
 
 const QUOTA_URL = "monitor/usage/quota/limit";
 const BALANCE_URL = "query-customer-account-report";
 const quotaBody = { data: { level: "pro", limits: [{ type: "CREDIT_LIMIT", unit: 3, percentage: 12 }, { type: "CREDIT_LIMIT", unit: 6, percentage: 20 }] } };
+const timeLimitQuota = { data: { limits: [{ type: "TIME_LIMIT", percentage: 71, currentValue: 715, usage: 1000, usageDetails: [{ modelCode: "search-prime", usage: 715 }, { modelCode: "web-reader", usage: 0 }, { modelCode: "zread", usage: 0 }] }] } };
 const cancelledQuota = { data: { level: "pro" } };
 const balanceBody = { code: 200, msg: "操作成功", success: true, data: { balance: "13.387515800", availableBalance: "13.387515800", frozenBalance: 0 } };
 
@@ -71,7 +72,21 @@ function harness({ providers = [Z], respond } = {}) {
 	console.log("PASS Z.ai 窗口与余额并存");
 }
 
-// ── [3] 两路都没有新数据 → 整条失败（旧暂存不得把失败静默成成功）─────────────
+// ── [3] Z.ai 通用平台：TIME_LIMIT 工具调用窗 → plan extra ──────────────────
+{
+	const h = harness({ providers: [G], respond: url => (url.includes(BALANCE_URL) ? balanceBody : timeLimitQuota) });
+	const entry = (await h.service.refresh({ providerIds: [G], force: true })).entries[0];
+	assert.equal(entry.state, "ok");
+	assert.deepEqual(entry.windows, [], "通用平台不把 Coding Plan 的 TOKENS 窗混进来");
+	const tool = entry.extras.find(x => x.kind === "plan" && /月度调用/.test(x.value));
+	assert.ok(tool, "TIME_LIMIT 要聚合成一条可读的 plan 附加行");
+	assert.match(tool.value, /715\/1000（71%）/, "报出已用与总量");
+	assert.match(tool.value, /search-prime 715 \/ web-reader 0 \/ zread 0/, "带上模型明细");
+	h.service.dispose();
+	console.log("PASS Z.ai 通用平台入口：TIME_LIMIT 工具调用窗可见");
+}
+
+// ── [4] 两路都没有新数据 → 整条失败（旧暂存不得把失败静默成成功）─────────────
 {
 	let phase = "ok";
 	const h = harness({ respond: url => {
@@ -117,6 +132,9 @@ function harness({ providers = [Z], respond } = {}) {
 	assert.deepEqual(zaiBalanceExtras(undefined), []);
 	// 无窗口 + 无余额 → 仍抛错
 	assert.throws(() => normalizeZai(cancelledQuota), /no coding-plan windows/);
+	const balanceOnly = normalizeZai(undefined, undefined, { balanceBody });
+	assert.equal(balanceOnly.coverage, "partial", "只有余额端点成功时必须标 partial");
+	assert.equal(balanceOnly.extras.find(x => x.kind === "balance").value, "13.39 CNY");
 	console.log("PASS Z.ai 余额归一化边界（字符串/数字/0/冻结/缺失）");
 }
 

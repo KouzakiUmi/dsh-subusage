@@ -61,7 +61,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 完整的架构分层、数据流与模块地图见 [docs/architecture.md](docs/architecture.md)（做介绍 / 演示时可按那一篇的顺序取材）。这里挑最值得展示的：
 
-- **33 条内置额度入口 + 19 条联动项**：从 DeepSeek、Kimi、火山方舟到 Codex、Devin、Copilot、自建 New API / one-api 站，一家一条凭据链、一套单位口径。
+- **34 条内置额度入口 + 19 条联动项**：从 DeepSeek、Kimi、火山方舟到 Codex、Devin、Copilot、自建 New API / one-api 站，一家一条凭据链、一套单位口径。
 - **零代码接入任意新上游**：填 Base URL → 测试连接 → 探测自动推导字段映射 → 一键套用 → 保存即得药丸；探测认不全时直接点选响应里的字段、选「它是什么」就自动生成映射，可逐字段锁定，接入配方（Recipe）可导出分享。New API / One API 站点有专门的一等入口：填站点根与推理同一把 sk- Key 即完成（字段映射与单位换算内置，`/v1` 尾缀自动去除），不用走通用自定义；同一入口可接入多个站点。
 - **统一条目模型（QuotaEntry）**：百分比窗口、美元余额、积分包、席位池出边界都是同一套元素——药丸、弹层、Go 面板、Agent 工具四端同口径渲染。
 - **秘密落盘加密**：API Key、OAuth 记录、会话 Cookie 全部 AES-256-GCM 加密后写盘；公开设置只有引用名，没有秘密值。
@@ -72,7 +72,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 ## 支持什么
 
-**33 条数据入口，新安装默认开启 12 条。** 按使用场景，主要分为：
+**34 条数据入口，新安装默认开启 13 条。** 按使用场景，主要分为：
 
 | 你想看什么 | 代表提供商 |
 |---|---|
@@ -179,13 +179,14 @@ OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM
 
 ## 支持的数据 / Supported data
 
-共 **33 条 provider id**：新安装**有效默认开启 12 条、关闭 21 条**。另有 **19 条联动项**：Antigravity 一条、Trae 三块面板、WorkBuddy 两区域、独立 Raccoon / Loomy 两条、[OFM 十个渠道](docs/ofm.md)及 Magpie 本地聚合网关一条。联动项没有自己的凭据槽或普通设置卡片，Antigravity 另有独立开关。清单取自 [Host](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 归一化为准：Ark 个人版两路默认开启，Team 两路独立控制且默认关闭。展示顺序与短名取自 [Client](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
+共 **34 条 provider id**：新安装**有效默认开启 13 条、关闭 21 条**。另有 **19 条联动项**：Antigravity 一条、Trae 三块面板、WorkBuddy 两区域、独立 Raccoon / Loomy 两条、[OFM 十个渠道](docs/ofm.md)及 Magpie 本地聚合网关一条。联动项没有自己的凭据槽或普通设置卡片，Antigravity 另有独立开关。清单取自 [Host](lib/index.js) 的 `PROVIDERS`，有效默认值以 `defaultSettings()` / `parseStored()` 归一化为准：Ark 个人版两路默认开启，Team 两路独立控制且默认关闭。展示顺序与短名取自 [Client](lib/client.js) 的 `PROVIDER_META` / `PROVIDER_ORDER`。
 
 | 提供商 | provider id | 额度类型 | 鉴权 | 默认 |
 |---|---|---|---|---|
 | DeepSeek API | `deepseek` | 余额（账户） | Bearer，与推理同一把 Key | 开 |
 | DeepSeek 账号 | `deepseek-account` | 余额（本机账号充值） | 复用 DSH `deepseekAccount` 登录态，无独立 Key | 开 |
 | Z.ai（中国） | `zai-coding-cn` | 订阅窗口 + 账户余额 | Bearer（团队档另加组织 / 项目请求头） | 开 |
+| Z.ai 通用（中国） | `zai-cn` | MCP 工具月度调用窗 + 账户余额 | Bearer，与通用平台 Key 相同 | 开 |
 | Kimi Coding | `kimi-coding` | 订阅窗口 | Bearer | 开 |
 | Xiaomi MiMo | `xiaomi-token-plan-cn` | 周期额度池 + 账户余额 | 官方平台 Cookie（含登录流程与手机扫码登录） | 开 |
 | OpenCode Go | `opencode-go` | 订阅窗口 | Bearer | 开 |
@@ -370,6 +371,7 @@ dsh plugin --profile <profile> remove dsh-subusage
 | DeepSeek API | `DEEPSEEK_API_KEY` | 余额型：`GET /user/balance` 返回账户余额，**与推理是同一把 Key** |
 | DeepSeek 账号 | 无 | `deepseek-account` 路由；只读 DSH「账号与余额」中已登录账号的充值余额，**没有继承变量、也不使用独立 API Key**，请在 DSH 的账号与余额页面登录 |
 | Z.ai（中国） | `ZAI_CODING_CN_API_KEY` | 团队套餐另填组织、项目 ID（作为 `bigmodel-organization` / `bigmodel-project` 请求头） |
+| Z.ai 通用（中国） | `ZAI_API_KEY` | 通用平台按量付费 Key；读取 `type=1` 额度端点中的 MCP 工具月度调用窗与财务中心余额 |
 | Z.ai（国际） | `ZAI_CODING_API_KEY` | 独立国际 Coding Plan Key，鉴权用裸 `authorization`，不带 `Bearer` |
 | Kimi | `KIMI_CODING_API_KEY` | 需要 Kimi Coding Key，不是 Moonshot 开放平台 Key |
 | Xiaomi MiMo | 界面不使用继承 Key | 通过官方平台 Cookie 会话读取（`envName` 只作为服务侧引用名保留） |

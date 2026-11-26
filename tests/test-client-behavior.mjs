@@ -475,7 +475,7 @@ assert.equal(api.providerVisible({ visibility: preferences() }, ids[0], entry(id
 	assert.equal(api.providerVisible(teamOnly.settings, "arkcli-agent-plan", entry("arkcli-agent-plan"), teamOnly), false, "Team 开启不会带出已关闭的个人版");
 	assert.equal(api.providerVisible(teamOnly.settings, "arkcli-agent-plan-team", entry("arkcli-agent-plan-team"), teamOnly), true, "个人版关闭时 Team 代表标签仍独立显示");
 }
-let controlSnapshot = withPrefs(result([...ids.map(id => entry(id, 20, { apiDetected: id !== ids[1], ...(id === ids[1] ? { state: "no-key" } : {}) })), ...ARK_NO_CREDENTIAL]), preferences({ [ids[3]]: false }));
+let controlSnapshot = withPrefs(result([...ids.map(id => entry(id, 20, { apiDetected: id !== ids[2], ...(id === ids[2] ? { state: "no-key" } : {}) })), ...ARK_NO_CREDENTIAL]), preferences({ [ids[4]]: false }));
 const controlPatches = [], controlRefreshes = [];
 const controlStore = { ...uiStore, getSnapshot: () => controlSnapshot, readAll: async () => controlSnapshot, refresh: async (ids) => { controlRefreshes.push(ids); return controlSnapshot; }, save: async patch => {
  controlPatches.push(patch); const old = controlSnapshot.settings.visibility, v = patch.visibility;
@@ -499,7 +499,7 @@ assert.equal(antigravitySwitch().props["aria-checked"], false);
 await antigravitySwitch().props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.antigravity, true);
 assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), ["antigravity"], "重新开启后立即刷新联动额度");
-assert.deepEqual(nodes(tree).filter(n => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")).map(n => n.props.id), ids.filter(id => ![ids[1], ids[3]].includes(id)).map(id => `subusage-tab-${id}`));
+assert.deepEqual(nodes(tree).filter(n => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")).map(n => n.props.id), ids.filter(id => ![ids[2], ids[4]].includes(id)).map(id => `subusage-tab-${id}`));
 assert(!nodes(tree).some(n => n.type === "select" || n.type === "option"));
 nodes(tree).find(n => n.props.id === "subusage-section-subscriptions").props.onClick(); tree = ch.render(api.SubusageSection, cp);
  nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick(); tree = ch.render(api.SubusageSection, cp);
@@ -515,7 +515,7 @@ assert(!nodes(tree).some(n => n.props.role === "tab" && n.props.id === "subusage
 // 「显示与匹配」开关在最后一页「绑定与匹配」分组。
 nodes(tree).find(n => n.props.id === "subusage-section-custom").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 await nodes(tree).find(n => n.props["aria-label"] === "没配 Key 或登录的，默认不显示").props.onClick(); tree = ch.render(api.SubusageSection, cp);
-assert.equal(controlPatches.at(-1).visibility.hideWithoutApi, false); assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === `subusage-tab-${ids[1]}`));
+assert.equal(controlPatches.at(-1).visibility.hideWithoutApi, false); assert(nodes(tree).some(n => n.props.role === "tab" && n.props.id === `subusage-tab-${ids[2]}`));
 nodes(tree).find(n => n.props.id === "subusage-section-subscriptions").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 await nodes(tree).find(n => n.props["aria-label"] === "启用 MiniMax CN").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 assert.equal(controlPatches.at(-1).visibility.providers["minimax-cn"], true); assert.deepEqual(JSON.parse(JSON.stringify(controlRefreshes.at(-1))), ["minimax-cn"], "手工重新开启立即刷新");
