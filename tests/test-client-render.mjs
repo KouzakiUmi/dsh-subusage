@@ -645,7 +645,8 @@ console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/
 	const ingestSources = [
 		{ source: "relay-ok", label: "Relay OK", state: "ok", receivedAt: now - 5 * 60_000 },
 		{ source: "relay-stale", label: "Relay Stale", state: "ok", receivedAt: now - 15 * 60_000, ttlMs: 5 * 60_000 },
-		{ source: "relay-err", label: "Relay Err", state: "error", receivedAt: now - 2 * 60_000, error: "上游 503" }
+		{ source: "relay-err", label: "Relay Err", state: "error", receivedAt: now - 2 * 60_000, error: "上游 503" },
+		{ source: "relay-expired", label: "Expired Relay", state: "ok", receivedAt: now - 301_000, expiresAt: now - 1000 }
 	];
 	const ingestSettings = {
 		revision: "ingest-rev-1", zai: { type: 1 }, hasKeys: {}, keyModes: {},
@@ -686,6 +687,7 @@ console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/
 	const tabs = nodes.filter(n => n.props?.role === "tab" && String(n.props.id ?? "").startsWith("subusage-tab-ingest:"));
 	assert.deepEqual(tabs.map(n => n.props.id), ["subusage-tab-ingest:relay-stale", "subusage-tab-ingest:relay-ok"], "未隐藏的外部源进入顶部 tab（stale 排前）");
 	assert.ok(!tabs.some(n => n.props.id === "subusage-tab-ingest:relay-err"), "已隐藏的外部源不出现在顶部 tab");
+	assert.ok(!allText.includes("Expired Relay"), "本地快照未重读时，已过期来源也不会显示");
 
 	// 点击正常源开关 → 写入 hidden 补丁；点击已隐藏源开关 → 从 hidden 移除。
 	ingestSwitches[0].props.onClick();

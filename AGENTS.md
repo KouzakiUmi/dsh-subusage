@@ -170,6 +170,6 @@
 - **独立持久化文件（不复用 `snapshot-store`）**：`IngestStore` 落盘到 `<config 目录>/dsh-subusage-ingest.json`（0600 + tmp/rename 原子写，`options.ingestPath === null` 关闭）。`dsh-subusage-cache.json` 是可丢弃的额度暂存，而被动接入文件是推送方交过来的**数据本体**，丢了无法由本插件重拉，必须独立保存。
 - **秘密闸门与上限**：落盘前整条过 `SECRET_SHAPE`（命中 `Bearer` / `sk-` / `eyJ…` 等形态直接拒绝写入），单条 ≤64 KiB、总文件 ≤1 MiB、最多 50 个源（按 `receivedAt` 淘汰）、单源窗口 ≤16、附加行 ≤40、`ttlMs` 上限 7 天；坏窗口/附加行逐项跳过并记入 `diagnostics`。
 - **接收与显示分离**：`settings.ingest.accepting` 默认开启，关闭只拒绝新 `ingest()`，不影响查询、逐源显隐或撤回。`settings.ingest.hidden` 保存隐藏源列表；补丁只更新提交字段，`hidden` 数组整体替换。公开投影为 `{ accepting, hidden, sources }`。两项均参与设置 revision，不改变上游查询身份。
-- **`ttlMs` 过期只标 `stale`，不隐藏卡片**：推送方可选提供 `ttlMs`；超期后 `ingestEntry()` 将 `freshness` 设为 `"stale"`、设置页副文案补「N 分钟未更新」，仍保留卡片可见，不做「数据已失效」的裁决。
+- **五分钟保留期**：Host 按 `receivedAt` 清理已到期的上报快照，未来时间戳以 Host 收件时间为上限；清理在计时器、启动和读取时执行。列表公开 `expiresAt`（毫秒），设置页按它移除已过期的条目。较短的 `ttlMs` 只提前标记 `stale`，不改变五分钟清理时间。
 - **明确不做**：不做轮询与重试（本插件不知道对方上游）、不注册药丸或改动 `lib/go-panel.js`（被动源没有模型路由）、不在设置页提供删除按钮（生命周期归推送方 `revokeIngest`）。设置页入口位于「绑定与匹配」页的「外部接入」分组。
 - 回归：[test-ingest.mjs](tests/test-ingest.mjs)（校验/成卡/持久化/隐藏开关/ttl stale/撤回/投影与 `cachedOnly`）、[test-client-render.mjs](tests/test-client-render.mjs)（外部接入区块有源/error/stale/空态/开关补丁/分组隔离/顶部 tab）、[test-client-behavior.mjs](tests/test-client-behavior.mjs)（冷启动与热启动 `readAll` 拉取）、[test-contract.mjs](tests/test-contract.mjs)（双端 `save` 与 `query` codec 一致性）。

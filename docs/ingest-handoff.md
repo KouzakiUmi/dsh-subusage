@@ -13,7 +13,7 @@
 | `quotas` | 可选的非空 [QuotaEntry 元素数组](quota-entry.md#元素类型type-判别联合)，用于替代 `windows` / `extras`，不要混用两套形状 |
 | `state` / `error` | 正常快照默认 `ok`，至少有一项额度；失败可上报 `state: "error"` 和已脱敏的用户可读说明 |
 | `coverage` | 只读到部分数据时传 `"partial"` |
-| `ttlMs` | 可选，最长 7 天；超时后仍可查询，标为 `stale`。省略则不因时间变旧 |
+| `ttlMs` | 可选；短于五分钟时可提前标记为 `stale`。不延长五分钟保留期 |
 
 取数、刷新节奏和撤回由上报方负责。仅发送规范化额度与展示数据，不发送凭据或上游原始响应。Host 对疑似凭据形态拒收，窗口与附加行各最多 16 / 40 条。
 
@@ -27,4 +27,4 @@
 ## 实现与回归
 
 - [上报校验与存储](../lib/ingest.js)、[Host 服务](../lib/index.js)、[设置页](../lib/client.js)。
-- [上报至工具查询](../tests/test-ingest.mjs)覆盖持久化、覆盖、隐藏、过期、点名、强刷与撤回；[设置页回归](../tests/test-client-render.mjs)和[双端契约回归](../tests/test-contract.mjs)覆盖界面与 RPC。上述测试使用隔离 Host/Client，无需真实账号。
+- [上报至工具查询](../tests/test-ingest.mjs)覆盖持久化、覆盖、隐藏、五分钟自动清理、点名、强刷与撤回；[设置页回归](../tests/test-client-render.mjs)和[双端契约回归](../tests/test-contract.mjs)覆盖界面与 RPC。上述测试使用隔离 Host/Client，无需真实账号。

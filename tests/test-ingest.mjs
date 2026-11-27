@@ -5,16 +5,16 @@
 //  2. 推来的数据成为独立卡（provider id = `ingest:<source>`），全量查询与点名都能看到；
 //  3. 落盘持久化：新实例（模拟重启）不重新推送也能看到；
 //  4. 隐藏开关只影响显示，不影响数据；
-//  5. ttlMs 过期只标 stale，不隐藏卡片；
+//  5. ttlMs 可提前标 stale，五分钟未更新会清理；
 //  6. 撤回会真的删掉数据。
 import assert from "node:assert/strict";
 import { loadHostModule } from "./helpers.mjs";
-import { INGEST_PREFIX, isValidIngestSource, parseIngestPayload } from "../lib/ingest.js";
+import { INGEST_PREFIX, IngestStore, isValidIngestSource, parseIngestPayload } from "../lib/ingest.js";
 
 const { SubUsageService, apply } = await loadHostModule();
 const ID = source => `${INGEST_PREFIX}${source}`;
 
-function harness({ files = new Map(), now = () => Date.parse("2026-11-20T12:00:00Z"), failRename = () => false } = {}) {
+function harness({ files = new Map(), now = () => Date.parse("2026-11-20T12:00:00Z"), failRename = () => false, timers = {} } = {}) {
 	const io = {
 		readFileSync(path) { if (!files.has(path)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); return files.get(path); },
 		mkdirSync() {}, chmodSync() {},
@@ -23,6 +23,7 @@ function harness({ files = new Map(), now = () => Date.parse("2026-11-20T12:00:0
 	};
 	const service = new SubUsageService({ get() {}, llm: { listProviders: () => [] }, effect() {} }, {
 		io, configPath: "memory/config", snapshotPath: "memory/cache.json", ingestPath: "memory/ingest.json", now,
+		...timers,
 		resolveCredentials: async () => undefined, resolveEnvironment: () => undefined,
 		fetch: async () => ({ ok: true, status: 200, headers: { get: () => null }, text: async () => "{}" })
 	});
@@ -195,7 +196,7 @@ function harness({ files = new Map(), now = () => Date.parse("2026-11-20T12:00:0
 	console.log("PASS 隐藏开关：只影响显示，数据保留，可随时恢复");
 }
 
-// ── [5] ttl 过期只标 stale ────────────────────────────────────────────────
+// ── [5] 短 TTL 标 stale；保留期独立，后台清理后重启不会复活 ────────────────
 {
 	let clock = Date.parse("2026-11-20T12:00:00Z");
 	const { service } = harness({ now: () => clock });
@@ -208,6 +209,72 @@ function harness({ files = new Map(), now = () => Date.parse("2026-11-20T12:00:0
 	assert.equal(stale.windows[0].percent, 50);
 	service.dispose();
 	console.log("PASS ttl 过期：标 stale 但不隐藏");
+}
+
+{
+	let clock = Date.parse("2026-11-20T12:00:00Z");
+	const timers = new Map();
+	const options = { now: () => clock, timers: {
+		scheduleTimer(fn, ms) { const handle = {}; timers.set(handle, { fn, at: clock + ms }); return handle; },
+		clearTimer(handle) { timers.delete(handle); }
+	} };
+	const advance = ms => {
+		clock += ms;
+		for (const [handle, job] of timers) if (job.at <= clock) { timers.delete(handle); job.fn(); }
+	};
+	const { service, files } = harness(options);
+	const payload = source => ({ source, windows: [{ percent: 42 }], ttlMs: 7 * 86400000 });
+	try {
+		const start = clock;
+		assert.equal(service.ingest({ ...payload("expired"), receivedAt: clock - 300_000 }).ok, false);
+		assert.equal(service.ingest({ ...payload("relay-expiry"), receivedAt: clock + 60_000 }).receivedAt, start);
+		assert.equal(service.listIngest().sources[0].expiresAt, start + 300_000);
+		advance(240_000);
+		assert.equal(service.ingest(payload("relay-renewed")).ok, true);
+		assert.equal(service.ingest(payload("relay-expiry")).ok, true);
+		advance(299_999);
+		assert.equal(service.listIngest().sources.length, 2);
+		advance(1);
+		// 不调用 list/read，后台定时器已经写回磁盘。
+		assert.deepEqual(JSON.parse(files.get("memory/ingest.json")).sources, {});
+		assert.equal((await service.quota()).providers.some(row => row.providerId.startsWith(INGEST_PREFIX)), false);
+		assert.equal((await service.quota({ providerIds: [ID("relay-expiry")] })).providers[0].state, "error");
+		assert.equal(service.ingest(payload("relay-expiry")).ok, true);
+	} finally { service.dispose(); }
+	assert.equal(timers.size, 0, "卸载清理定时器");
+	clock += 300_000;
+	const restarted = harness({ ...options, files }).service;
+	try {
+		assert.deepEqual(JSON.parse(files.get("memory/ingest.json")).sources, {}, "启动时清理离线期间过期的条目");
+		assert.equal(restarted.listIngest().sources.length, 0);
+	} finally { restarted.dispose(); }
+}
+
+{
+	let now = Date.parse("2026-11-20T12:00:00Z"), failRead = true, failWrite = true;
+	let contents = JSON.stringify({ version: 1, savedAt: now - 301_000, sources: {
+		old: { source: "old", receivedAt: now - 301_000, windows: [{ percent: 25 }] }
+	} });
+	let timer;
+	const store = new IngestStore({ path: "memory/ingest.json", now: () => now,
+		scheduleTimer(fn) { timer = fn; return fn; }, clearTimer() { timer = undefined; },
+		io: {
+			readFileSync() { if (failRead) throw Object.assign(new Error("unavailable"), { code: "EACCES" }); return contents; },
+			writeFileSync(_path, value) { if (failWrite) throw new Error("unavailable"); contents = value; }, renameSync() {}
+		}
+	});
+	try {
+		assert.equal(store.list().length, 0);
+		assert.equal(typeof timer, "function", "临时读取失败仍安排清理重试");
+		failRead = false;
+		timer();
+		assert.equal(typeof timer, "function", "清理写入失败后重试");
+		now -= 2_000;
+		assert.equal(store.list().length, 0, "已经过期的记录不会因时钟回拨重新出现");
+		failWrite = false;
+		timer();
+		assert.deepEqual(JSON.parse(contents).sources, {});
+	} finally { store.dispose(); }
 }
 
 // ── [6] 撤回真的删数据 ────────────────────────────────────────────────────

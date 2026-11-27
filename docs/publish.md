@@ -23,7 +23,7 @@ tag 必须等于 `v` 加包版本。版本 Release 使用 `make_latest: legacy`�
 
 ## npm
 
-当前公开版本为 [1.0.1](https://www.npmjs.com/package/dsh-subusage/v/1.0.1)，对应 [1.0.1 更新记录](changelog.md#101读取与拉取彻底解耦)。未发布的工作区变更另列于更新记录首节；提供方兼容性核查与本包发布独立记录。
+公开版本见 [npm 版本列表](https://www.npmjs.com/package/dsh-subusage?activeTab=versions)，版本变更见[更新记录](changelog.md)。
 
 1.0.0：New API / One API 一等入口（provider `newapi` + 声明式适配器：内置字段映射与 500000 quota = 1 Credits 换算、`baseUrlMode: "newapi-root"` 站点根归一、探测签名抢在 openai-credit-grants 之前、`code:false` 信封按认证拒绝；编辑器对 newapi 隐藏映射编辑器）、自定义连接点选映射器（探测响应树点选自动生成 JSON Pointer）、provider 归一化模块化（`lib/providers/{shared,subscriptions,balances,session,newapi}.js`）、鉴权数据落盘加密、QuotaEntry 统一契约与设置页管理区分组 tab。分支 `feat/unified-quota-platform` 快进为 main（`bb424b3..cd15902`），推送前只读交叉核验（workbuddy DeepSeek V4.1 Flash）结论 PASS-with-notes：2 项轻微——changelog 1.0.0 空壳标题（已删）、`check-browser-runtime.mjs` 硬编码开关计数依赖不可复现的 gitignore 夹具（非发布门禁，记录未核验）；另确认数字信封（`code: 200/0`）不属 newapi 布尔信封契约、非回归。已于 2026-11-14 经 `v1.0.0` 标签 → `release.yml` 发布：提交 `cd15902`，版本工作流（run 43592675143）success（2m40s），main CI（run 43592671943）success；registry 的 `dist-tags.latest` 为 1.0.0（npm OIDC 可信发布，本地 `.npmrc` 令牌已失效未参与）。Release 资产 `dsh-subusage.tgz`（381550 字节，`sha256:39443c2f6120c48be9a4fa796bf4331d45e8442f83640d21fd10d8a8fd7caf62`）。已提前物化安装本机 `desktop` profile（同内容 tarball `dsh-subusage-0.24.5-local3.tgz`，remove+add 后哈希比对一致），DSH 重启与新版编辑器实机验收待用户确认。
 
