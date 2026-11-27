@@ -26,8 +26,9 @@ const react = {
   useEffect: () => {}
 };
 const code = readFileSync(fileURLToPath(new URL("../lib/client.js", import.meta.url)), "utf8");
-vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { SubusageSection, UsageWindowRow, CommandCodePoolSummary, UsagePill, draftFor, PROVIDER_ORDER, PROVIDER_META, zh, en }; exports.apply = apply;"), {
-  window: { __ModuleLoader__: { load: (value) => { spec = value; } } }, console
+vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { SubusageSection, RouteBindingsBlock, UsageWindowRow, CommandCodePoolSummary, UsagePill, draftFor, PROVIDER_ORDER, PROVIDER_META, zh, en }; exports.apply = apply;"), {
+  window: { __ModuleLoader__: { load: (value) => { spec = value; } } }, console,
+  setTimeout: () => 1, clearTimeout: () => {}
 });
 const plugin = spec.factory((name) => {
   assert.equal(name, "react");
@@ -659,13 +660,21 @@ console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/
 	const ingestStore = {
 		...usageStore,
 		getSnapshot: () => ({ settings: ingestSettings, configured: {}, entries: ingestEntries }),
-		save: async (patch) => { savedPatches.push(patch); return { settings: { ...ingestSettings, revision: "ingest-rev-2", ingest: { ...ingestSettings.ingest, hidden: patch.ingest.hidden } } }; }
+		save: async (patch) => { savedPatches.push(patch); return { settings: { ...ingestSettings, revision: "ingest-rev-2", ingest: { ...ingestSettings.ingest, ...patch.ingest } } }; }
 	};
 	stateValues = ["kimi-coding", plugin.__test.draftFor(ingestSettings, "kimi-coding"), false, false, false, null, null, { jobId: null, state: "idle" }, false, "ingest:relay-ok", "custom"];
 	stateIndex = 0;
 	const tree = plugin.__test.SubusageSection({ usageStore: ingestStore, t: key => key, getLocale: () => "zh" });
 	const nodes = flattenNodes(tree);
 	const allText = visibleText(tree);
+	for (const label of ["管理分组", "模型商"]) {
+		const nav = nodes.find(n => n.props?.role === "tablist" && n.props["aria-label"] === label);
+		assert.equal(nav?.props.style.flexWrap, "wrap", `${label}导航在窄容器换行`);
+		assert.ok(!nav.props.style.overflowX && !nav.props.style.overflowY && !nav.props.style.overflow, `${label}导航不建立内部滚动区`);
+	}
+	const activeManagementTab = nodes.find(n => n.props?.id === "subusage-section-custom");
+	assert.equal(activeManagementTab.props["aria-selected"], true);
+	assert.ok(!(activeManagementTab.props.style.marginBottom < 0), "选中线不越过按钮行");
 	assert.ok(allText.includes("外部接入"), "绑定与匹配页渲染「外部接入」分组标题");
 	assert.ok(allText.includes("Relay OK") && allText.includes("relay-ok") && allText.includes("最后推送 5 分钟前"), "正常源渲染 label、source 与相对推送时间");
 	assert.ok(allText.includes("Relay Stale") && allText.includes("15 分钟未更新"), "stale 源副文案补 N 分钟未更新");
@@ -683,6 +692,10 @@ console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/
 	assert.deepEqual(JSON.parse(JSON.stringify(savedPatches[0])), { expectedRevision: "ingest-rev-1", ingest: { hidden: ["relay-err", "relay-ok"] } }, "关闭外部源发出正确 save 补丁");
 	ingestSwitches[2].props.onClick();
 	assert.deepEqual(JSON.parse(JSON.stringify(savedPatches[1])), { expectedRevision: "ingest-rev-1", ingest: { hidden: [] } }, "重新开启外部源发出移除补丁");
+	const acceptanceSwitch = list => list.find(n => n.props?.role === "switch" && n.props["aria-label"] === "接收其他插件上报");
+	assert.equal(acceptanceSwitch(nodes).props["aria-checked"], true);
+	acceptanceSwitch(nodes).props.onClick();
+	assert.deepEqual(JSON.parse(JSON.stringify(savedPatches[2])), { expectedRevision: "ingest-rev-1", ingest: { accepting: false } });
 
 	// 无源时渲染空态且不放假开关。
 	const emptyIngestSettings = { ...ingestSettings, ingest: { hidden: [], sources: [] } };
@@ -693,6 +706,15 @@ console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/
 	const emptyNodes = flattenNodes(emptyTree);
 	assert.ok(visibleText(emptyTree).includes('还没有插件推送额度数据。其他插件可以调用 ctx.get("subUsage").ingest({...})。'), "无源时显示空态指引");
 	assert.equal(emptyNodes.filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("显示外部接入 ")).length, 0, "无源时不放假开关");
+	assert.ok(acceptanceSwitch(emptyNodes), "无来源时仍可关闭接收");
+	ingestSettings.ingest.accepting = false;
+	stateValues = ["kimi-coding", plugin.__test.draftFor(ingestSettings, "kimi-coding"), false, false, false, null, null, { jobId: null, state: "idle" }, false, "ingest:relay-ok", "custom"];
+	stateIndex = 0;
+	const pausedNodes = flattenNodes(plugin.__test.SubusageSection({ usageStore: ingestStore, t: key => key, getLocale: () => "zh" }));
+	assert.equal(acceptanceSwitch(pausedNodes).props["aria-checked"], false);
+	assert.ok(pausedNodes.some(n => n.props?.id === "subusage-tab-ingest:relay-ok"), "暂停接收仍显示已有额度");
+	acceptanceSwitch(pausedNodes).props.onClick();
+	assert.deepEqual(JSON.parse(JSON.stringify(savedPatches[3])), { expectedRevision: "ingest-rev-1", ingest: { accepting: true } });
 
 	// 切到其它分组不渲染「外部接入」区块。
 	stateValues = ["kimi-coding", plugin.__test.draftFor(ingestSettings, "kimi-coding"), false, false, false, null, null, { jobId: null, state: "idle" }, false, "kimi-coding", "subscriptions"];
@@ -700,4 +722,115 @@ console.log("PASS Hook/reader稳定性、空额度/缓存/失败、凭据按钮/
 	const otherTree = plugin.__test.SubusageSection({ usageStore: ingestStore, t: key => key, getLocale: () => "zh" });
 	assert.equal(flattenNodes(otherTree).filter(n => n.props?.role === "switch" && String(n.props["aria-label"] ?? "").startsWith("显示外部接入 ")).length, 0, "切到订阅分组不渲染外部接入开关");
 	console.log("PASS 外部接入设置区块：有源渲染/状态副文案/双向开关补丁/无源空态/分组隔离/顶部tab兼容");
+}
+
+// 使用真实事件处理器和状态重渲染验证设置页路径，不访问真实宿主或浏览器。
+{
+  const original = { ...react };
+  const { SubusageSection, RouteBindingsBlock, PROVIDER_ORDER, zh } = plugin.__test;
+  const text = cn => cn, getLocale = () => "zh", t = key => zh[key] || key;
+  const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+  const byId = (tree, id) => flattenNodes(tree).find(n => n.props?.id === id);
+  const control = (tree, label) => flattenNodes(tree).find(n => n.props?.["aria-label"] === label && n.type === "select");
+  const button = (tree, label) => flattenNodes(tree).find(n => n.type === "button" && n.children.includes(label));
+  const mount = (component, props, initial = [], commit = () => {}) => {
+    const slots = [];
+    return () => {
+      let index = 0, si = 0;
+      const effects = [];
+      react.useState = init => {
+        const i = index++, j = si++;
+        slots[i] ??= { value: j in initial ? initial[j] : typeof init === "function" ? init() : init };
+        return [slots[i].value, next => { slots[i].value = typeof next === "function" ? next(slots[i].value) : next; }];
+      };
+      react.useRef = value => (slots[index++] ??= { current: value });
+      react.useEffect = (fn, deps) => {
+        const i = index++, prev = slots[i];
+        if (!prev || deps.some((item, k) => !Object.is(item, prev.deps[k])) || prev.deps.length !== deps.length) {
+          effects.push(() => { prev?.cleanup?.(); slots[i] = { deps, cleanup: fn() }; });
+        }
+      };
+      const tree = component(props);
+      commit(tree);
+      effects.forEach(fn => fn());
+      return tree;
+    };
+  };
+  const mimo = "xiaomi-token-plan-cn", relay = "openrouter", first = "zai-coding-cn";
+  const snapshot = id => ({ settings: { ...settings, xiaomi: { hasCookie: false }, visibility: { hideWithoutApi: false, providers: Object.fromEntries(PROVIDER_ORDER.map(v => [v, v === id])) } }, entries: [{ providerId: id, state: id === mimo ? "no-cookie" : "no-key", windows: [] }] });
+  const stubStore = getSnapshot => ({ subscribe: () => () => {}, getSnapshot, readAll: async () => getSnapshot(), readSettings: async () => getSnapshot(), activate: () => () => {}, refresh: async () => getSnapshot() });
+  try {
+    const relayStore = stubStore(() => relayView), relayView = snapshot(relay);
+    const focusCalls = [], fold = { open: false };
+    const render = mount(SubusageSection, { usageStore: relayStore, t, getLocale }, [first], tree => {
+      tree.props.ref.current = { querySelector: selector => {
+        const node = byId(tree, selector.slice(1));
+        return node && { hidden: node.props.hidden, closest: name => name === "details.sus-fold" ? fold : null, focus: () => { assert.equal(fold.open, true); focusCalls.push("focus"); }, scrollIntoView: () => focusCalls.push("scroll") };
+      } };
+    });
+    let tree = render();
+    const managementTabs = flattenNodes(tree).filter(n => n.props?.id?.startsWith("subusage-section-"));
+    assert.deepEqual(managementTabs.map(n => n.props.tabIndex), [0, -1, -1, -1, -1, -1]);
+    let focused, prevented;
+    const press = (tab, key) => tab.props.onKeyDown({ key, preventDefault: () => { prevented = true; }, currentTarget: { parentElement: { querySelectorAll: () => managementTabs.map(n => ({ focus: () => { focused = n.props.id; } })) } } });
+    press(managementTabs[0], "End"); tree = render();
+    assert.equal(prevented, true); assert.equal(focused, "subusage-section-custom");
+    assert.equal(byId(tree, "subusage-management-panel").props["aria-labelledby"], focused);
+    press(managementTabs[5], "ArrowRight"); tree = render();
+    assert.equal(focused, "subusage-section-subscriptions");
+    const action = button(tree, "配置凭据");
+    assert.equal(action.props.style.color, "#fff");
+    const channels = action.props.style.background.slice(1).match(/../g).map(hex => parseInt(hex, 16) / 255).map(x => x <= .04045 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4);
+    assert.ok(1.05 / (.05 + channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722) >= 4.5, "主操作文字达到 AA 对比度");
+    action.props.onClick(); tree = render();
+    assert.equal(byId(tree, "subusage-management-panel").props["aria-labelledby"], "subusage-section-aggregators");
+    assert.equal(byId(tree, `subusage-credentials-${relay}`).props.hidden, false);
+    assert.deepEqual(focusCalls, ["focus", "scroll"]);
+
+    const mimoView = snapshot(mimo), calls = [];
+    const waiting = { jobId: "qr-active", state: "waiting", providerId: mimo, channel: "qr", qr: "data:image/png;base64,dGVzdA==" };
+    const mimoStore = { ...stubStore(() => mimoView), getMimoLoginStatus: async () => { calls.push("browser"); return { jobId: null, state: "idle", providerId: mimo }; }, getMimoQrStatus: async () => { calls.push("qr"); return waiting; }, cancelMimoQrLogin: async ({ jobId }) => { calls.push(jobId); return { ...waiting, state: "cancelled", message: "扫码已取消" }; } };
+    const rerender = mount(SubusageSection, { usageStore: mimoStore, t, getLocale }, [first]);
+    tree = rerender(); await flush(); tree = rerender();
+    assert.deepEqual(calls, ["qr"], "重挂载时即使原凭据编辑器不是 MiMo，也恢复正在进行的扫码任务");
+    byId(tree, "subusage-section-ofm").props.onClick(); tree = rerender();
+    button(tree, "查看小米扫码进度").props.onClick(); tree = rerender();
+    assert.equal(byId(tree, "subusage-management-panel").props["aria-labelledby"], "subusage-section-subscriptions");
+    assert.ok(visibleText(tree).includes("取消扫码"));
+    await button(tree, "取消扫码").props.onClick(); tree = rerender();
+    assert.equal(calls.at(-1), "qr-active"); assert.ok(visibleText(tree).includes("扫码已取消"));
+
+    const bindingsView = { ...snapshot(first), availableProviders: ["local"], entries: [{ providerId: "magpie", linkedAccounts: [{ providerGroup: "upstream" }] }] };
+    bindingsView.settings.sources = { available: { trae: ["local", "plugin"] }, bindings: {}, disabled: {} };
+    let rejectSave, pending;
+    const patches = [];
+    const bindingStore = { ...stubStore(() => bindingsView), save: patch => { patches.push(patch); return pending ? new Promise((_, reject) => { rejectSave = reject; }) : Promise.resolve(bindingsView); } };
+    const renderBindings = mount(SubusageSection, { usageStore: bindingStore, t, getLocale }, [first]);
+    tree = renderBindings(); byId(tree, "subusage-section-custom").props.onClick(); tree = renderBindings();
+    for (const [from, to, target, key] of [["本机路由", "Magpie 渠道分组", "upstream", "magpieRoutes"], ["模型路由", "条目 · 来源", "trae::local", "sources"]]) {
+      const group = tree => flattenNodes(tree).find(n => n.type === "section" && control(n, from));
+      control(tree, from).props.onChange({ target: { value: "local" } });
+      control(tree, to).props.onChange({ target: { value: target } }); tree = renderBindings();
+      pending = true;
+      const submit = button(group(tree), "绑定").props.onClick;
+      const count = patches.length, save = submit(); await submit();
+      assert.equal(patches.length, count + 1, "同一请求未完成时不重复提交");
+      tree = renderBindings(); assert.ok(button(group(tree), "绑定").props.disabled);
+      rejectSave(new Error("save rejected")); await save; tree = renderBindings();
+      assert.equal(control(tree, from).props.value, "local"); assert.equal(control(tree, to).props.value, target);
+      assert.ok(visibleText(tree).includes("save rejected"));
+      pending = false; await button(group(tree), "绑定").props.onClick(); tree = renderBindings();
+      assert.ok(patches.at(-1)[key]);
+      assert.equal(control(tree, from).props.value, ""); assert.equal(control(tree, to).props.value, "");
+    }
+    let resolved = false;
+    const renderRoute = mount(RouteBindingsBlock, { result: bindingsView, text, busy: false, saveRouteBindings: async () => resolved, getLocale });
+    tree = renderRoute(); control(tree, "选择路由").props.onChange({ target: { value: "local" } });
+    control(tree, "选择目标").props.onChange({ target: { value: first } }); tree = renderRoute();
+    await button(tree, "绑定").props.onClick(); tree = renderRoute();
+    assert.equal(control(tree, "选择路由").props.value, "local"); assert.equal(control(tree, "选择目标").props.value, first);
+    resolved = true; await button(tree, "绑定").props.onClick(); tree = renderRoute();
+    assert.equal(control(tree, "选择路由").props.value, ""); assert.equal(control(tree, "选择目标").props.value, "");
+  } finally { Object.assign(react, original); }
+  console.log("PASS 设置导航键盘顺序、凭据定位、扫码恢复、绑定失败保留输入、主按钮对比度");
 }

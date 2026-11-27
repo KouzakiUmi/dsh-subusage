@@ -76,6 +76,20 @@ const okFetch = calls => async (url, options) => {
 
 // ── [2] 单家失败不拖垮其它家 ─────────────────────────────────────────────
 {
+	const h = harness(okFetch);
+	const receipt = h.service.ingest({ source: "Relay_One", windows: [{ percent: 8 }] });
+	const view = await h.service.quota({ providerIds: [receipt.providerId, "unknown-alias", receipt.providerId], force: true });
+	assert.deepEqual(view.providers.map(row => row.providerId), ["unknown-alias", receipt.providerId]);
+	assert.doesNotMatch(view.providers[0].error, /下面是全部提供商/);
+	assert.equal(h.calls.length, 0, "上报源已点名，未知名称不应扩大到全部主动提供商");
+	const missing = await h.service.quota({ providerIds: ["ingest:missing", "unknown-alias"], force: true });
+	assert.deepEqual(missing.providers.map(row => row.providerId), ["unknown-alias", "ingest:missing"]);
+	assert.equal(missing.providers[1].state, "error");
+	assert.equal(h.calls.length, 0, "明确点名的不存在上报源也不扩大查询范围");
+	h.service.dispose();
+}
+
+{
 	const failing = calls => async (url, options) => {
 		if (url === "https://api.deepseek.com/user/balance") throw new Error("network down");
 		return okFetch(calls)(url, options);
@@ -115,7 +129,7 @@ const okFetch = calls => async (url, options) => {
 	assert.equal(tool.output.schema.properties.providers.items.properties.state.required, true);
 	assert.equal(tool.output.schema.properties.providers.items.properties.availability.type, "string");
 	assert.equal(tool.output.schema.properties.providers.items.properties.availabilityReason.type, "string");
-	for (const [availability, fragment] of [["paygo", "按量续用"], ["included", "订阅续用"], ["unknown", "待确认"], ["blocked", "受限"]]) {
+	for (const [availability, fragment] of [["paygo", "按量续用"], ["included", "订阅续用"], ["unknown", "未确认能否续用"], ["blocked", "受限"]]) {
 		const advice = tool.output.render({}, { providers: [{ providerId: "fixture", state: "ok", windows: [{ kind: "week", percent: 100, status: "rate-limited" }], extras: [], availability }] })[0].text;
 		assert.ok(advice.includes(fragment), `工具文本不能丢失${availability}续用结论`);
 	}
@@ -208,7 +222,8 @@ const okFetch = calls => async (url, options) => {
 		{ providerId: "trae-enterprise", label: "Trae 企业版", state: "error", windows: [], extras: [], error: "本机没有 Trae 企业版账号" }
 	] })[0].text;
 	assert.ok(linkedOnly.includes("联动项 2 条"), "联动项单独计数");
-	assert.ok(linkedOnly.includes("兄弟插件"), "下一步指向兄弟插件，而不是本插件凭据文档");
+	assert.ok(linkedOnly.includes("原因见各条说明"), "联动失败逐条查看实际原因");
+	assert.ok(!linkedOnly.includes("兄弟插件未运行或对应区域未登录"), "不把查询故障统一猜成未登录或未运行");
 	assert.ok(!linkedOnly.includes("其余 2 条为读取失败"), "未登录/插件没跑不是读取失败");
 	assert.ok(!linkedOnly.includes("docs/credentials.md"));
 	const mixedMissing = tool.output.render({}, { providers: [
@@ -217,7 +232,8 @@ const okFetch = calls => async (url, options) => {
 		{ providerId: "novita", label: "Novita", state: "error", windows: [], extras: [], error: "HTTP 500" }
 	] })[0].text;
 	assert.ok(mixedMissing.includes("联动项 1 条") && mixedMissing.includes("其余 1 条为读取失败"), "混合时分别计数");
-	assert.ok(mixedMissing.includes("docs/credentials.md"), "有本插件条目时仍给凭据文档");
+	assert.ok(mixedMissing.includes("原因见各条说明"), "有普通 provider 的报告也保留联动逐条原因");
+	assert.ok(mixedMissing.includes("在 dsh-subusage 设置页检查凭据和检测开关"), "存在未配置凭据的内置提供商时给出配置路径");
 	assert.ok(!interleaved.includes("A · 5h 100% 剩余 / "), "不跨池拼一段");
 	// 无标注窗口各成一段、不加前缀（与改动前逐字一致）：没有池名可依时不能凭空造一个。
 	const unlabeled = tool.output.render({}, { providers: [{

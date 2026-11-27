@@ -18,7 +18,7 @@
 
 </div>
 
-> **1.0.1**：读取与拉取彻底解耦——额度暂存落盘、可重试失败自动重拉、Host 后台定时扫描（拉取不再挂在任何 UI 事件上）、Devin proto3 零值省略修复（周用尽不再显示 100%）；被动接入 ingest、药丸双外观、窗口排序与 Unified Router 回退移除。1.0.0 的架构底座见 [更新记录](docs/changelog.md)。
+> **1.1.0**：修复桌面与 Go 的额度归属、外部上报持久化和自定义连接流程，新增 Z.ai 通用平台入口与外部上报开关。详见 [更新记录](docs/changelog.md)。
 >
 > **版本间可能出现 bug**——发现异常请[回报 issue](https://github.com/KouzakiUmi/dsh-subusage/issues)。报告/药丸缺数据时会写 `omitted` 计数或读取失败原因，不把未知当充足；数字只作参考，不是计费依据。
 
@@ -64,7 +64,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 - **34 条内置额度入口 + 19 条联动项**：从 DeepSeek、Kimi、火山方舟到 Codex、Devin、Copilot、自建 New API / one-api 站，一家一条凭据链、一套单位口径。
 - **零代码接入任意新上游**：填 Base URL → 测试连接 → 探测自动推导字段映射 → 一键套用 → 保存即得药丸；探测认不全时直接点选响应里的字段、选「它是什么」就自动生成映射，可逐字段锁定，接入配方（Recipe）可导出分享。New API / One API 站点有专门的一等入口：填站点根与推理同一把 sk- Key 即完成（字段映射与单位换算内置，`/v1` 尾缀自动去除），不用走通用自定义；同一入口可接入多个站点。
 - **统一条目模型（QuotaEntry）**：百分比窗口、美元余额、积分包、席位池出边界都是同一套元素——药丸、弹层、Go 面板、Agent 工具四端同口径渲染。
-- **秘密落盘加密**：API Key、OAuth 记录、会话 Cookie 全部 AES-256-GCM 加密后写盘；公开设置只有引用名，没有秘密值。
+- **秘密落盘加密**：本插件保存的 API Key、AK/SK、会话 Cookie 和 MiMo 续期材料使用 AES-256-GCM；其它插件管理的 OAuth 记录不复制到本插件配置。
 - **多 Key 监控**：每家最多 8 个凭据引用名逐 Key 独立查询与缓存，主 Key 管药丸、额外 Key 管排障与对账。
 - **额度暂存层**：读到的结果固化到 `~/.dsh/dsh-subusage-cache.json`（0600，不含凭据）。打开设置先显示上次读数、不触发上游；真正的拉取只在你刷新、切到某家或看药丸时发生。
 - **路由归属三处同口径**：内置别名、手动映射、路由绑定、Magpie 分组绑定在同一张表、同一套解析顺序，切模型药丸立刻跟着切。
@@ -97,7 +97,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 
 ## 兼容的插件与路由
 
-以下列出当前代码已适配的插件或工具及具体范围。**药丸匹配、登录凭据复用、额度联动是不同能力**；支持其中一项不代表接管该插件的登录、账号切换或全部设置，也不代表所有版本均已实机验证。
+以下列出源码已适配的插件或工具及范围。路由匹配、登录凭据复用、额度联动分别列出；版本、已发现的变化与验证方式见 [提供方契约核查](docs/plugin-contracts.md)。
 
 ### 模型路由与登录凭据
 
@@ -110,7 +110,7 @@ Command Code 可在弹层和设置页切换固定账户，或查看自动轮换�
 | `@mars-sea/dsh-commandcode-provider` | `commandcode` → `commandcode` | 复用凭据来源、账户列表与账号切换；支持固定账户和轮换池摘要。自动轮换时的用量不跟随每次请求实际服务账号。 |
 | `dsh-grok-kit` / 官方 Grok CLI | `xai-oauth` → `xai-oauth` | 共享 Grok 登录文件；token 过期时可借 `dsh-grok-kit` 的登录链续约，再读取 X / SuperGrok 额度。 |
 | `dsh-devin-provider` | `devin` → `devin` | 只读它的登录态（多账号按它当前激活的账号）调用官方 `GetUserStatus`；不在本插件登录、续期或写回它的状态文件。 |
-| `dsh-codex-connect` / DSH 内置 Codex 路由 / 官方 Codex CLI | `openai-codex` → `openai-codex` | 匹配 Codex 药丸，支持读取 CLI 的 ChatGPT 登录文件；API Key 登录不能读取 ChatGPT 订阅额度。检测默认关闭。 |
+| `dsh-codex-connect` / DSH 内置 Codex 路由 / 官方 Codex CLI | `openai-codex` → `openai-codex` | 匹配药丸。只读 Connect 的活动 OAuth 账号或 CLI 的 ChatGPT 登录；API Key 登录无法读取订阅额度。检测默认关闭。 |
 | `dsh-codex-subscription` | 其 OAuth 用于 `openai-codex` 额度入口 | 优先只读活动账号记录，兼容旧 OAuth 引用；不迁移或续约凭据。不额外假定它注册的模型路由名，名称不同时使用手动绑定。 |
 | `@inventec/dsh-copilot-auth` | `github-copilot` → `github-copilot` | 只读该插件写入 DSH 凭据库的 OAuth 记录；登录和续约由提供方负责。检测默认关闭。 |
 
@@ -122,11 +122,11 @@ OpenDesign 药丸按当前路由标注计费来源：套餐模型显示「使用
 
 | 插件 | 本插件报告入口 | 适配范围 |
 |---|---|---|
-| [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity) | `antigravity` | 读取其 `antigravityAuth` 服务的 `usage()`（`QuotaStatusView`：Gemini 与 Claude/GPT 两组各带 5h / 周窗口的剩余比例）。**选中它的 `google-antigravity` 模型路由时，输入区药丸直接显示这份额度。** |
+| [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity) | `antigravity` | 读取 `antigravityAuth.usage()` 报告的 5h / 周分池余额比例；池数量以上游实报为准。选中 `google-antigravity` 时可显示在药丸中。 |
 | [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp) | `antigravity` | 读取其 `agyQuota` 服务提供的额度快照（分组窗口 + 套餐名 + AI Credits），信息比 `antigravityAuth` 更全。 |
 | [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae) | `trae`、`trae-global`、`trae-enterprise` | 国内积分、国际订阅按账号分别读取；企业额度保持不可读说明。 |
 | [`dsh-connect-workbuddy`](https://github.com/dingminhua/dsh-connect-workbuddy) | `workbuddy`、`workbuddy-global` | 按区域与账号读取余额；完整积分包只归属已确认的当前账号。 |
-| [`dsh-raccoon-connect`](https://github.com/zhlcba/dsh-raccoon-connect)、[`dsh-loomy-connect`](https://github.com/gdrpzym/dsh-loomy-connect) | `raccoon`、`loomy` | 独立 `/status` 的单当前登录；药丸在接口缺席时回落 OFM。Loomy 保留本地积分缓存时间。 |
+| [`dsh-raccoon-connect`](https://github.com/zhlcba/dsh-raccoon-connect)、[`dsh-loomy-connect`](https://github.com/gdrpzym/dsh-loomy-connect) | `raccoon`、`loomy` | 独立 `/status` 的单当前登录；OFM 是可显式绑定的独立来源。Loomy 保留本地积分缓存时间。 |
 | Our Free Model | 十个 `ofm-*` 入口 | 复用账号索引与 `usage.badge`：小浣熊、Loomy、Qoder 国际/中国版、LobsterAI、TRAE、Cline、MiniMax Code、ZCode、Gemini；逐账号显示积分、额度包与鉴权元数据。[范围与验证](docs/ofm.md) |
 | [Magpie 聚合网关](https://github.com/yetone/magpie)（本机 `http://127.0.0.1:3425`） | `magpie`（路由 `magpie` / `magpie-responses` / `magpie-anthropic`） | 只读 `GET /v1/magpie/quotas`（`kept=1` 缓存快照），一张上游订阅卡一行、按 provider 分组；`usage/requests` + `concurrency` 给出 auto 组在途/上次命中的实际上游。回环免鉴权，不发写请求。 |
 
@@ -136,19 +136,30 @@ Antigravity 的两个提供方读取同一份 Google 配额，只出一条 `anti
 
 ### 外部插件被动接入
 
-其他 DSH 插件可以直接把额度快照推送给本插件展示，无需在本插件中配置凭据或轮询地址。推送到达后会持久化为独立卡片，并在 **设置 → 订阅用量 → 绑定与匹配 → 外部接入** 列出；这里的开关只控制是否显示，不会删除或改动推送方的数据，数据更新与撤回由推送方插件负责。
+其他 DSH 插件可以直接推送额度快照，无需配置凭据或轮询地址。**设置 → 订阅用量 → 绑定与匹配 → 外部接入 → 接收其他插件上报** 默认开启。关闭后拒绝新上报，已保存快照仍可查看或由推送方撤回；逐来源开关单独控制显示。
 
-插件作者可在同进程内通过 Cordis 服务推送：
+插件作者可在同进程内通过 Cordis 服务 `subUsage` 推送。为每个独立额度来源选一个带插件名前缀的稳定 `source`，并在拿到新快照时用同名上报覆盖：
 
 ```js
 const subUsage = ctx.get("subUsage");
-subUsage?.ingest({ source: "my-relay", label: "My Relay", windows: [{ kind: "5h", percent: 42 }], extras: [{ kind: "balance", value: "12.30 CNY" }], ttlMs: 600_000 });
-// 需要移除卡片与持久化数据时调用：subUsage?.revokeIngest("my-relay");
+const result = subUsage?.ingest?.({
+  source: "dsh-my-relay",
+  label: "My Relay",
+  windows: [{ kind: "5h", percent: 42 }], // 已用 42%，即剩余 58%
+  extras: [{ kind: "balance", value: "12.30 CNY" }],
+  ttlMs: 600_000,
+});
+if (result?.ok) {
+  const view = await subUsage.quota({ providerIds: [result.providerId] });
+  // view.providers 包含 ingest:dsh-my-relay 的额度条目。
+}
 ```
+
+上报成功后，Agent 可用 `subusage_quota` 默认查询，也可传 `{"providers":["ingest:dsh-my-relay"]}` 点名查询。`refresh: true` 不会通知推送方取数；超出 `ttlMs` 的快照仍可查，标为 `stale`。请只上报额度与展示信息，不传 API Key、Cookie 或原始上游响应。完整方法和返回值见[额度查询 API](#额度查询-api)。
 
 积分包统一显示为分组摘要：已用尽与能确认已过期的包隐藏，其余按今天到期、3 天内到期、临时额度、周期/套餐与永久额度聚合。不同账号、不同单位不混合计算。
 
-OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM 账号池支持在药丸里切换查看账号，保留各自余额、读取失败、凭据存在性和提供方记录的到期时间；当前账号/自动模式只使用明确的提供方字段，实际推理账号由提供方管理。独立 Raccoon / Loomy 只公开单当前登录，OFM 同渠道提供多账号。提供方状态 GET 可能自行续期或同步登录态，详情见[鉴权与生命周期](docs/ofm.md#鉴权数据与生命周期)。DSH Go 面板中药丸向下展开并可滚动；[离线验收](docs/ofm.md#dsh-go-药丸)。
+OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM 账号池支持在药丸里切换查看账号，保留各自余额、读取失败、凭据存在性和提供方记录的到期时间；当前账号/自动模式只使用明确的提供方字段，实际推理账号由提供方管理。独立 Raccoon / Loomy 只公开单当前登录，OFM 同渠道提供多账号。提供方状态 GET 可能自行续期或同步登录态，详情见[鉴权与生命周期](docs/ofm.md#鉴权数据与生命周期)。DSH Go 在会话详情的「插件 → 用量」显示[原生面板](docs/ofm.md#dsh-go-面板)。
 
 ## 也可以直接问 Agent
 
@@ -159,7 +170,7 @@ OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM
 ## 使用前，先知道这三点
 
 - **不猜数据**：查询失败、缓存与部分覆盖会明确标注；接口读取成功不保证仍可续用。
-- **不把凭据放进截图或结果**：API Key、Cookie 与 OAuth token 不回填界面；但本插件手动配置仍可能明文落盘，**它不是加密凭据库**。
+- **凭据不回填界面**：本插件保存的秘密使用 AES-256-GCM；已有明文配置在下一次保存时升级。
 - **验证有范围**：历史真实账号记录覆盖 7 个入口，其余主要依靠桩测试；新图是虚构数据离线渲染，不能作为真实账号在线验收证明。[实测范围与风险](#support-status--实测覆盖)
 
 <details>
@@ -273,9 +284,9 @@ OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM
 
 ### 主要风险
 
-- **额度数字仅供参考，不要当计费依据。** 部分额度接口未公开或半公开，字段语义可能变化；插件会按已核验单位换算金额与百分比，不猜缺失额度。
+- **额度口径按来源显示**：金额和百分比使用已识别的单位，读取失败、快照过期和部分数据分别标注。
 - **未验证的提供商会随接口变化而失效**（见上一节）。失效时在设置页关掉那一家的检测即可，其余不受影响；欢迎开 issue 帮我们补上。
-- **凭据以明文落盘**：本插件的配置不是加密凭据库；Windows 上真正的访问边界取决于目录 ACL，`chmod` 不能替代它。
+- **密钥与配置文件分开存放**：Windows 上两个文件均使用配置目录的 ACL。见[凭据存储说明](docs/credentials.md#手动填写的凭据存在哪)。
 - **火山方舟是账号级读取**：一组 IAM AK/SK 能查到该账号名下**所有**套餐（Agent Plan、Coding Plan、团队席位）。把装了本插件的机器或配置文件交给别人时请注意这一点。
 - **浏览器自动化**：支持自动登录的提供商（MiMo、OpenDesign）会启动一个隔离的 Chromium 会话——不点「登录并自动导入」就不会触发。OpenDesign 的 Cloudflare 人机验证会在弹出窗口中出现，由你亲自完成即可（自动登录实测可用）；手动导入仍是备选（见凭据表）。
 - **dsh-go 手机 App 里没有自动登录**：手机本机引擎是 proot 里的 Ubuntu，没有 Chrome/Chromium，`playwright-core` 启动必然失败。插件会检测 `/etc/dsh-app/runtime.json`，在这类主机上不再提供「登录并自动导入」；MiMo 改用**小米账号扫码登录**（全程 HTTP，不需要浏览器），OpenDesign 走手动粘贴 Cookie。桌面与远程主机行为完全不变。
@@ -294,7 +305,7 @@ OFM 全渠道查询可传 `providers: ["ofm"]`。独立 Trae、WorkBuddy 及 OFM
 > **范围里每个 `||` 分支都不是冗余。** node-semver 只有在范围中**某个比较符与该版本的 `major.minor.patch` 元组完全一致、且自身带预发布标签**时，才放行预发布版本。所以 `>=0.2.0-rc.1 <0.3.0-0` 这种看起来覆盖 0.2.x 的写法会**静默排除** `0.2.1-alpha.1`，而 `… \|\| >=0.2.1-0 <0.3.0-0` 又会排除 `0.2.2-rc.1`（2026-11-06 用 semver 7.7.3 实测：该版本旧范围 `false`、补上 `>=0.2.2-0 <0.3.0-0` 后 `true`）。必须为每个 minor 元组各写一个带预发布标签的下界；Core 升 0.2.3 或 0.3.x 时按同样规则补分支，不要放宽成单分支。
 
 
-`dsh.compatibility.dshReleases` 逐版本声明已知状态：**只有实际验证过的标 `compatible`**，其余一律 `unknown`——没有证据不猜。`0.2.2-rc.1` 目前只有本机静态核对（四个核心包的公开导出仍在、`slots` 服务仍由 client runner 提供）与全量回归，插件未在该 Core 上实机安装运行，因此不计入「已验证」、最后验证日期不变。本插件只依赖 Core 的**公开扩展 API 面**（Cordis 服务 `llm`/slots/locale/remote/settings/modelDirectories、4 个核心包的公开导出、client 基座的公开模块），不碰内部组件、不依赖桌面壳版本——这是 0.2.x 各版本实际全兼容的原因；`dshReleases` 记录的是**实测证据**，不是依赖声明。实际验证范围（在线接口、真实账号、浏览器像素验收等）见 [开发与验证说明](https://github.com/KouzakiUmi/dsh-subusage/blob/main/docs/development.md)。这是树外 Host / Client bundle，通过 `cordis.patch.yml` 插入，不修改 DSH 核心、安装树或 ASAR。
+`dsh.compatibility.dshReleases` 记录有实机证据的 Core 版本，与 `peerDependencies` 的可安装范围分别维护。`0.2.2-rc.5` 已从当前 Profile 清单确认，尚未完成该版本的额度查询及 GUI 联调。运行验证与历史记录见 [开发与验证说明](docs/development.md)。本插件通过 `cordis.patch.yml` 安装 Host / Client，不修改 DSH 核心。
 
 ## Install / 安装
 
@@ -339,8 +350,8 @@ dsh plugin --profile <profile> remove dsh-subusage
 | 提供商 | 前置提供方插件 | 凭据从哪来 |
 | --- | --- | --- |
 | Command Code | [`@mars-sea/dsh-commandcode-provider`](https://www.npmjs.com/package/@mars-sea/dsh-commandcode-provider) | 在该插件的设置页登录，或运行 `cmd login`（兜底读 `~/.commandcode/auth.json`） |
-| SuperGrok | [`dsh-grok-kit`](https://github.com/KouzakiUmi/dsh-grok-kit) | 运行 `grok login`，登录文件 `~/.grok/auth.json` |
-| Codex（ChatGPT 订阅） | [`dsh-codex-connect`](https://github.com/franksong2702/dsh-codex-connect) 或 [`dsh-codex-subscription`](https://github.com/WSL043/dsh-codex-subscription)（0.13.0 起兼容） | Connect / CLI：`codex login`；Subscription：在其设置页独立 OAuth 登录，无需 CLI |
+| SuperGrok | [`dsh-grok-kit`](https://www.npmjs.com/package/dsh-grok-kit) | 运行 `grok login`，登录文件 `~/.grok/auth.json` |
+| Codex（ChatGPT 订阅） | Codex Subscription、Codex Connect 或官方 Codex CLI | 依次读取 Subscription 活动账号、Connect 活动账号、CLI 的 ChatGPT 登录。前两个在各自设置页登录；CLI 使用 `codex login` |
 | GitHub Copilot | [`@inventec/dsh-copilot-auth`](https://github.com/iasiv5/dsh-copilot-auth)（内置 `github-copilot` 路由的设备码登录） | 在其设置页完成设备码登录；本插件复用凭据库里的这条 OAuth 记录，无需另行登录 |
 | Devin | [`dsh-devin-provider`](https://www.npmjs.com/package/dsh-devin-provider) | 在其设置页完成登录（浏览器 PKCE / 导入本机 `devin` CLI 登录 / API Key 或凭据引用），本插件复用它的登录态读取额度，无需另行登录 |
 
@@ -467,7 +478,7 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 - **日志与产物不落盘**：真实 Key / Cookie 不会写进日志、测试、截图或读取结果；MiMo 响应在返回前做字段级 Cookie 脱敏。
 - MiMo 自动登录使用**独立临时 Chrome 会话**：不读取日常 Chrome 配置，不读取密码 / 验证码字段，Cookie 不通过 RPC 返回页面；五分钟未完成自动超时。
 - 计时元数据（`xiaomi.loginAt` / `xiaomi.expiresAt`）只是本地时间戳，不是秘密，也不参与凭据有效性判断。
-- **这不是加密凭据库**：本版仍兼容本机 JSON 配置存储，凭据以明文落盘；加密凭据存储通道尚未实施。Windows 上的实际访问权限取决于目录 ACL，`chmod` 不能替代 ACL 或加密库。请不要上传、分享该配置文件，也不要把它写进日志或工单。
+- **本地存储**：配置中的秘密以 `enc:v1` 加密封套保存，密钥存于同目录的 `dsh-subusage.json.key`；备份配置时请保护密钥文件，不要把两者附到工单。
 
 ## 额度查询 API
 
@@ -475,8 +486,8 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 
 | 参数 | 类型 | 说明 |
 |---|---|---|
-| `providers` | `string[]`（可选） | 限定范围。可传本插件的 provider id（`deepseek`、`zai-coding-cn`、`kimi-coding`…），也可直接传厂商名（`zai`、`kimi`、`mimo`、`minimax`、`commandcode`、`grok`、`codex`、`ark`、`deepseek`…）；大小写与 `-` `.` `_` 都无关。省略即读取全部 |
-| `refresh` | `boolean`（可选） | `true` 绕过缓存与磁盘暂存、直接打上游，仅在确需最新数字时使用 |
+| `providers` | `string[]`（可选） | 可传内置提供商 ID 或厂商别名（如 `kimi-coding`、`kimi`），也可传上报返回的完整 ID（如 `ingest:dsh-my-relay`，按原样填写）。省略时查询全部，包括未隐藏的上报来源 |
+| `refresh` | `boolean`（可选） | `true` 请求拉取型来源刷新；被动上报来源仍读取最近一次快照 |
 
 调用约定（无可读条目时返回汇总与下一步，不伪造额度）：
 
@@ -488,7 +499,16 @@ arkcli-coding-plan-team  ARKCLI_CODING_PLAN_TEAM_API_KEY
 - **独立 Trae / WorkBuddy 按区域、账号展开**：Trae 的 `trae` / `trae-global` / `trae-enterprise` 保留国内积分、国际订阅和企业不可读三种语义；多账号通过提供方的 `account-status` 独立读取。WorkBuddy 使用 `workbuddy` / `workbuddy-global`，批量接口只给账号总余额，完整积分包仅归属已确认的当前账号。两者复用提供方鉴权，60 秒缓存与强制刷新由同一 reader 管理；具体契约与内部登录态维护见[联动说明](docs/ofm.md)。
 - **Antigravity 是联动项，不是本插件登记的 provider**：本机运行 [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity)（服务 `antigravityAuth.usage()`）或 [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp)（服务 `agyQuota.read()`）任一个时，报告里会多一条 `providerId` 为 `antigravity` 的条目（可传 `antigravity` / `agy` / `antigravity-acp` / `google-antigravity` / `dsh-tool-antigravity` 点名）。两个都在场时优先 `agyQuota`（信息更全：套餐名 + AI Credits），只装 dsh-tool-antigravity 时回落到 `antigravityAuth`；都不在场时顺带查询不出现这一行，点名时会回一条列出两个插件名的安装指引。本插件不读它们的凭据、不请求上游、不写设置。`windows[].percent` 同样是**已用**百分比（由官方下发的剩余比例 `remainingFraction` / `remainingPct` 换算），`groupLabel` 是分组（`antigravityAuth` 通道为「Gemini 模型」「Claude 与 GPT 模型」，`agyQuota` 通道保留对方原始组名如 `Gemini Models`）。界面将已知组名显示为「Gemini 模型」「Claude 与 GPT 模型」「Gemini Argon 模型」（英文界面同步翻译）；每组是独立额度池，同池内取最紧窗口，跨池不互相限制。部分池用尽时显示如「1/3 池用尽」并作黄色提醒，只有全部已报告池耗尽才标红；顶部横幅仅保留一句状态结论，各池余量和重置时间集中显示在下方卡片，悬浮说明保留完整摘要。未登录时该通道返回 `unauthenticated`：全量查询静默，点名时给出「去 dsh-tool-antigravity 完成 Google 授权」的指引。
 
-**Host 服务**（Cordis `Service`，key 为 `subUsage`）：
+**Host 服务**（同进程 Cordis `Service`，key 为 `subUsage`）：
+
+| 方法 | 用途与返回 |
+|---|---|
+| `quota({ providerIds?, force? })` | 异步只读查询，返回 `{ updatedAt, providers }` |
+| `ingest(payload)` | 同步上报。接受稳定 `source`、可选 `label`、`windows`、`extras`、`ttlMs`；成功返回 `{ ok: true, source, providerId, receivedAt }`，校验拒绝返回 `{ ok: false, error }`。`receivedAt` 是毫秒时间戳 |
+| `listIngest()` | 返回 `{ sources }`，列出已上报来源的名称、标签、状态和上报时间，包括被隐藏的来源 |
+| `revokeIngest(source)` | 撤回该来源及快照，返回 `{ ok: true, removed }` 或 `{ ok: false, error }`。传原始 `source`，不加 `ingest:` |
+
+上报与撤回只经 Host 服务调用；Agent 工具只读。设置页使用 `subUsage/*` Typert RPC，它们是界面通道，不是额度上报接口。
 
 ```js
 const service = ctx.get("subUsage");

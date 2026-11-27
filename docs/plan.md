@@ -1,6 +1,6 @@
 # 初期方案归档（2026-09-30）
 
-> 本文保留初期调研与未实施候选方案，不作为当前安装、接口或登录方式的指引。项目现已实现并发布 0.7.0；当前行为见 [README](../README.md)、[开发说明](development.md) 与 [UX 设计](design-ux.md)。尤其是 webview / OAuth 登录候选、三家提供商范围与早期 RPC 均已被后续实现替代。
+> 归档：保留 2026-09-30 的初期需求与候选方案。当前安装、接口与登录见 [README](../README.md)、[开发说明](development.md) 与 [UX 设计](design-ux.md)；后续变更见 [更新记录](changelog.md)。
 > 目标环境：DeepSeek Harness 0.2.0-rc.2 / 桌面 profile（desktop）。
 
 ---

@@ -28,7 +28,7 @@ const { SubUsageService, apply, normalizeAntigravity } = await loadHostModule();
 	assert.equal(entry.providerId, "antigravity");
 	assert.equal(entry.label, "Antigravity");
 	assert.equal(entry.state, "ok");
-	assert.equal(entry.coverage, "complete");
+	assert.equal(entry.coverage, "partial", "已报告的窗口缺少剩余比例，不能当完整读数");
 	assert.equal(entry.freshness, "fresh");
 	assert.equal(entry.lastSuccessAt, "2026-10-22T00:00:00.000Z");
 	// 对外 percent = 已用；它给的是剩余（82% / 0.71 → 18% / 29% 已用）。

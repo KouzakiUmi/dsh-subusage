@@ -129,7 +129,7 @@ assert.equal(served.calls[1].url, "https://api.commandcode.ai/alpha/billing/subs
 assert.equal(served.calls[0].url, "https://api.commandcode.ai/alpha/billing/credits");
 assert.equal(served.calls[0].options.headers.authorization, "Bearer credential-key");
 assert.equal(served.calls[0].options.headers["accept-encoding"], "identity");
-assert.equal(served.calls[0].options.headers["x-command-code-version"], "1.73.0");
+ assert.ok(served.calls.every(call => call.options.headers["x-command-code-version"] === "1.89.3"), "两个计费请求使用已核对的 CLI 版本");
 assert.equal(served.calls[0].options.headers["x-cli-environment"], "production");
 
 const PERIOD_END = "2026-11-03T00:00:00Z";

@@ -19,7 +19,7 @@ const timeLimitQuota = { data: { limits: [{ type: "TIME_LIMIT", percentage: 71, 
 const cancelledQuota = { data: { level: "pro" } };
 const balanceBody = { code: 200, msg: "操作成功", success: true, data: { balance: "13.387515800", availableBalance: "13.387515800", frozenBalance: 0 } };
 
-function harness({ providers = [Z], respond } = {}) {
+function harness({ providers = [Z], respond, credential = () => "test-key" } = {}) {
 	const files = new Map();
 	let now = Date.parse("2026-11-20T00:00:00Z");
 	const calls = [];
@@ -33,7 +33,7 @@ function harness({ providers = [Z], respond } = {}) {
 		{ get() {}, llm: { listProviders: () => providers.map(id => ({ id })) }, effect() {} },
 		{
 			io, configPath: "memory/config", snapshotPath: "memory/cache.json", now: () => now,
-			resolveCredentials: async () => ({ value: "test-key" }), resolveEnvironment: () => undefined,
+			resolveCredentials: async () => ({ value: credential() }), resolveEnvironment: () => undefined,
 			fetch: async (url, options) => {
 				calls.push({ url: String(url), options });
 				const value = await respond(String(url));
@@ -72,7 +72,7 @@ function harness({ providers = [Z], respond } = {}) {
 	console.log("PASS Z.ai 窗口与余额并存");
 }
 
-// ── [3] Z.ai 通用平台：TIME_LIMIT 工具调用窗 → plan extra ──────────────────
+// ── [3] Z.ai 通用平台：TIME_LIMIT 工具调用窗 → quota-status ──────────────────
 {
 	const mixedQuota = { data: { level: "pro", limits: [{ type: "TOKENS_LIMIT", percentage: 25 }, ...timeLimitQuota.data.limits] } };
 	const h = harness({ providers: [G], respond: url => (url.includes(BALANCE_URL) ? balanceBody : mixedQuota) });
@@ -81,8 +81,8 @@ function harness({ providers = [Z], respond } = {}) {
 	assert.deepEqual(entry.windows, [], "通用平台不把 Coding Plan 的 TOKENS 窗混进来");
 	assert.equal(entry.coverage, "complete");
 	assert.equal(entry.subscribed, undefined, "通用入口不推断 Coding Plan 状态");
-	const tool = entry.extras.find(x => x.kind === "plan" && /月度调用/.test(x.value));
-	assert.ok(tool, "TIME_LIMIT 要聚合成一条可读的 plan 附加行");
+	const tool = entry.extras.find(x => x.kind === "quota-status" && /月度调用/.test(x.value));
+	assert.ok(tool, "TIME_LIMIT 要聚合成一条可读的 额度状态行");
 	assert.match(tool.value, /715\/1000（71%）/, "报出已用与总量");
 	assert.match(tool.value, /search-prime 715 \/ web-reader 0 \/ zread 0/, "带上模型明细");
 	h.service.dispose();
@@ -151,6 +151,20 @@ for (const failed of ["quota", "balance"]) {
 	assert.equal(failure.errorCode, "subusage/rate-limit", "坏响应不能掩盖另一端的可重试错误");
 	assert.equal(failure.retryable, true);
 	limited.service.dispose();
+}
+
+{
+	let key = "fixture-a";
+	const h = harness({ credential: () => key, respond: url => !url.includes(BALANCE_URL) ? quotaBody : key === "fixture-a" ? balanceBody : { http: 500 } });
+	try {
+		const first = (await h.service.refresh({ providerIds: [Z], force: true })).entries[0];
+		assert.ok(first.extras.some(row => row.kind === "balance"));
+		key = "fixture-b";
+		const second = (await h.service.refresh({ providerIds: [Z], force: true })).entries[0];
+		assert.equal(second.state, "ok");
+		assert.equal(second.coverage, "partial");
+		assert.ok(!second.extras.some(row => row.kind === "balance"));
+	} finally { h.service.dispose(); }
 }
 
 // ── [4] 两路都没有新数据 → 整条失败（旧暂存不得把失败静默成成功）─────────────

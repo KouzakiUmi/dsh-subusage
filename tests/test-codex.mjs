@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { loadHostModule } from "./helpers.mjs";
 
-const { SubUsageService, subUsageRemote, normalizeCodexUsage, codexAuthFileCredentials, codexSubscriptionCredentials } = await loadHostModule();
+const { SubUsageService, subUsageRemote, normalizeCodexUsage, codexAuthFileCredentials, codexSubscriptionCredentials, codexConnectCredentials } = await loadHostModule();
 const ID = "openai-codex";
 const RESET_5H = "2026-10-09T12:00:00.000Z", RESET_7D = "2026-10-15T00:00:00.000Z";
 
@@ -64,6 +64,46 @@ const RESET_5H = "2026-10-09T12:00:00.000Z", RESET_7D = "2026-10-15T00:00:00.000
  assert.equal(requests.length,2);assert.equal(requests[1]["ChatGPT-Account-Id"],"acct-second");assert.equal(requests[1].authorization,"Bearer fixture-second");
  assert.ok(!JSON.stringify(second).includes("fixture-second"));service.dispose();
  console.log("PASS Codex Subscription 默认解析链与活动账号缓存隔离");
+}
+
+// Codex Connect v1/v2、真实默认解析顺序、活动账号切换与坏文件隔离。
+{
+ const configPath = "memory/connect-config", codexConnectPath = "memory/.openai-codex-auth.json";
+ const cred = id => ({ type: "oauth", access: `fixture-${id}`, refresh: "fixture-unused", accountId: id, expires: 2000000000000 });
+ const doc = id => ({ version: 2, activeAccountId: id, credentials: [cred("one"), cred("two")] });
+ assert.equal(codexConnectCredentials({ readFileSync: () => JSON.stringify({ version: 1, credential: cred("one") }) }, codexConnectPath).accountId, "one");
+ for (const raw of ["not JSON", JSON.stringify(doc("missing")), JSON.stringify({ ...doc("one"), credentials: [cred("one"), cred("one")] }), "x".repeat(524289)]) {
+  assert.throws(() => codexConnectCredentials({ readFileSync: () => raw }, codexConnectPath), e => e.code === "subusage/credential" && !e.message.includes("fixture"));
+ }
+ let connect = doc("two");
+ const calls = [];
+ const io = { readFileSync(path) {
+  if (path === configPath) return JSON.stringify({ visibility: { providers: { [ID]: true } } });
+  if (path === codexConnectPath && connect) return JSON.stringify(connect);
+  if (path.endsWith("auth.json") && path !== codexConnectPath) return JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: "fixture-cli", account_id: "cli" } });
+  throw Object.assign(new Error("missing"), { code: "ENOENT" });
+ } };
+ const service = new SubUsageService({ effect() {}, get() {}, llm: { listProviders: () => [{ id: ID }] } }, {
+  io, configPath, codexConnectPath, snapshotPath: null, resolveEnvironment: () => undefined,
+  fetch: async (_url, { headers }) => { calls.push(headers); return { ok: true, status: 200, text: async () => JSON.stringify({ rate_limit: { primary_window: { used_percent: 10 } } }) }; }
+ });
+ try {
+  const read = async () => (await service.refresh({ providerIds: [ID], force: false })).entries[0];
+  assert.equal((await read()).keySource, "codex-connect-oauth");
+  assert.equal(calls[0]["ChatGPT-Account-Id"], "two");
+  connect = doc("one");
+  const updated = await read();
+  assert.equal(calls[1]["ChatGPT-Account-Id"], "one");
+  assert.equal(calls[1].authorization, "Bearer fixture-one");
+  assert.ok(!JSON.stringify(updated).includes("fixture-one"));
+  connect = doc("missing");
+  assert.equal((await read()).errorCode, "subusage/credentials");
+  assert.equal(calls.length, 2);
+  connect = null;
+  assert.equal((await read()).keySource, "auth-file");
+  assert.equal(calls[2]["ChatGPT-Account-Id"], "cli");
+ } finally { service.dispose(); }
+ console.log("PASS Codex Connect v1/v2、活动账号、缓存隔离与 CLI 回落");
 }
 
 // ── [2] 归一化 ───────────────────────────────────────────────────────────

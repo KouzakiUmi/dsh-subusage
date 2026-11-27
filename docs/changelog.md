@@ -2,13 +2,36 @@
 
 以下按发布版本保留当时的功能与验证记录。旧版本的导航、登录方案及兼容性描述不代表当前行为；当前使用方法见 [README](../README.md)。
 
-## 工作区未发布：Z.ai 通用平台入口
+## 1.1.0：额度归属、外部上报与设置流程
+
+### 功能修复
+
+- 按凭据隔离数据源暂存，按已解析来源隔离联动缓存；桌面药丸与 Go 面板读取实际路由对应的额度。Go 保留多账号与上游卡片上下文，不再从工具报告取首行。
+- 上报和撤回在落盘成功后更新快照。拒绝无效时间与额度元素；混合点名时不因未知名称拉取全量。
+- 自定义连接按当前草稿探测；Recipe 可从设置页往返，导入不会覆盖同名实例。编辑时保留草稿，显示配置和映射锁可清空。
+- 修复快捷配置跳转、MiMo 扫码恢复、绑定失败保留选择、陈旧数据提示、键盘标签导航及弹层焦点。
+
+### Z.ai 通用平台入口
 
 - 新增 `zai-cn`，绑定 `ZAI_API_KEY`，与 `zai-coding-cn` 分离，避免通用平台 Key 无法配置或被错误归入 Coding Plan。
 - 通用入口固定读取中国站 `type=1` 额度端点与财务中心余额；过滤 Coding Plan 的 `TOKENS_LIMIT` / `CREDIT_LIMIT` 窗口，保留 `TIME_LIMIT` MCP 工具月度调用窗及模型明细。
 - `zai` / `zhipu` / `bigmodel` 路由别名、Client / Go 面板归并、Host/Client provider 表与文档同步。
-- 任一路读取失败或使用旧暂存时，通用入口标记为部分数据；通用入口不推断 Coding Plan 的订阅状态。
-- 回归：[test-source-decoupling.mjs](../tests/test-source-decoupling.mjs) 覆盖 `TIME_LIMIT`、单路失败与暂存回落。
+- 回归：[test-source-decoupling.mjs](../tests/test-source-decoupling.mjs) 覆盖 TIME_LIMIT 展示、余额部分成功、端点失败回落与全量计数；全套 `npm test` 通过。
+
+### 外部插件额度查询
+
+- [额度查询 API](../README.md#额度查询-api) 补齐同进程上报、读取与撤回示例；`subusage_quota` 的工具说明提示按 `ingest:<source>` 点名查询。回归覆盖上报后全量、点名与强刷读取，以及撤回后的查询结果。
+- 增加「接收其他插件上报」开关，默认开启。关闭后拒绝新快照，既有快照与逐源显隐、撤回仍可用。
+- Command Code 同步新版计费请求头；Codex Connect 只读活动 OAuth 账号；Antigravity 增加 Gemini 4 展示名与四组独立额度回归。
+
+### 客户端代理文案
+
+- 小浣熊和 Loomy 的说明列出各自可用的插件名称；页首区分客户端额度开关和 OFM 账号入口。
+- 设置页管理分组在窄容器换行，选中线不伸出标签行，导航不再出现内部滚动条。
+
+### 文档与提供方契约核查
+
+- 更新加密落盘、Go 原生面板、联动来源与上报文档；[提供方契约核查](plugin-contracts.md)单列已发现的差异、源码证据和在线验证缺口。
 
 ## 1.0.1：读取与拉取彻底解耦
 
@@ -140,7 +163,7 @@ issue #8 的实现补了三个细节（都有外部实现作依据）：
 ### 跟随 Unified Router 0.9.10 复核（2026-11-19）
 
 - **契约未破坏**：对端的 HTTP 路径 `/api/unified-router`、信封 `method:'unified-router'`、错误码 `unified-router/*` 全部未变，`ROUTER_RPC` 与改名兼容逻辑无需改动。
-- **积分包 `active`**：`credits.balances` 投影新增包级 `active`（对端已归一成布尔，缺省视为生效）。`active === false` 的包 `remaining` 可能非零，计入合计会虚增可用额度——[eac-usage.js](../lib/eac-usage.js) 现在把它们从总额与到期分组里剔除，并留一行「N 个未生效的积分包未计入」；字段缺失的老形态仍按生效处理，不会把包全丢。
+- **积分包 `active`**：`credits.balances` 投影新增包级 `active`（对端已归一成布尔，缺省视为生效）。`active === false` 的包 `remaining` 可能非零，计入合计会虚增可用额度——`lib/eac-usage.js` 现在把它们从总额与到期分组里剔除，并留一行「N 个未生效的积分包未计入」；字段缺失的老形态仍按生效处理，不会把包全丢。
 - **`raccoon-pro` 模型路由**：对端把 Raccoon 拆成 `raccoon`（免费面）/ `raccoon-pro`（订阅面）两个模型路由，但账号只有一个池、余额同源。两个路由 id 在 Client `ROUTE_PROVIDER_ALIAS`、go-panel `ROUTE_USAGE_ID` 与 Host `LINKED_ALIASES` 三处归并到同一条联动项，避免选中订阅面模型时药丸消失。
 - 顺带修掉来源改造遗留的两处旧文案（客户端代理分组里「独立 / 本机直取 / OFM / EAC 依次回落」），改为「逐项可启停，不再自动回落」。
 - **验收脚本**：`scripts/check-browser-runtime.mjs` 读的是 `render-ui-preview.mjs` 生成的 HTML 快照，改 Client 后必须先重新生成（本次重新生成后暴露了 Devin 加入后未同步的计数：可见 provider 11 → **12**、首屏开关 24 → **25**，已按实测校准并在注释里写明）。工作区没有 `node_modules`，跑该脚本需先具备 `playwright-core`（本轮临时借用 DSH profile 的副本，跑完已移除）。
@@ -154,13 +177,13 @@ issue #8 的实现补了三个细节（都有外部实现作依据）：
 - **wire**：`readLinked` / `linkedStep` 增加可选 `routeId`；药丸把当前模型路由带下去（`reader(id, selectedRoute, routeId)` → `activate` 记 `routedRoute`），设置页轮询、工具与 `quota()` 没有它，走主来源组。
 - **UI**：设置页「绑定与匹配」新增「来源」区（列出可用来源 ≥2 的条目逐项开关）与「来源绑定」区（路由 → 条目 · 来源，复用 `uiBindings`）；`publicSettings.sources` 下发 `disabled` / `bindings` / `available` / `labels`，Client 不复制推导规则。
 - `sources` 不参与 `querySettingsHash`（与 `routeBindings` 同口径），不使在途额度缓存失效。
-- 回归：新增 [test-sources.mjs](../tests/test-sources.mjs)（推导 / 解析 / 校验 / 未绑定不补位 / 绑定单选 / 停用与全停用 / 设置管线）；既有回落用例（[test-eac-link.mjs](../tests/test-eac-link.mjs)、[test-connect-link.mjs](../tests/test-connect-link.mjs)、[test-linked-client-fetch.mjs](../tests/test-linked-client-fetch.mjs)）全部改为**显式绑定**，并各自补一条「未绑定时不补位」的断言；[test-contract.mjs](../tests/test-contract.mjs) 增加来源补丁的双端校验。
+- 回归：新增 [test-sources.mjs](../tests/test-sources.mjs)（推导 / 解析 / 校验 / 未绑定不补位 / 绑定单选 / 停用与全停用 / 设置管线）；既有回落用例（`tests/test-eac-link.mjs`、[test-connect-link.mjs](../tests/test-connect-link.mjs)、[test-linked-client-fetch.mjs](../tests/test-linked-client-fetch.mjs)）全部改为**显式绑定**，并各自补一条「未绑定时不补位」的断言；[test-contract.mjs](../tests/test-contract.mjs) 增加来源补丁的双端校验。
 
 ### Unified Router 改名适配（原 dsh-eac-router）
 
 - 对端插件 2026-11 由 **dsh-eac-router** 改名为 **dsh-unified-router**，对外契约整体换名：路径 `/api/eac-router` → `/api/unified-router`、信封 `method:'eac-router'` → `'unified-router'`、错误码 `eac-router/not-ready` → `unified-router/not-ready`（另有 `bad-request` / `forbidden` / `aborted` / `operation-failed`）。按改名前的字面量去问只会拿到 404，被当成「插件没装」静默缺席——Loomy / Raccoon / Qoder 中国版 的第三个来源会整体失效，且**不报错**。
 - `ROUTER_RPC` 契约表（[lib/index.js](../lib/index.js)）按优先级列出「现行名 → 改名前的旧名」；只有该端点 **404** 时才换下一个候选，未升级的安装仍可用，`not-ready` 等其它错误不换端点重试（那是「通道在场但没就绪」，不是「没有这条通道」）。
-- `credits.balances` 的投影字段（`accounts[].{accountId,nickname,balance{total,packages{name,remaining,unit,expiresAt}},error}`）未随改名变化，[eac-usage.js](../lib/eac-usage.js) 的归一化零改动；模块内 `EAC_*` / `eac` 标识保留为内部代号，用户可见文案改为 Unified Router（旧名括注）。
+- `credits.balances` 的投影字段（`accounts[].{accountId,nickname,balance{total,packages{name,remaining,unit,expiresAt}},error}`）未随改名变化，`lib/eac-usage.js` 的归一化零改动；模块内 `EAC_*` / `eac` 标识保留为内部代号，用户可见文案改为 Unified Router（旧名括注）。
 - 回归：`tests/test-eac-link.mjs` 增加改名兼容三例（只装旧版 → 先问新名 404 后回退旧名并成功；两个端点都 404 → 恰好两次尝试后静默缺席；新名 `not-ready` → 不换端点重试），并把请求形状断言改到 `http://dsh.internal/api/unified-router` + `method:'unified-router'`。
 - 未覆盖：本机 profile 当时未安装该插件（新旧都无），全部结论来自对端源码核对与隔离回归；真实联调需装好后在运行实例里点一次药丸。
 
@@ -221,7 +244,7 @@ issue #8 的实现补了三个细节（都有外部实现作依据）：
 ### 设置页功能入口（本次新增）
 
 - **管理区分组 tab（本次新增）**：额度区下方改为横向分组 tab——「模型厂」（自研模型订阅的 provider 卡片）、「聚合商」（`PROVIDER_META.aggregator` 标记的不自研模型、只做路由/中转的上游：opencode-go / openrouter / zenmux / vercel-ai-gateway / litellm / apigoto，另含本地网关 Magpie 的联动开关）、「客户端代理」（Antigravity / Trae / WorkBuddy / 小浣熊 / Loomy，本身不提供 API、由第三方插件、本机直取或 OFM 回落读额度）、「OFM」（十个渠道）、「自定义连接」（原 ConnectionsBlock）、「绑定与匹配」（显示与匹配开关、provider 映射、路由绑定、Magpie 分组绑定，固定在最后一页）。
-- **联动逐项开关（新增 `visibility.linked`）**：OFM 十个渠道（`ofm-*`）、独立 Trae / WorkBuddy / Raccoon / Loomy 与 Magpie 各有独立开关，缺省全开、补丁逐键合并；关闭后 `quota()` 与 `readLinked()` 同样静默缺席，Client store 同步清除旧条目并拦截迟到响应。Antigravity 仍走既有独立 `visibility.antigravity` 开关。回归见 [test-linked-switches.mjs](tests/test-linked-switches.mjs)。
+- **联动逐项开关（新增 `visibility.linked`）**：OFM 十个渠道（`ofm-*`）、独立 Trae / WorkBuddy / Raccoon / Loomy 与 Magpie 各有独立开关，缺省全开、补丁逐键合并；关闭后 `quota()` 与 `readLinked()` 同样静默缺席，Client store 同步清除旧条目并拦截迟到响应。Antigravity 仍走既有独立 `visibility.antigravity` 开关。回归见 [test-linked-switches.mjs](../tests/test-linked-switches.mjs)。
 - **折叠可点性**：所有 `details` 折叠统一 `sus-fold`（组级描边卡片 + 旋转 ▸ chevron）/ `sus-fold-lite`（列表内嵌行轻量版）样式，summary 去掉默认 marker、悬停底色加深，不再像普通文字。
 - **编辑态不折叠**：修复「自定义连接」新建/编辑实例时被自己所在的 foldCount 组折进去——`foldCount` 在 `editing` 在场时退化为 0，展开中的操作对象永不隐藏。
 - **折叠扩面**：「模型厂」「聚合商」卡片的未开启分组、「自定义连接」的实例列表也接 `foldCount`，与绑定区同口径——有内容默认收起显示条数、空组展开。连接实例正在编辑（`editing === "new"` 或选中某行）时该组计入 1 条保持展开，不折叠正在操作的对象。
@@ -240,7 +263,7 @@ issue #8 的实现补了三个细节（都有外部实现作依据）：
 
 ### 鉴权数据加密存储与重构审查修复
 
-- **秘密落盘加密（新增 `lib/secret-box.js`）**：`~/.dsh/dsh-subusage.json` 中的用户秘密值（`keys[id]`、`instanceSecrets`、小米 `xiaomi.cookie`/`xiaomi.renewal`、火山 `volc.accessKeyId`/`secretAccessKey`）以 AES-256-GCM 加密存储；32 字节随机密钥单独放在 `<config>.key`（0600），密文封套 `enc:v1:<iv>:<tag>:<ct>`（base64）。旧明文值加载时照旧可用并在下一次持久化自动加密；解密失败按空处理不阻断加载；密钥文件损坏抛出 `subusage/key-corrupt`。引用名（keyRefs、credentialRefs、env 名）与环境变量来源本身不存值，不加密；公开设置依旧不含任何秘密。回归见 [test-secret-storage.mjs](tests/test-secret-storage.mjs)。
+- **秘密落盘加密（新增 `lib/secret-box.js`）**：`~/.dsh/dsh-subusage.json` 中的用户秘密值（`keys[id]`、`instanceSecrets`、小米 `xiaomi.cookie`/`xiaomi.renewal`、火山 `volc.accessKeyId`/`secretAccessKey`）以 AES-256-GCM 加密存储；32 字节随机密钥单独放在 `<config>.key`（0600），密文封套 `enc:v1:<iv>:<tag>:<ct>`（base64）。旧明文值加载时照旧可用并在下一次持久化自动加密；解密失败按空处理不阻断加载；密钥文件损坏抛出 `subusage/key-corrupt`。引用名（keyRefs、credentialRefs、env 名）与环境变量来源本身不存值，不加密；公开设置依旧不含任何秘密。回归见 [test-secret-storage.mjs](../tests/test-secret-storage.mjs)。
 - **实例凭据链移除 routeEnvs 注入**：`resolveInstanceIdentity` 不再把绑定路由的 `apiKeyEnv` 灌进自定义实例的凭据链（原顺序 routeEnvs → credentialRefs → builtinEnvs → 手动秘密会把别的路由的 Key 借给实例）；现在实例只吃 `credentialRefs` → `builtinEnvs` → `manualSecret`，路由绑定只决定药丸归属、不改变实例用什么 Key。内置 provider 的继承链不受影响。
 - **routeBindings 归入手动匹配开关**：`visibility.manualMatching` 关闭时路由绑定保留但不生效（原先无条件生效，与 providerMappings 语义不一致）；Host `resolveRouteTarget`、Client 药丸与 `goPanelUsageId` 三处统一为「routeBindings（手动）→ 实例 routeIds → providerMappings（手动）→ 内置别名」同一顺序，实例 routeIds 属实例自身声明不受开关门控。`routeIds` 同时移出额度查询参数哈希：改绑定不再误作废在途请求与额度缓存（原先被计入 queryFields）。
 - **HTTP 执行器加固**：响应体按字节上限流式读取（`ReadableStream.getReader` + `reader.cancel`），不再先 `text()` 全量进内存；JSON 解析加节点数预算（2 万）拒绝超宽/超深负载；超时计时保持到 body 读完。新增 `sanitizeUpstreamMessage`：上游错误消息进条目前先剥掉 hint 秘密（Key/Cookie 原文）、JWT、`sk-/ak-/rk-/ghp_/Bearer` 模式串并截 200 字；`secretHints` 由调用方按 identity 注入。
@@ -253,7 +276,7 @@ issue #8 的实现补了三个细节（都有外部实现作依据）：
 
 ## 0.24.5：工具报告补实际额度数字、label 必填修复与重构说明
 
-- **修复 `subusage_quota` 工具 schema 校验报 `missing required property label`**（0.24.4 发布后才修的漏网）：lossless 修复把 `label` 从「裸拷贝 undefined」改成「条件省略」，而工具 output schema 把它标为必填——Magpie 等联动的展开账号行本来就没有 label（账号名在 account 里），全量查询时所有账号行一起违约。现在依次回退：账号名 → 联动/常规表显示名 → providerId，必填字段不再留空。回归在 [test-wire-lossless.mjs](tests/test-wire-lossless.mjs) 增加 `assertToolShape`：lossless 之外再核一遍 schema 必填字段。
+- **修复 `subusage_quota` 工具 schema 校验报 `missing required property label`**（0.24.4 发布后才修的漏网）：lossless 修复把 `label` 从「裸拷贝 undefined」改成「条件省略」，而工具 output schema 把它标为必填——Magpie 等联动的展开账号行本来就没有 label（账号名在 account 里），全量查询时所有账号行一起违约。现在依次回退：账号名 → 联动/常规表显示名 → providerId，必填字段不再留空。回归在 [test-wire-lossless.mjs](../tests/test-wire-lossless.mjs) 增加 `assertToolShape`：lossless 之外再核一遍 schema 必填字段。
 - **`subusage_quota` 报告报实际额度数字，不只报百分比**：窗口行在剩余百分比后补 `（余 N unit）`——`detail.left`（magpie 回推/直接下发）→ `detail.remaining` → `used/limit` 反推；非数值口径（`leftText` 的「Unlimited」）翻中文「不限量」；上游不报告数量的窗口保持纯百分比，不补造。数字量纲与客户端 `fmtTokens` 同口径（K/M/B 分级、两位小数收位）。
 - **文档与发布说明补「项目正在进行重构」的提醒**：README 顶部高亮块与 awesome 条目同步注明：当前在 QuotaEntry / DSH Go 面板 / Magpie 网关方向持续重构，版本间可能出现异常，发现问题请回报。[awesome-dsh-plugin 收录条目](https://github.com/KouzakiUmi/awesome-dsh-plugin/blob/main/data/plugins/KouzakiUmi__dsh-subusage.yml) 同步更新到 31 条入口与重构提示（贡献指南为准：`description` 只说功能、不加营销词，提醒按事实写）。
 
@@ -265,8 +288,8 @@ issue #8 的实现补了三个细节（都有外部实现作依据）：
 
 ## 0.24.4：DSH Go 原生面板、Magpie 聚合网关与 wire lossless 修复
 
-- **修复 `subusage_quota` 全量报错「value is not lossless JSON」**：DSH typert 对工具/RPC 输出逐值校验——嵌套 `undefined` 属性、`NaN`/`Infinity`/`-0`、符号键、非普通对象、带洞数组任一处即拒整条结果。实发与潜伏共五处：火山四处 `resetsAt: fromEpoch(...)` 裸赋值（上游哨兵 `-1`/`0` → `undefined` 属性直达 `windows`）；magpie `/v1/models` 目录 `owned_by` 缺席时写成 `owned_by: undefined`；antigravity 去重 `picked.groupLabel = label || undefined`；`quota()` 白名单裸拷贝 `label`（magpie 展开的账号行没有 label）；`QUOTA_SOURCE` 符号键随 entry 到达 `readLinked`/`linkedStep`/`refresh` 客户端出口。源头逐处守卫之外，`quota()` 白名单对 `windows`/`extras`/`quotas` 统一过 `wireJson()` 兜底净化，三个客户端出口同套处理；新增 [test-wire-lossless.mjs](tests/test-wire-lossless.mjs) 用与 typert `visitJsonValue` 同口径的谓词全量扫描 `quota()`/`readLinked()` 输出。
-- **切会话后不再把别的对话的渠道当成当前额度**（含账号行徽标同口径）：magpie 的 `concurrency` / `usage/requests` 是**整机全局**遥测（DSH 不发 `X-Magpie-Session`，网关不区分会话），而药丸是**按会话**回答「当前模型还剩多少」。原先把 `routeContext.live` 无条件排在命中顺序最前，于是切到另一个对话后，前一个对话正在跑的请求就成了本会话的「正在服务」——收窄到别的渠道，本会话模型归不出组时还会一起退回聚合总览。现在遥测**先归属再采信**：`req` 与本会话当前模型一致（去掉 `auto/` / `group/` 前缀后比较）才参与命中卡、池收窄与 `cardId` 回指；对不上时只作路由行展示，并标注「其他对话的请求」。`req` 缺席时无法证伪，维持原行为。同一修正同时落在 Go 原生面板（`goPanelServingCard`）。账号行「正在服务/上次命中」徽标也走同一归属过滤（原先直接读原始 `routeContext.cardId`，别的对话在跑请求时会给别人的卡挂徽标）。另外会话切换会换掉模型目录 store，此时不再沿用上一个会话的厂商（原先会把别的对话的订阅画到本会话药丸上，直到新会话目录就绪）。回归见 [test-pill-density.mjs](tests/test-pill-density.mjs)（另一对话的在途/上次路由、本会话在途仍优先、`req` 缺席、模型归不出组退回总览）与 [test-client-behavior.mjs](tests/test-client-behavior.mjs)（切会话不沿用旧厂商）、[test-go-panel.mjs](tests/test-go-panel.mjs)。
+- **修复 `subusage_quota` 全量报错「value is not lossless JSON」**：DSH typert 对工具/RPC 输出逐值校验——嵌套 `undefined` 属性、`NaN`/`Infinity`/`-0`、符号键、非普通对象、带洞数组任一处即拒整条结果。实发与潜伏共五处：火山四处 `resetsAt: fromEpoch(...)` 裸赋值（上游哨兵 `-1`/`0` → `undefined` 属性直达 `windows`）；magpie `/v1/models` 目录 `owned_by` 缺席时写成 `owned_by: undefined`；antigravity 去重 `picked.groupLabel = label || undefined`；`quota()` 白名单裸拷贝 `label`（magpie 展开的账号行没有 label）；`QUOTA_SOURCE` 符号键随 entry 到达 `readLinked`/`linkedStep`/`refresh` 客户端出口。源头逐处守卫之外，`quota()` 白名单对 `windows`/`extras`/`quotas` 统一过 `wireJson()` 兜底净化，三个客户端出口同套处理；新增 [test-wire-lossless.mjs](../tests/test-wire-lossless.mjs) 用与 typert `visitJsonValue` 同口径的谓词全量扫描 `quota()`/`readLinked()` 输出。
+- **切会话后不再把别的对话的渠道当成当前额度**（含账号行徽标同口径）：magpie 的 `concurrency` / `usage/requests` 是**整机全局**遥测（DSH 不发 `X-Magpie-Session`，网关不区分会话），而药丸是**按会话**回答「当前模型还剩多少」。原先把 `routeContext.live` 无条件排在命中顺序最前，于是切到另一个对话后，前一个对话正在跑的请求就成了本会话的「正在服务」——收窄到别的渠道，本会话模型归不出组时还会一起退回聚合总览。现在遥测**先归属再采信**：`req` 与本会话当前模型一致（去掉 `auto/` / `group/` 前缀后比较）才参与命中卡、池收窄与 `cardId` 回指；对不上时只作路由行展示，并标注「其他对话的请求」。`req` 缺席时无法证伪，维持原行为。同一修正同时落在 Go 原生面板（`goPanelServingCard`）。账号行「正在服务/上次命中」徽标也走同一归属过滤（原先直接读原始 `routeContext.cardId`，别的对话在跑请求时会给别人的卡挂徽标）。另外会话切换会换掉模型目录 store，此时不再沿用上一个会话的厂商（原先会把别的对话的订阅画到本会话药丸上，直到新会话目录就绪）。回归见 [test-pill-density.mjs](../tests/test-pill-density.mjs)（另一对话的在途/上次路由、本会话在途仍优先、`req` 缺席、模型归不出组退回总览）与 [test-client-behavior.mjs](../tests/test-client-behavior.mjs)（切会话不沿用旧厂商）、[test-go-panel.mjs](../tests/test-go-panel.mjs)。
 - **DSH Go 原生面板替代药丸**：`package.json` 新增 `dshGo` 清单（`panels.usage`，`session.tab` 放置），Host 经 `ctx.inject(["dshGo"], …)` 注册 `ctx.dshGo.panel`——额度显示在对话详情「插件」页签（Go 专属侧栏），聊天页输入区不再出现网页药丸：Client 检测到 `data-dsh-go-island` 标记就不注册 `conversation.input.right`（设置页与网页岛样式不受影响）。面板当前模型由 `model/selection` + `request/header` 会话事件按官方模型选择投影还原，provider id 经 `ROUTE_USAGE_ID` 归并（与 Client `ROUTE_PROVIDER_ALIAS` 同表，测试逐键比对），数据走 `service.quota()` 读共享缓存：60 秒轮询 + 模型切换事件即时重推 + 面板「刷新」动作穿透缓存。视图是声明式组件树（`lib/go-panel.js` 纯函数：模型/状态行、最紧窗高亮的窗口列表、余额/说明行、更新时间），全部数值走 `data` 绑定、数据模型 ≤32KiB、窗口/附加行各截断 8 条。回归见 `tests/test-go-panel.mjs`。
 - **复查并修复路由/分池同类边界**：在途路由不再继承上次请求的 `cardId`、账号、模型、状态与时间，Client 拒绝跨渠道旧 `cardId`；`auto/*` 与 `group/*` 都能按模型目录归组。Antigravity 去重键补入窗口周期，未知池保留独立身份；`leftText` 同步进入权威 `quotas`。中文表补齐实读数据中的 Chat requests、1 day 与 Token Plan。
 - **Magpie 按当前模型名前缀切渠道卡**：模型 id 的 `provider/` 前缀（`kimi/k3.1-pro`）直接匹配额度卡分组；`auto/*` 组模型回落 `/v1/models` 的 `owned_by`。切换模型立刻显示对应卡额度，不再卡在「上次路由」用尽的渠道上。
@@ -309,8 +332,8 @@ issue #8 的实现补了三个细节（都有外部实现作依据）：
 - **修复两处联动缺陷**：① 本机直取在 60 秒缓存命中时同步返回普通对象，Host 对它调用 `.catch` 会抛 `TypeError`，导致缓存期内的非强制刷新把正常额度显示成错误；现在直取与 EAC 读取统一经 Promise 包装。② 页面代取遇到 404（独立插件未安装）时不再提前终止，而是把 404 回传给 Host，由 Host 走 OFM / EAC 回落或回一条带原因的缺席条目。新增缓存命中回归（`tests/test-local-link.mjs`），并改写原先固化提前终止行为的 404 客户端断言（`tests/test-client-ofm.mjs`）。
 
 - **新增药丸统一沿用 Command Code 的展示逻辑**：多账号窗口在健康收起态只画余量条，不再常驻百分比；顶层没有窗口时也使用各账号窗口绘制。账号行改为与 Command Code 轮换池一致的单行样式，并显示各账号自己的余额或窗口余量。纯余额多账号优先显示提供方确认的当前账号，无法确认时显示账号数量，不再跨账号合计。OpenDesign 计费来源收进悬浮说明与弹层，不再与健康余量条并排占字；Antigravity 分池横幅恢复统一尺寸，仅保留不重复的结论。新增多账号窗口形态与收起药丸回归，弹层密度上限保持不变。
-- **积分包改为分组摘要**：新增 [credit-packages.js](lib/credit-packages.js)，本机直取 / EAC、OFM、WorkBuddy 与 Trae 联动共用同一套规则。已用尽和能确认已过期的包不再显示；有效包按「今天到期 / 3 天内到期 / 临时额度合计 / 周期或套餐 / 永久额度」聚合，保留紧急组的最早到期时间。不同账号、不同单位不混合；已有额度窗口的包只补紧急提醒。EAC 未公开的数字时间单位仍不猜测。回归见 `tests/test-credit-packages.mjs` 及各渠道既有测试。
-- **六个渠道改为「本机直取」**：Raccoon / Loomy / Qoder / Qoder 中国版 / ZCode / Trae 不再只靠 OFM 或兄弟插件的 HTTP 路由——新增 [local-usage.js](lib/local-usage.js)，直接从 DSH 凭据库按 `channel-pack/state.json` 的 `credentialRef` 取账号凭据，自己调各家只读额度接口（小浣熊 `points/v1/balance`、Loomy `points/records`、Qoder `sash/api/v2/me/usage`、ZCode `zcode-plan/billing/balance`），输出与 EAC 同形、复用 `normalizeEac` 归一化。实测本机拿到 Raccoon 两账号（6600 / 6900）、Loomy 两账号（25000 / 20000）、Qoder 100、Qoder 中国版 544。直取优先、失败静默回退原有来源链；**只读不刷新**（EAC 会轮换 refresh_token，抢刷新权会互踢），也不碰签到/领取类写接口。Trae 也纳入直取：从 `%APPDATA%/Trae CN/User/globalStorage/storage.json` 解出客户端凭据（AES-128-CBC 自封装，含自校验）后调 `web_user_ent_usage`，本机实测剩余 1754.28 credits（total 2600 − consumed 845.72），3 个积分包；CLI 那族 JWT 不再参与（它就是 401 / code 1001 的来源）。多账号读账号池 `$DSH_HOME/.trae-auth.<region>.json`（客户端 `storage.json` 只有当前登录），本机两个账号分别读到 621.85 与 1754.28 credits。Cline 与 LobsterAI 本机无任何凭据故未接；MiniMax 因短效 token 与自刷新抢权风险本轮不做。回归见 `tests/test-local-usage.mjs`。
+- **积分包改为分组摘要**：新增 [credit-packages.js](../lib/credit-packages.js)，本机直取 / EAC、OFM、WorkBuddy 与 Trae 联动共用同一套规则。已用尽和能确认已过期的包不再显示；有效包按「今天到期 / 3 天内到期 / 临时额度合计 / 周期或套餐 / 永久额度」聚合，保留紧急组的最早到期时间。不同账号、不同单位不混合；已有额度窗口的包只补紧急提醒。EAC 未公开的数字时间单位仍不猜测。回归见 `tests/test-credit-packages.mjs` 及各渠道既有测试。
+- **六个渠道改为「本机直取」**：Raccoon / Loomy / Qoder / Qoder 中国版 / ZCode / Trae 不再只靠 OFM 或兄弟插件的 HTTP 路由——新增 [local-usage.js](../lib/local-usage.js)，直接从 DSH 凭据库按 `channel-pack/state.json` 的 `credentialRef` 取账号凭据，自己调各家只读额度接口（小浣熊 `points/v1/balance`、Loomy `points/records`、Qoder `sash/api/v2/me/usage`、ZCode `zcode-plan/billing/balance`），输出与 EAC 同形、复用 `normalizeEac` 归一化。实测本机拿到 Raccoon 两账号（6600 / 6900）、Loomy 两账号（25000 / 20000）、Qoder 100、Qoder 中国版 544。直取优先、失败静默回退原有来源链；**只读不刷新**（EAC 会轮换 refresh_token，抢刷新权会互踢），也不碰签到/领取类写接口。Trae 也纳入直取：从 `%APPDATA%/Trae CN/User/globalStorage/storage.json` 解出客户端凭据（AES-128-CBC 自封装，含自校验）后调 `web_user_ent_usage`，本机实测剩余 1754.28 credits（total 2600 − consumed 845.72），3 个积分包；CLI 那族 JWT 不再参与（它就是 401 / code 1001 的来源）。多账号读账号池 `$DSH_HOME/.trae-auth.<region>.json`（客户端 `storage.json` 只有当前登录），本机两个账号分别读到 621.85 与 1754.28 credits。Cline 与 LobsterAI 本机无任何凭据故未接；MiniMax 因短效 token 与自刷新抢权风险本轮不做。回归见 `tests/test-local-usage.mjs`。
 - **兄弟插件联动改为「页面代取」**：DSH 的 `/plugins/*` 要求浏览器凭据（连接层 `admit()` 的 cookie 认证），宿主进程发的本机 HTTP 请求一律 403——上一版重装 DSH NEXT 后 Trae / WorkBuddy / 小浣熊 / Loomy 七条同时失败就是这个原因。现在由渲染进程带同源 cookie 取原始响应，宿主只跑归一化（新增 `subUsage/linkedStep` 两段式：宿主说缺哪个 URL → 页面 fetch → 回传 → 宿主算），业务逻辑仍只有一份。404 / 未登录 / 上游拒绝都回一条**带原因**的条目（不再让药丸静默消失），并继续走 OFM / EAC 回落；同一渠道 60 秒内复用上次成功读数（`force` 绕过，失败结果不缓存）。只有宿主根本不认识 `linkedStep` 时才退回旧路径，其余失败照实报出。回归见 `tests/test-linked-client-fetch.mjs`（缺席、回落、缓存、非法响应）与 `tests/test-client-ofm.mjs`（404 / 离线 / 5xx / 回退判定 / 轮数耗尽）。
 - **EAC 三渠道作为 Loomy / Raccoon / Qoder 中国版的回退来源**：接上 [dsh-eac-router](https://github.com/KouzakiUmi/dsh-eac-router) 的 `/api/eac-router` 只读 JSON-RPC（`credits.balances`）。三处读的是同一批账号，因此不新增并列条目：独立 `dsh-raccoon-connect` / `dsh-loomy-connect` 与 Our Free Model 都缺席时，药丸才回退到 EAC（Qoder 中国版经 `ofm-qodercn` 回退）。全量报告与工具查询不回落，保持既有请求量。EAC 未安装（404）或后端未就绪（`eac-router/not-ready`）都按「这轮没有这条通道」处理，不顶红卡片；上游真实失败照实报出。归一化只读余额与积分包，EAC 未公开的时间单位不做换算。新增隔离回归 `tests/test-eac-link.mjs`。
 - **修复 EAC 三渠道一律 401**：`/api/eac-router` 属宿主的鉴权面，原先用本机回环 HTTP 裸请求会缺会话凭据被网关回 401——Loomy / Raccoon / Qoder 中国版 三条同时失败正是同一个原因。改为与 Our Free Model 相同的 Connection 进程内 Fetch（自建 `owner` peer + `/api` 共享 handler），不再经过网络层鉴权。回归改为断言「走 `http://dsh.internal/api/eac-router` 且不得出现 `/api/eac-router` 的本机 HTTP 调用」，防止再退回裸请求。

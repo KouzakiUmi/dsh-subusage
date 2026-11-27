@@ -1,6 +1,6 @@
 # QuotaEntry：统一额度 wire 契约
 
-**单一事实源：[lib/quota-entry.js](../lib/quota-entry.js)**。所有 provider、联动项、聚合器的额度在 wire 上只有一种形状。provider/联动侧只做一件事：**把数据喂进来**——每个额度元素自己声明 `order`（排序）、`label`（名字）、`amount.unit`（单位）；状态推断、覆盖率、阈值告警、布局、i18n、弹层密度全部由 schema 管线与渲染端口统一负责。不再存在「每家一个协议」。
+**单一事实源：[lib/quota-entry.js](../lib/quota-entry.js)**。内置、联动、自定义连接和[插件上报](ingest-handoff.md)在宿主汇成统一条目。元素声明排序、标签和单位；各来源保留自己实际报告的覆盖率和读数，渲染统一处理告警与布局。
 
 ## 组合模型
 
@@ -37,7 +37,7 @@ QuotaEntry
 
 所有元素共享 `id`（稳定身份）、`order`（缺省取数组位序）、`label`、`pool`/`poolLabel`。枚举字段只按白名单收，认不出的丢或归安全值（`period`→period、`role`→balance/note），**不猜**；未知字段原样透传。
 
-**池语义**：`pool`/`poolLabel` 只声明「这个元素属于哪个池」。`poolScope:"independent"`（仅 window 元素）才声明**独立预算**——同池任一窗口耗尽即限制该池；没写 `poolScope` 的窗口共享约束，最差窗定整体状态。`groupLabel` 派生时 `pool` 兜底 `poolLabel`，**不**自动设 `poolScope`（OFM 把窗口类型名放 groupLabel，不是独立池；Antigravity 的组名才是真分池）。
+**池语义**：`pool`/`poolLabel` 标识归属；`poolScope:"independent"`（window 元素）表示独立预算。同池内按约束判断，跨池分别报告。`groupLabel` 不会自动升级为独立池；Antigravity 的组标识来自实际响应，组数不是常量。
 
 **单位与合计**：`amount.unitId` 是聚合键（`unitIdOf()` 归一：credit(s)/积分→credit、token(s)→token、usd/$→usd、cny/¥/元→cny、request(s)/次→request；未知单位小写原文，不猜）。账号总额 = `role:balance` 金额按 `unitId` 分组求和；`componentOf` 元素是总额的分项（Trae Work/通用积分 ⊆ available），跳过防重复计数；package/bonus/wallet/plan/monthly/spend 不进总额；多单位永不合并。
 

@@ -1,10 +1,10 @@
 # 开发与验证说明
 
-## 1. 目标与授权边界
+## 1. 开发基线
 
 目标 API 为 DeepSeek Harness `0.2.x` 公开扩展面，peer 范围为 `>=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.3.0-0`（逐 minor 分支各自带预发布标签，否则该档的预发布 Core 被静默排除）。范围声明与真实运行验证分别记录。本项目是树外 Host/Client bundle，`cordis.patch.yml` 插入 `subusage`，不修改核心、安装树或 ASAR；只依赖公开服务与核心包公开导出，不依赖桌面壳版本。
 
-工作区开发、安装启用、依赖安装/构建授权与重启是不同操作。修改并通过测试不代表运行环境已经生效。
+当前架构见 [架构总览](architecture.md)，提供方插件接口与可核对的版本见 [契约核查](plugin-contracts.md)。本地回归、源码核查、安装后联调分别记录。
 
 ### 文件入口
 
@@ -48,7 +48,7 @@ OFM 的十渠道联动、宿主公开方法要求、账号与单位语义见 [�
 
 独立插件经各自公开状态/额度 GET 读取，账号 ID 与区域不能混用；OFM 通过 `account.list` 获取索引、检查凭据引用非空存在性，再合并徽标额度。完整账号、手机号、token、引用名或 Raccoon `probeKey` 不进入远端结果。`authStatus` / `authExpiresAt` 只描述凭据元数据。客户端的账号选择只切换额度视图，提供方选号策略与登录生命周期保持由提供方管理。真实字段、兼容版本、内部副作用与回归入口统一维护在[联动说明](ofm.md)。
 
-DSH Go 的 `panel` 网页岛使用文档流展开详情，按内容撑高并由岛滚动。样式挂在 document head，属于 Client effect，卸载时移除。`node scripts/check-ofm-mobile.mjs` 读取兄弟 dsh-Go 的真实网页岛 CSS 做离线浏览器验收；结果与 Android 真机验证分别报告。
+DSH Go 的会话详情显示 `dshGo.panel("usage", …)` 原生面板；Go 网页岛跳过药丸注册。旧网页岛样式的离线回放和 Android 真机验证分别记录。
 
 纯余额多账号药丸按用户选择显示同单位总额度，`viewAccount` 仅控制弹层查看对象，药丸保持总览；不同单位分别求和，有失败/旧缓存/缺数字时显示已读小计与覆盖账号数。窗口型使用代表账号自己的窗口，百分比不相加。TRAE 页面与工具保持直取优先，不拼接不同 ID 域的账号。`normalizeEac` 的多账号 coverage 按逐账号成功与完整性归并。工具在展开账号时通过 Host 内的 `QUOTA_SOURCE` Symbol 按来源/渠道/accountId去重，公开 RPC/JSON 不输出该标记。实读脱敏数值回放见 `tests/test-linked-info.mjs`，320 / 1200px 深浅主题离线检查运行 `node scripts/check-linked-info.mjs`；密度表同时覆盖单账号、多账号与五账号平铺，单行 flex 账号按钮按真实排版计一行。
 
@@ -177,7 +177,7 @@ desktop 安装包只读取证为 0.13.0，旧失败分支仍存在。桌面窗�
 
 ## 3. RPC v0.2 契约
 
-Host 与 Client 均声明 `read / refresh / save` 及 MiMo / OpenDesign **各三个**登录方法（`startXxxLogin` / `getXxxLoginStatus` / `cancelXxxLogin`，共九个 invocation），测试机械比较 service、namespace、method、wire、codec typeSymbol。
+Host / Client 的 `subUsage/*` 共 18 个 Typert invocation：`read`、`refresh`、`save`、`readLinked`、`linkedStep`；MiMo 浏览器、MiMo 扫码、OpenDesign 三个登录通道各有开始、状态和取消；连接配置用 `getCatalog`、`detectInstance`、`exportRecipe`、`importRecipe`。完整清单由 [双端测试](../tests/test-contract.mjs)比对。跨插件读写额度通过同进程 [Cordis 上报服务](ingest-handoff.md)；Agent 工具单独注册。
 
 - `startMimoLogin(request)`：必需 `{ expectedRevision: string }`，codec 为 `dsh-subusage#MimoLoginStart`。
 - `getMimoLoginStatus()`：无参数。
@@ -185,7 +185,7 @@ Host 与 Client 均声明 `read / refresh / save` 及 MiMo / OpenDesign **各三
 - 登录返回 `dsh-subusage#SubUsageLoginState`，只公开任务状态、固定错误说明与可选公共结果，不包含 Cookie。
 
 - `read(request?)`：request 在 wire 层可选（两端描述符声明 `acceptsUndefined`，网关对缺参放行、service 直调无参同样兜底），缺参/undefined 等价于全量 `refresh({ providerIds: 全部, force: false })`（默认账户）；也可传入与 refresh 相同的查询（Client 初始读取会携带 `commandCodeAccount`）。
-- `refresh(request)`：`request = { providerIds: string[], force: boolean, commandCodeAccount?: string }`，只读取指定厂商；`commandCodeAccount` 仅对 commandcode 生效（空串/缺省 = 默认账户，额外账户 id 即其凭据引用名）；返回的 entries 由 Client 合并，配置了 `keyRefs` 的厂商在主条目上附带 `keyAccounts`（额外引用名各自的 state/keySource/windows，`ref` 为引用名，不参与药丸选择）。Client store 按 id 独立 in-flight 与 RPC：同一家仍去重，不同家互不等待；设置页刷新锁（`refreshing`）与保存锁（`busy`）分离，刷新不得禁用其它提供商开关。
+- `read` / `refresh` 共用查询字段 `providerIds`、`force`、可选 `commandCodeAccount` 和 `cachedOnly`。设置页首屏用 `cachedOnly: true` 读暂存，首屏之后可按条补拉；Host 后台扫描与重试不依赖设置页。Command Code 的默认账户与指定账户分开缓存；`keyAccounts` 是额外引用监控，不参与药丸选择。
 - `save(settings)`：provider patch，包含 `providerId`、`expectedRevision`、来源模式、凭据保持/替换/清除动作、`keyRefs`（额外监控的凭据引用名数组，最多 8 个）与可选 Z.ai 参数。凭据由提供方插件管理的厂商（`managedByPlugin`，现即 commandcode、xai-oauth、openai-codex 与 github-copilot）拒绝一切凭据补丁，只接受裸 patch；火山 provider 拒绝 `keyRefs`（AK/SK 是配对来源）。
 - 检测开关使用独立补丁 `{ expectedRevision, visibility: { providers?, hideWithoutApi?, antigravity?, ark?, arkTeam? } }`（`ark` / `arkTeam` 是火山方舟组级开关，保存时同步写入对应组内每条；`antigravity` 独立控制联动取数与药丸，默认开启），不得混入凭据字段；provider 开关增量合并，不重置未提交条目。
 - 公共 settings 只含 revision、非秘密参数、hasKeys、keyRefs、keyModes 与 xiaomi 的 `hasCookie`、`loginAt`、`expiresAt`。`keyRefs` 是每个 provider 的引用名数组（只有名字，不是秘密）；后两项是本地计时元数据（ISO 串或 null），不是秘密，也不参与凭据有效性判断。
@@ -222,9 +222,7 @@ Host 与 Client 均声明 `read / refresh / save` 及 MiMo / OpenDesign **各三
 
 `inherit` 模式的实际解析顺序见第 3 节 `credentialRefCandidates`；`manual` 模式只在使用保存的 Key（或完整 AK/SK）时生效，缺失时继续走继承链。清除手动 Key / AK/SK 时 `persist` 同步把 `keyMode` 重置为 `inherit`，避免删除后环境变量读不到。`keyRefs` 的额外引用名只用于额外额度（主条目 `keyAccounts`），它们以 `id@ref` 独立缓存、不参与药丸选择；清空列表恢复默认解析，managed 与火山 provider 拒绝该字段。
 
-当前仍兼容旧本机 JSON 存储，并非加密凭据库；不输出真实 Key/Cookie到日志、测试、截图或读取结果。新建目录 mode 为 0700、临时文件为 0600，重命名前再收紧临时文件权限；不 chmod 已有共享配置目录。Windows chmod 不等同于 ACL 管理，部署者仍需保证目录 ACL 仅授权合适用户。
-
-**暂不迁移到统一凭据库的决策（2026-10-12 审查定稿）**：审查时评估过把手动 Key/Cookie/AK-SK 从 `~/.dsh/dsh-subusage.json` 迁到 DSH 的 `CredentialKey` 记录空间（`credentials.modifyRecord("dsh-subusage/<id>", …)`，scope/id 有小写连字符语法约束、`api-key`/`grant` 两种 kind、带文件锁的读-改-写）。对照本机 Core 0.2.1-alpha.2 的 `dsh-credentials-local` 实现核实：它落盘也是 **0600 权限的明文 YAML，并不加密**（无系统钥匙串 / DPAPI），所以迁移**不能**实现「防本机进程读取」，真实收益只有统一凭据域、文件锁与「配置 JSON 不含秘密」。用户决定暂不迁移，等 Core 接入系统级加密存储后再一并跟进；在此之前 `docs/credentials.md` 已向用户如实说明明文 0600 的安全边界。真要迁时的工作面：Host 存储层重写（`defaultSettings`/`parseStored`/`persist` 与 MiMo 24h 计时元数据）、旧 JSON 一次性自动迁移、凭据服务不可用时的回退、helpers 测试桩与约 10 个相关测试调整。
+本插件配置的秘密使用 [secret-box.js](../lib/secret-box.js) 的 AES-256-GCM 封套，同目录 `.key` 文件保存密钥。旧明文兼容读取，下一次保存时升级；凭据服务与环境中的继承值不复制。文件原子写入，Windows 使用目录 ACL。字段和用户操作见 [凭据存储](credentials.md#手动填写的凭据存在哪)。
 
 Command Code 不提供本地凭据编辑：沿用提供方插件（@mars-sea/dsh-commandcode-provider）的凭据来源链——凭据服务 `COMMANDCODE_API_KEY` → 启动环境 → `~/.commandcode/auth.json` 兜底（解析对齐其 resolveAuthFileApiKey：`apiKey` / `commandcode` 字符串、`commandcode`/`command-code` 凭据记录的 key/access）。
 
@@ -236,7 +234,7 @@ MiMo 接口字段是不可信输入：余额只接受有限十进制字符串，
 
 原 webview 取数桥已移除；普通官网链接仍不自动同步外部浏览器 Cookie。自动登录由 Host 的隔离 Chrome 会话实现，延迟加载 `playwright-core`，不使用 persistent context，不读取日常浏览器配置，不下载浏览器。
 
-**dsh-go 适配**：`lib/host-env.js` 读 `/etc/dsh-app/runtime.json` 判定手机本机引擎（该文件存在即 dsh-go 桥接主机）。proot 内没有 Chrome，`chromium.launch()` 必然报 `Chromium distribution 'chrome' is not found`，且 `/system/bin/am` 因 uid 不符不可用，所以这类主机上 `CookieLogin.start()` 直接抛 `subusage/no-browser`（不排队、不启动、不留假任务）。公开结果带 `host: { mobile, browserLogin }`，Client 据此整组替换登录控件；旧 Host 无该字段时 Client 按「能自动登录」处理，两端可独立升级。原生胶囊与面板（`lib/dsh-go.js`、`package.json` 的 `dshGo` 贡献声明）已移除：它只能打开官方登录网页，与设置页里已有的手动 Cookie 导入重复，且无法替用户完成登录。桌面主机行为不变，由 `tests/test-dsh-go.mjs` 的桌面分支守住。
+**DSH Go 登录与展示**：手机本机引擎通过 `host: { mobile, browserLogin }` 告知 Client 不提供浏览器登录；MiMo 仍可扫码，OpenDesign 可手动粘贴 Cookie。当前模型额度由 `dshGo` 的 `usage` 原生面板显示，与登录控件分开。
 
 登录任务单实例、五分钟期限，start 立即返回，Client 每两秒串行查询活跃任务，卸载只停止 UI 轮询；Host 处理取消、关闭窗口、迟到启动、超时和 dispose。只提取官方 API 域/路径匹配的两个必需 Cookie，验证成功后同步检查 MiMo 材料冲突并保存。其他厂商修改可合并；认证/网络失败不提前持久化。有效登录但只有余额时保留 partial/额度未知语义。
 
@@ -312,7 +310,7 @@ node --input-type=module -e "import {chromium} from 'playwright-core'; import {r
 node scripts/render-market-screenshots.mjs
 ```
 
-它复用真实 Client 组件与虚构数据，只决定「取哪一段、裁到哪、用几倍像素密度」，直接写入 `assets/screenshots/`。两点需要注意：弹层在真实外壳里是相对药丸按钮的绝对定位，脚本先按 [render-readme-assets.mjs](render-readme-assets.mjs) 的既有做法转为静态定位，页面高度才等于内容高度；`page.screenshot({ clip })` 超出视口会被 Chrome 静默截断，所以裁剪区的视口高度必须一次装得下（脚本里有断言）。改完清单后同步 [截图声明](../screenshots.json) 与 README。市场只需 GitHub 仓库图片，当前 npm 白名单不包含这些 PNG。
+它复用真实 Client 组件与虚构数据，只决定「取哪一段、裁到哪、用几倍像素密度」，直接写入 `assets/screenshots/`。两点需要注意：弹层在真实外壳里是相对药丸按钮的绝对定位，脚本先按 [render-readme-assets.mjs](../scripts/render-readme-assets.mjs) 的既有做法转为静态定位，页面高度才等于内容高度；`page.screenshot({ clip })` 超出视口会被 Chrome 静默截断，所以裁剪区的视口高度必须一次装得下（脚本里有断言）。改完清单后同步 [截图声明](../screenshots.json) 与 README。市场只需 GitHub 仓库图片，当前 npm 白名单不包含这些 PNG。
 
 ### 0.10.11 验证记录：药丸与弹层视觉重设计（离线）
 

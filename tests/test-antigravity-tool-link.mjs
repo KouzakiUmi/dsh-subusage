@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { loadHostModule } from "./helpers.mjs";
 
-const { SubUsageService, normalizeAntigravityAuthView } = await loadHostModule();
+const { apply, SubUsageService, normalizeAntigravityAuthView, normalizeZai } = await loadHostModule();
 
 // ── [1] 快照映射：剩余比例 → 已用百分比；两组各自带 groupLabel ──────────────
 {
@@ -37,6 +37,18 @@ const { SubUsageService, normalizeAntigravityAuthView } = await loadHostModule()
 	assert.deepEqual(entry.extras, []);
 }
 
+// 0.6.0 新增的组与已有组独立，周限额仅连坐同组短窗。
+{
+	const groups = ["gemini", "non-gemini", "gemini-4", "gemini-argon"].map(group => ({ group, windows: [
+		{ window: "5h", remainingFraction: 0.5 }, { window: "weekly", remainingFraction: group === "gemini-4" ? 0 : 0.75 }
+	] }));
+	const entry = normalizeAntigravityAuthView({ state: "available", groups });
+	assert.equal(new Set(entry.quotas.map(row => row.pool)).size, 4);
+	assert.ok(entry.quotas.every(row => row.poolScope === "independent"));
+	assert.deepEqual(entry.windows.filter(row => row.status === "rate-limited").map(row => row.groupLabel), ["gemini-4", "gemini-4"]);
+	assert.equal(entry.windows.find(row => row.groupLabel === "gemini-4" && row.kind === "5h").cascade, true);
+}
+
 // ── [2] 状态机：未登录 → null；其余失败态 → 可读 error 条目 ──────────────────
 {
 	assert.equal(normalizeAntigravityAuthView({ state: "unauthenticated" }), null, "未登录不是故障，交给上层按点名/静默处理");
@@ -57,15 +69,42 @@ const { SubUsageService, normalizeAntigravityAuthView } = await loadHostModule()
 	assert.equal(entry.state, "ok");
 	assert.equal(entry.coverage, "partial");
 	assert.deepEqual(entry.windows, []);
-	// 脏字段不造窗口：比例 / 窗口档位 / 重置时间任一缺失都跳过。
+	// 脏字段不造窗口：比例或窗口档位无效时跳过；重置时间可缺省。
 	const sparse = normalizeAntigravityAuthView({ state: "available", groups: [
 		{ group: "gemini", windows: [
 			{ window: "5h", resetTime: "2026-11-01T02:00:00Z" },
 			{ window: "monthly", remainingFraction: 0.5, resetTime: "2026-12-01T00:00:00Z" },
-			{ window: "weekly", remainingFraction: 1.2, resetTime: "2026-11-06T00:00:00Z" }
+			{ window: "weekly", remainingFraction: 1.2, resetTime: "2026-11-06T00:00:00Z" },
+			{ window: "constructor", remainingFraction: 0.7 },
+			{ window: "5h", remainingFraction: 0.5 }
 		] }
 	] });
-	assert.deepEqual(sparse.windows, []);
+	assert.deepEqual(sparse.windows.map(w => w.kind), ["5h"]);
+	assert.equal(sparse.coverage, "partial", "成功读到有效窗口不掩盖其余坏窗口");
+}
+
+// 工具输出：月度调用-only 读数不被命名/无参过滤丢掉，额度覆盖与联动错误照实报告。
+{
+	const monthly = normalizeZai({ data: { limits: [{ type: "TIME_LIMIT", percentage: 12, currentValue: 12, usage: 100 }] } });
+	const providers = [
+		{ providerId: "zai-cn", label: "Z.ai General", state: "ok", ...monthly },
+		{ providerId: "commandcode", label: "Command Code", state: "ok", coverage: "partial", extras: [{ kind: "balance", value: "2 credits" }] },
+		{ providerId: "antigravity", label: "Antigravity", state: "error", error: "Antigravity 配额查询超时，请稍后重试" }
+	];
+	let tool;
+	const service = { quota: async ({ providerIds }) => ({ providers: providerIds?.length ? providers.filter(row => providerIds.includes(row.providerId)) : providers }) };
+	apply({ plugin() {}, logger: { info() {} }, inject(keys, callback) {
+		if (keys.includes("tools")) callback({ tools: { register(value) { tool = value; } }, get: () => service });
+	} });
+	const all = await tool.execute({});
+	assert.ok(all.providers.some(row => row.providerId === "zai-cn"));
+	const rendered = tool.output.render({}, all)[0].text;
+	assert.match(rendered, /Z\.ai General \[ok\]：月度调用 12\/100（12%）/);
+	assert.match(rendered, /Command Code.*2 credits；部分额度数据/);
+	const args = { providers: ["antigravity"] };
+	const error = tool.output.render(args, await tool.execute(args))[0].text;
+	assert.match(error, /查询超时/);
+	assert.doesNotMatch(error, /未登录|未运行|登录或启用/);
 }
 
 // ── [4] 服务接线：antigravityAuth 通道（agyQuota 缺席）──────────────────────

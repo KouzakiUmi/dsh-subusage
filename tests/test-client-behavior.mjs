@@ -55,6 +55,72 @@ class Hooks {
   render(component, props, effects = true) { harness = this; this.index = 0; const tree = component(props); if (effects) for (const fn of this.queue.splice(0)) fn(); return tree; }
   unmount() { for (const slot of this.slots) slot?.cleanup?.(); }
 }
+// 同一联动条目的两条路由以及设置页默认来源各读各的，不能共享请求或迟到响应。
+{
+  const requests = [], linkedId = "raccoon";
+  const sources = { disabled: {}, bindings: { routeA: { linkedId, source: "local" }, routeB: { linkedId, source: "ofm" } } };
+  const store = api.createUsageStore((method, query) => {
+    if (method === "read") return { ...result([]), settings: { ...publicSettings(), sources } };
+    if (method === "save") return { ...result([], "2"), settings: { ...publicSettings("2"), sources: query.sources } };
+    assert.equal(method, "linkedStep");
+    const gate = deferred(); requests.push({ query, gate }); return gate.promise;
+  });
+  await store.readSettings();
+  const hooks = new Hooks();
+  const el = hooks.render(api.SubusagePillEntry, { store: { subscribe: () => () => {}, getSnapshot: () => ({ status: "ready", current: { provider: "routeB", model: "m" } }) }, usageStore: store, readEntry: store.reader, t, getLocale: () => "zh" });
+  assert.equal(el.props.providerId, linkedId, "来源绑定可选择原本未识别的路由目标");
+  const readerA = store.reader(linkedId, true, "routeA"), readerB = el.props.readEntry, defaultReader = store.reader(linkedId);
+  const stopA = readerA.activate(), stopB = readerB.activate();
+  const readA = readerA(), readB = readerB(), readDefault = defaultReader();
+  await flush();
+  assert.deepEqual(requests.map(({ query }) => query.routeId), ["routeA", "routeB", undefined]);
+  const forceB = readerB(true); await flush();
+  assert.equal(requests[3].query.force, true, "手动强刷不搭同路由自动请求的便车");
+  assert.equal(requests[3].query.routeId, "routeB");
+  requests[3].gate.resolve({ entry: entry(linkedId, 40) });
+  assert.equal((await forceB).windows[0].percent, 40);
+  requests[0].gate.resolve({ entry: entry(linkedId, 10) });
+  requests[2].gate.resolve({ entry: entry(linkedId, 30) });
+  requests[1].gate.resolve({ entry: entry(linkedId, 20) });
+  assert.equal((await readA).windows[0].percent, 10);
+  assert.equal((await readDefault).windows[0].percent, 30);
+  assert.equal((await readB).windows[0].percent, 40, "迟到的自动请求不能覆盖强刷");
+  assert.equal(store.getSnapshot().entries.find(e => e.providerId === linkedId).windows[0].percent, 30);
+  [...intervals.values()].at(-1).fn(); await flush();
+  assert.deepEqual(requests.slice(4).map(({ query }) => query.routeId), ["routeA", "routeB"]);
+  let observed;
+  const off = readerB.subscribe(next => { observed = next; });
+  await store.save({ sources: { ...sources, bindings: { ...sources.bindings, routeB: { linkedId, source: "plugin" } } } }); await flush();
+  assert.equal(observed.state, "loading", "来源变更不能继续显示旧来源额度");
+  assert.deepEqual(requests.slice(6).map(({ query }) => query.routeId), ["routeB"], "仅变更的来源开始新查询，同路由之外的在途读取复用");
+  requests[5].gate.resolve({ entry: entry(linkedId, 25) }); await flush();
+  assert.equal(observed.state, "loading", "绑定变更前的在途结果不能复活");
+  requests[6].gate.resolve({ entry: entry(linkedId, 70) }); await flush();
+  assert.equal(observed.windows[0].percent, 70);
+  requests[4].gate.resolve({ absent: true });
+  off(); stopA(); stopB(); hooks.unmount(); store.dispose();
+}
+
+// 一个补丁同时修改实例与展示配置时，仍必须丢掉旧身份的读数和在途请求。
+{
+  const id = "custom-quota", older = deferred();
+  let reads = 0;
+  const settingsFor = revision => ({ ...publicSettings(revision), instances: [{ id, enabled: true }] });
+  const store = api.createUsageStore((method) => {
+    if (method === "read") return { ...result([entry(id)]), settings: settingsFor("1") };
+    if (method === "refresh") return reads++ ? older.promise : { ...result([entry(id)]), settings: settingsFor("1") };
+    return { ...result([], "2"), settings: settingsFor("2") };
+  });
+  await store.readSettings();
+  await store.reader(id, true)();
+  const pending = store.reader(id, true)(); await flush();
+  const saved = await store.save({ instance: { id }, displayProfile: { targetId: id, profile: {} } });
+  assert.equal(saved.entries.find(e => e.providerId === id).state, "loading");
+  older.resolve({ ...result([entry(id, 80)]), settings: settingsFor("1") });
+  assert.equal((await pending).state, "loading", "旧身份响应不能盖回新实例");
+  store.dispose();
+}
+
 // 初始化 read 仅一次；多个药丸只请求当前 provider 并共享同一 inflight。
 const calls = [];
 let gate = deferred();
@@ -196,6 +262,7 @@ await failedStore.readAll(); await assert.rejects(failedStore.refresh([ids[0]]))
 assert.equal(api.canShowUsage(failedStore.getSnapshot().entries[0]), false);
 const cached = entry(ids[0], 25, { state: "error", freshness: "stale", retainPrevious: true });
 assert.equal(api.canShowUsage(cached), true);
+assert.equal(api.canShowUsage({ ...cached, state: "ok", retainPrevious: false }), true, "已成功的旧快照不需要失败回落标记");
 for (const changed of [{ retainPrevious: false }, { freshness: "unknown" }, { state: "no-key" }, { state: "no-cookie" }, { errorCode: "subusage/auth" }]) assert.equal(api.canShowUsage({ ...cached, ...changed }), false);
 failedStore.dispose();
 // readAll 首屏画完后自愈：暂存里 state=error 的条目补一次**非强制** refresh（穿透退避会破坏 backoff），
@@ -243,6 +310,47 @@ document.visibilityState = "visible"; for (const fn of events.get("visibilitycha
 deactivateA(); assert.equal(intervals.size, 1); deactivateB(); assert.equal(intervals.size, 0); assert.equal(events.get("visibilitychange").size, 0); periodic.dispose();
 // 首次失败不再loading；药丸外部props兼容；cleanup释放共享reader。
 const pillProps = { providerId: ids[0], label: "Z.ai", t, getLocale: () => "zh", readEntry: async () => { throw new Error("fetch failed"); } };
+{
+  const base = entry("magpie", 20, { label: "Magpie", routeContext: {}, linkedAccounts: [
+    { ...entry("magpie", 15), accountId: "a", account: "A", providerGroup: "antigravity", windows: [{ kind: "week", percent: 15, groupLabel: "gemini", detail: { note: "Gemini Window" } }, { kind: "week", percent: 90, groupLabel: "Gemini 4", detail: { note: "Gemini Four Window" } }] },
+    { ...entry("magpie", 30), accountId: "b", account: "B", providerGroup: "other", windows: [{ kind: "week", percent: 30, groupLabel: "gemini", detail: { note: "Other Gemini Window" } }, { kind: "week", percent: 65, groupLabel: "non-gemini", detail: { note: "Manually Viewed Claude Window" } }], extras: [{ kind: "balance", value: "15 credits" }, { kind: "spend", value: "20 CNY" }] }
+  ] });
+  const requests = [], hooks = new Hooks(), props = { ...pillProps, providerId: "magpie", modelId: "antigravity/gemini-3", readEntry: force => {
+    const gate = deferred(); requests.push({ force, gate }); return gate.promise;
+  } };
+  let el = hooks.render(api.UsagePill, props);
+  const toggle = tree => nodes(tree).find(n => n.props["aria-haspopup"] === "dialog");
+  let triggerFocus = 0, dialogFocus = 0;
+  el.props.ref.current = { contains: () => true };
+  toggle(el).props.ref.current = { focus: () => triggerFocus++ };
+  toggle(el).props.onClick();
+  el = hooks.render(api.UsagePill, props, false);
+  nodes(el).find(n => n.props.role === "dialog").props.ref.current = { focus: () => dialogFocus++ };
+  el = hooks.render(api.UsagePill, props);
+  assert.equal(dialogFocus, 1, "打开后把焦点移入非模态弹层");
+  const refresh = nodes(el).find(n => n.type === "button" && n.children.includes(t("refresh")));
+  assert.equal(refresh.props.disabled, false, "自动刷新中可点击手动刷新");
+  refresh.props.onClick();
+  assert.deepEqual(requests.map(r => r.force), [false, true]);
+  requests[1].gate.resolve(base); await flush();
+  requests[0].gate.resolve({ ...base, label: "Outdated auto result" }); await flush();
+  el = hooks.render(api.UsagePill, props);
+  assert(!textOf(el).includes("Outdated auto result"));
+  assert(!textOf(el).includes("Gemini Four Window"), "Gemini 3 不命中 Gemini 4 的专用池");
+  const ambiguous = hooks.render(api.UsagePill, { ...props, modelId: "antigravity/gemini-4" });
+  assert(textOf(ambiguous).includes("Gemini Window") && textOf(ambiguous).includes("Gemini Four Window"), "两个池都匹配时保留整卡，不猜上游归属");
+  const oldSummary = toggle(el).props["aria-label"];
+  nodes(el).find(n => n.type === "button" && n.props["aria-label"]?.startsWith("B ·")).props.onClick();
+  el = hooks.render(api.UsagePill, props);
+  assert(textOf(el).includes("Manually Viewed Claude Window"), "手选账号看全池，不按服务模型收窄");
+  assert(textOf(el).includes("20 CNY"), "手选不可吞掉花费");
+  assert.equal(toggle(el).props["aria-label"], oldSummary, "手选详情不改收起药丸");
+  let prevented = false;
+  for (const fn of events.get("keydown")) fn({ key: "Escape", target: {}, preventDefault: () => { prevented = true; } });
+  assert(prevented && triggerFocus === 1, "Esc 关闭并恢复触发器焦点");
+  assert(!nodes(hooks.render(api.UsagePill, props)).some(n => n.props.role === "dialog"));
+  hooks.unmount();
+}
 const ph = new Hooks(); ph.render(api.UsagePill, pillProps); await flush();
 let tree = ph.render(api.UsagePill, pillProps);
 assert.ok(textOf(tree).includes("拉取失败")); assert.ok(!textOf(tree).includes("正在读取用量")); ph.unmount();
@@ -505,7 +613,7 @@ nodes(tree).find(n => n.props.id === "subusage-section-subscriptions").props.onC
  nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Kimi").props.onClick(); tree = ch.render(api.SubusageSection, cp);
 const kimiEditor = nodes(tree).find(n => n.props.id === `subusage-credentials-${ids[2]}`);
 assert.equal(kimiEditor.props.hidden, false); assert(nodes(kimiEditor).some(n => n.props.role === "group"), "自动隐藏项可在本行编辑凭据");
-assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"] === "Z.ai Coding（中国）"), "展开隐藏厂商不会切换上方用量");
+assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props.id === "subusage-provider-panel" && n.props["aria-labelledby"] === "subusage-tab-zai-coding-cn"), "展开隐藏厂商不会切换上方用量");
 assert(!nodes(nodes(tree).find(n => n.props.role === "tabpanel")).some(n => n.type === "fieldset" || n.type === "input"), "上方详情只展示用量");
 assert(nodes(tree).some(n => n.type === "button" && n.children.includes("收起") && n.props["aria-expanded"] === true), "当前配置入口明确显示展开状态");
 assert(!nodes(tree).some(n => n.type === "summary" && n.props["aria-label"] === "连接与凭据 Kimi"), "凭据区不再使用点击行为含混的嵌套 Summary");
@@ -549,7 +657,7 @@ assert.equal(nodes(kimiEditor).find(n => n.type === "fieldset").props.disabled, 
 const editedKey = nodes(tree).find(n => n.type === "input" && n.props.type === "password"); editedKey.props.onChange({ target: { value: "fixture-inline-draft" } }); tree = ch.render(api.SubusageSection, cp);
 // 切到 MiniMax CN（国际版现为默认关闭，不可见）。
 nodes(tree).find(n => n.props.id === "subusage-tab-minimax-cn").props.onClick(); tree = ch.render(api.SubusageSection, cp);
-assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props["aria-label"] === "MiniMax（中国）"), "用量切换与编辑厂商独立");
+assert(nodes(tree).some(n => n.props.role === "tabpanel" && n.props.id === "subusage-provider-panel" && n.props["aria-labelledby"] === "subusage-tab-minimax-cn"), "用量切换与编辑厂商独立");
 assert.equal(nodes(tree).find(n => n.type === "input" && n.props.type === "password").props.value, "fixture-inline-draft", "切换用量不丢失行内草稿");
 assert(nodes(tree).some(n => n.props.id === `subusage-credentials-${ids[1]}`), "当前编辑器保持展开");
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 MiniMax").props.onClick(); tree = ch.render(api.SubusageSection, cp);
@@ -561,10 +669,10 @@ const emptyControls = new Hooks(); tree = emptyControls.render(api.SubusageSecti
 // 空状态仍列出全部管理开关：模型厂分组 22 张卡片加 Ark Team 开关；Antigravity 在「客户端代理」分组。
 assert.equal(nodes(tree).filter(n => n.props.role === "tab" && String(n.props.id || "").startsWith("subusage-tab-")).length, 0); assert.equal(nodes(tree).filter(n => n.props.role === "switch").length, 26);
 assert(nodes(tree).some(n => n.props.id === "subusage-section-subscriptions"), "空状态保留订阅分组入口");
-assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.role === "tabpanel"));
+assert(textOf(tree).includes("没有可显示的提供商")); assert(!nodes(tree).some(n => n.props.id === "subusage-provider-panel"));
 nodes(tree).find(n => n.props["aria-label"] === "连接与凭据 Z.ai").props.onClick(); tree = emptyControls.render(api.SubusageSection, cp);
 assert(nodes(tree).some(n => n.props.id === `subusage-credentials-${ids[0]}`), "全部关闭仍能行内配置");
-assert(!nodes(tree).some(n => n.props.role === "tabpanel"), "关闭项不会被配置操作强制带回用量区"); emptyControls.unmount();
+assert(!nodes(tree).some(n => n.props.id === "subusage-provider-panel"), "关闭项不会被配置操作强制带回用量区"); emptyControls.unmount();
 // 共享 store：关闭时暂停轮询请求和药丸；隐藏开关立即影响现有订阅，不能让迟到旧响应回滚。
 let sharedControl = withPrefs(result(ids.map(id => entry(id, 20, { apiDetected: id !== ids[1], ...(id === ids[1] ? { state: "no-key" } : {}) }))));
 const storeCalls = [], oldControlGate = deferred(); let blockRefresh = false;

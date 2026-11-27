@@ -262,9 +262,9 @@ assert.ok(clientApply(true).includes("settings.section"), "设置页在岛内照
 	const fakeService = {
 		calls: [],
 		load() { return { visibility: { manualMatching: false, providerMappings: {} } }; },
-		async quota(request) {
-			this.calls.push(request);
-			return { providers: [{ providerId: "kimi-coding", state: "ok", updatedAt: "2026-11-06T10:00:00+08:00", windows: [{ kind: "5h", percent: 40 }], extras: [] }] };
+		async panelEntry(id, routeId, settings, force) {
+			this.calls.push({id, routeId, force});
+			return { providerId: id, state: "ok", updatedAt: "2026-11-06T10:00:00+08:00", windows: [{ kind: "5h", percent: 40 }], extras: [] };
 		}
 	};
 	const fakeSession = {
@@ -320,7 +320,8 @@ assert.ok(clientApply(true).includes("settings.section"), "设置页在岛内照
 	listeners["session/event"].forEach(cb => cb(fakeSession, { type: "model/selection", data: {} }));
 	for (let i = 0; i < 20 && fakeService.calls.length < 3; i++) await new Promise(r => setImmediate(r));
 	assert.equal(fakeService.calls.length, 3);
-	assert.equal(fakeService.calls[2].providerIds[0], "antigravity", "切换模型后按新路由取数");
+	assert.equal(fakeService.calls[2].id, "antigravity", "切换模型后按新路由取数");
+	assert.equal(fakeService.calls[2].routeId, "google-antigravity");
 	const before = fakeService.calls.length;
 	listeners["session/event"].forEach(cb => cb({ id: "s9" }, { type: "model/selection", data: {} }));
 	for (let i = 0; i < 10; i++) await new Promise(r => setImmediate(r));
@@ -333,3 +334,26 @@ assert.ok(clientApply(true).includes("settings.section"), "设置页在岛内照
 	assert.equal(view.type, "stack");
 }
 console.log("PASS dsh-go 面板：路由归并、模型还原、视图模型、客户端门控、Host 接线与数据馈送");
+
+{
+	const service = new host.SubUsageService({ get() {} }, { snapshotPath: null, ingestPath: null });
+	const cards = {
+		state: "ok", freshness: "stale", coverage: "partial", lastSuccessAt: "2026-11-01T01:00:00Z",
+		routeContext: { provider: "second", model: "second/model", live: true },
+		linkedAccounts: [
+			{ providerGroup: "first", windows: [{ kind: "week", percent: 90, status: "ok" }] },
+			{ providerGroup: "second", windows: [{ kind: "week", percent: 10, status: "ok" }] }
+		]
+	};
+	service.linkedProvider = async (id, force, explicit, quiet, routeId) => {
+		assert.equal(id, "magpie"); assert.equal(routeId, "custom-route"); return cards;
+	};
+	try {
+		const entry = await service.panelEntry("magpie", "custom-route", {}, false);
+		const data = goPanelData({ name: "Magpie", model: "second/model" }, entry, { locale: "zh" });
+		assert.equal(data.headline, `${words.left} 90%`);
+		assert.match(data.updated, /旧数据/);
+		assert.match(data.note, /部分额度数据/);
+		assert.equal(await service.panelEntry("unknown-fixture", "unknown-fixture", {}, true), undefined);
+	} finally { service.dispose(); }
+}

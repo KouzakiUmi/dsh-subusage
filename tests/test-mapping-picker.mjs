@@ -9,7 +9,7 @@ const code = readFileSync(fileURLToPath(new URL("../lib/client.js", import.meta.
 const loadClient = reactStub => {
 	let spec;
 	const ctx = { window: { __ModuleLoader__: { load: value => { spec = value; } } }, console };
-	vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { pointerJoin, MAPPING_POINTER_FIELDS, InstanceEditor, emptyInstanceDraft }; exports.apply = apply;"), ctx);
+	vm.runInNewContext(code.replace("exports.apply = apply;", "exports.__test = { pointerJoin, MAPPING_POINTER_FIELDS, InstanceEditor, ConnectionsBlock, RouteBindingsBlock, emptyInstanceDraft }; exports.apply = apply;"), ctx);
 	return { factory: require => spec.factory(require), exports: spec };
 };
 const walk = (node, visit) => {
@@ -116,5 +116,48 @@ const findButton = (root, label) => {
 	assert.equal(saved.instance.mapping.balancePointer, "/data/total_balance");
 	assert.equal(saved.instance.mapping.percentPointer, "/data/percent");
 	assert.equal(saved.displayProfile, undefined);
+
+	// 已保存的锁是规范化对象；清空后不把旧对象重新带入探测或保存。
+	states.length = 0;
+	props.inst = { id: "my-relay", adapterId: "custom-http", baseUrl: "https://relay.example.com", hasSecret: true,
+		mapping: { balancePointer: "/data/total_balance", mappingLock: { lockedFields: ["balancePointer"] } } };
+	props.profile = { primaryMetric: "element:balance" };
+	props.call = async (_method, args) => {
+		assert.equal(args.mappingLock.length, 0);
+		assert.equal(args.currentMapping.mappingLock, undefined);
+		assert.equal(args.secretAction, "clear");
+		assert.equal(args.secret, undefined);
+		return { status: "auth-required", matched: false, reason: "fixture authentication required" };
+	};
+	rerender();
+	findButton(current, "映射编辑器").props.onClick();
+	assert.ok(findButton(current, "🔒"), "已保存锁定在编辑器中可见");
+	findButton(current, "🔒").props.onClick();
+	findInput(current, "element:balance").props.onChange({ target: { value: "" } });
+	findButton(current, "清除秘密").props.onClick();
+	await findButton(current, "测试连接").props.onClick();
+	assert.match(flattenText(current), /需要鉴权/);
+	assert.match(flattenText(current), /fixture authentication required/);
+	assert.equal(findButton(current, "采用建议映射"), null);
+	await findButton(current, "保存连接").props.onClick();
+	assert.equal(saved.instance.mapping.mappingLock, undefined);
+	assert.equal(Object.keys(saved.displayProfile.profile).length, 0, "通过空对象清除最后一个显示字段");
+	assert.equal(saved.secretUpdate.action, "clear");
+
+	const { RouteBindingsBlock } = factory(() => react).__test;
+	states.length = 0;
+	let saveBindingSuccess = false;
+	render = () => RouteBindingsBlock({ result: { settings: { instances: [props.inst] }, availableProviders: ["mock-route"] }, text: cn => cn, busy: false, getLocale: () => "zh-CN", saveRouteBindings: async () => saveBindingSuccess });
+	rerender();
+	const select = label => { let hit; walk(current, node => { if (node.type === "select" && node.props["aria-label"] === label) hit = node; }); return hit; };
+	select("选择路由").props.onChange({ target: { value: "mock-route" } });
+	select("选择目标").props.onChange({ target: { value: "my-relay" } });
+	await findButton(current, "绑定").props.onClick();
+	assert.equal(select("选择路由").props.value, "mock-route");
+	assert.equal(select("选择目标").props.value, "my-relay");
+	saveBindingSuccess = true;
+	await findButton(current, "绑定").props.onClick();
+	assert.equal(select("选择路由").props.value, "");
+	assert.equal(select("选择目标").props.value, "");
 }
 console.log("PASS 点选映射器：指针编码、探测树点选、语义写入与 keepProbe 全流程");

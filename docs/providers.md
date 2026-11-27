@@ -93,8 +93,8 @@ provider id 必须与注册这些路由的插件**逐字一致**（arkcli 官方
 订阅额度走 ChatGPT 后端的私有接口（`GET https://chatgpt.com/backend-api/wham/usage`），凭据是 **ChatGPT OAuth 登录**，不是 `OPENAI_API_KEY`。0.13.0 增加 [dsh-codex-subscription](https://github.com/WSL043/dsh-codex-subscription) 的独立 OAuth 只读兼容：
 
 - 优先只读 DSH 凭据服务中的 `codex-subscription/accounts` grant（version 1），取 `activeId` 对应账号；该记录存在但损坏时明确报错，不回退到别的账号。
-- 没有活动账号记录时依次读取 `OPENAI_CODEX_SUBSCRIPTION_OAUTH`、`WSL043_OPENAI_CODEX_OAUTH` 单账号引用；再回落到 CLI 登录文件。独立插件无需安装或登录 CLI。
-- 不写入、迁移或刷新另一插件的 OAuth，不在界面或用量结果中暴露 token。过期 / 401 仍需由凭据所属插件完成续约；仅凭只读兼容不能承诺其完整刷新生命周期。
+- 没有活动账号记录时依次读取 `OPENAI_CODEX_SUBSCRIPTION_OAUTH`、`WSL043_OPENAI_CODEX_OAUTH` 单账号引用；未配置再读 Codex Connect 的 `.openai-codex-auth.json`，取 v2 的 `activeAccountId` 或 v1 的单账号。Connect 文件缺席才回退 CLI。
+- 不写入、迁移或刷新另一插件的 OAuth；登录和续期由凭据所属插件处理。
 
 - 登录文件：`$CODEX_HOME/auth.json`，默认 `~/.codex/auth.json`。
 - 必须 `auth_mode` 为 `chatgpt`。若是 API Key 模式，插件按「未配置」处理并在界面上说明。
@@ -232,7 +232,7 @@ Cookie 落在通用的手动 Key 槽，并把凭据模式切成 manual，不额�
 `antigravity` **不是本插件登记的 provider id**，不占普通提供商设置卡片；管理区「客户端代理」分组里的独立开关默认开启，关闭后不查询也不显示药丸。本机只要运行下面**两个提供方插件中的任一个**，本插件就读它算好的结果并折算成统一的条目形状，并入 `quota()` 视图与 `subusage_quota` 报告（同一份 Google Antigravity 配额只出一条；两者都在场时优先信息更全的 `agyQuota`）：
 
 1. [`dsh-antigravity-acp`](https://github.com/KouzakiUmi/dsh-antigravity-acp)（包名 `dsh-bundle-antigravity-host`）注册的 Cordis 服务 `agyQuota`，方法 `read({ force })`，快照为 `QuotaSnapshot`。
-2. [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity)（本机实际安装的版本 0.5.x，底层 `@cortexkit/antigravity-auth-core`）`ctx.provide("antigravityAuth", AntigravityAuthService)` 暴露的认证服务，方法 `usage(signal?, force?)`，返回 `QuotaStatusView`。
+2. [`dsh-tool-antigravity`](https://github.com/Jaylor-Wang/dsh-tool-antigravity) 暴露的 `antigravityAuth` 服务，方法 `usage(signal?, force?)`，返回 `QuotaStatusView`。与 ACP 的版本核查见 [提供方契约](plugin-contracts.md)。
 
 - 换算：它报**剩余**（`remainingPct` 或 0..1 的 `remainingFraction`），对外 `percent` 是**已用** = 100 − 剩余；`window` / `name` 归到 `5h` / `week` / `month` / `day` / `period`；组名进 `groupLabel`（它说明这条百分比约束哪批模型，单组也保留）。
 - `disabled` 窗口表示「此窗口对本账号不可用」，**不等于**已达限额，因此不产出窗口、只在 extras 里留一条说明；没有比例就不产出窗口（绝不补 0）；接口只给比例不给绝对值，所以不写 `detail.used/limit`。
@@ -242,20 +242,20 @@ Cookie 落在通用的手动 Key 槽，并把凭据模式切成 manual，不额�
 **`antigravityAuth` 通道（dsh-tool-antigravity）的形状与换算**（`normalizeAntigravityAuthView()`，字段照抄该包 `lib/types/quota.d.ts`）：
 
 - 顶层 `state`：`available` 正常出数；`unauthenticated` 等同「未登录」——归一化返回 `null`（全量静默，点名给「去完成 Google 授权」指引）；`forbidden` / `rate-limited` / `timeout` / `offline` / `protocol-drift` 各折成带可读原因的 `state: "error"`。注意 **`rate-limited` 是查询被限流，不是额度用尽**，绝不画成红色耗尽窗口。
-- `groups[]` 只有固定两类：`group: "gemini"` → `groupLabel`「Gemini 模型」，`"non-gemini"` →「Claude 与 GPT 模型」（徽章口径照抄该包自带的 pet-balance 卡片）；每组 `windows[]` 的 `window` 只有 `"5h"` / `"weekly"`（→ 本插件 kind `5h` / `week`），`remainingFraction` 是 0..1 的**剩余**比例，对外 percent = `(1 − fraction) × 100`；`resetTime` 进 `resetsAt`。比例 / 窗口档位缺失或非法时跳过该窗口，不补 0、不写 `detail`。
+- `groups[]` 按实际返回项分池；0.6.0 声明 `gemini`、`non-gemini`、`gemini-4`、`gemini-argon`。每组 `windows[]` 为 `"5h"` / `"weekly"`（本插件 `5h` / `week`），`remainingFraction` 是 0..1 的剩余比例，对外 `percent = (1 − fraction) × 100`；`resetTime` 进 `resetsAt`。无有效比例或档位则跳过。
 - 该通道没有套餐名与 AI Credits（`extras` 为空）；需要这些信息时由信息更全的 `agyQuota` 通道提供。
 
 **输入区药丸**：dsh-tool-antigravity 注册的模型路由 id 是 `google-antigravity`。Client 的 `ROUTE_PROVIDER_ALIAS` 把它归并到联动 id `antigravity`，由独立的 `subUsage/readLinked` Typert 方法取数（Host 的 `readLinked()` 走与 `quota()` 相同的联动通道，但结果只含 `{ updatedAt, entries }`、不回 settings，避免药丸轮询顶掉设置快照）。联动项不进 `PROVIDER_META` / `PROVIDER_ORDER`，不占普通设置卡片，也不受凭据存在性 / 路由存在性过滤；独立 `visibility.antigravity` 关闭时隐藏。开启时可见性由 Host 返回的条目决定（未装插件时药丸仍渲染并显示缺席原因）。
 
 ### Trae（联动项）
 
-`trae` / `trae-global` / `trae-enterprise` **不是本插件登记的 provider id**，也不出现在设置页。本机运行 [`dsh-connect-trae`](https://github.com/dingminhua/dsh-connect-trae)（v4.3.0，非本仓库项目）时，它把三个 tab 的用量挂在**本机 web 服务器**的只读路由上（它自己的卡片读同一条）：
+`trae` / `trae-global` / `trae-enterprise` 属于「客户端代理」联动，不占普通凭据槽。提供方使用以下额度路由，国内/国际多账号还用 `GET /plugins/dsh-connect-trae/account-status?accountId=…&region=…`：
 
 ```
 GET /plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>
 ```
 
-本插件从 Cordis 的 `webServer` 服务取回环 origin（`getOrigin()`，如 `http://127.0.0.1:3080`），带上自己的 `Origin` 头请求这条路由——对方只校验 loopback，所以这个头既能过校验，也不依赖「没有 Origin 头」这种默认行为。**不读它的凭据、不自己请求 Trae 上游、不写设置**：登录态、设备号、token 刷新与并发都由它负责，本插件只换算它的答案。
+页面经同源方式读取插件路由，Host 统一归一化；Trae 中国版有本机直取时优先读取。不同来源账号不拼接，OFM 需显式绑定。详见 [联动与来源](ofm.md)。
 
 - `region=cn` → `trae`：积分制。响应里的 `credits.total / consumed / available` 是积分包的**合计上限 / 已用 / 余量**（绝对值），所以 `period` 窗口的 `percent` = `consumed / total`，`detail` 带 `used / limit / remaining`（单位 `credits`）。**`total = 0` 时不给百分比**，只报余量。余量进 `balance`；Work / 通用两个桶与归一化积分分组进 `note`。逐包数据在场时隐藏过期/用尽项并按到期紧急度与用途聚合；旧聚合响应只保留 24 小时 / 3 天内提醒，不展示已过期或 7 天档。
 - `region=ai` → `trae-global`：订阅制，**没有积分字段**（对方文档如此），只有 `payStatus`：档位（`payIdentityStr`，如 `Free` / `Pro`）进 `plan`，试用期与「未订阅付费套餐」进 `note`。
@@ -263,7 +263,7 @@ GET /plugins/dsh-connect-trae/usage?region=<cn|enterprise|ai>
 - 通道语义：HTTP **404 = 插件没装**（静默缺席）；其它非 2xx、非 JSON、带 `{ error }` 信封或超时，才折叠成该条目自己的 `state: "error"`。取数结果缓存 **60 秒**，`refresh: true` 绕过。
 - 点名：厂商名 `trae` 命中三块面板（与 `zai` / `ark` 同口径，全部去读、缺席静默）；点名 `trae-global` 这类**单块**名字却没登录时，回一条可执行说明。
 
-> 契约来源：该插件 `lib/index.d.ts` 的 `TraeWebUsage`、`TraeWebCredits`、`TraeWebPayStatus` 与 `lib/index.js` 里的 `traeWebUsage()` / `registerTraeUsageRoute()`（本机安装版本 4.3.0）。它是第三方插件，路由与字段若在升级中改动，本插件会以「无法识别的响应用」或该条目的 error 呈现，而不会编造数字。
+> 旧版字段基线与当前 GET 路由证据分开记录，见 [提供方契约](plugin-contracts.md)。
 
 ### OFM（联动项）
 
@@ -287,6 +287,7 @@ Command Code 的凭据由提供方插件 `@mars-sea/dsh-commandcode-provider` �
 | 自建网关 | 用户自填的 LiteLLM proxy 地址（只去掉 `/v1` 这类版本段，其余路径原样保留） |
 | 复用宿主账号请求链 | `deepseek-account`：调用本机 `deepseekAccount` 服务，由 DSH 完成鉴权与余额请求；宿主服务可能按自身配置联网，本插件不另发 HTTP、不复制 token |
 | OFM 联动 | 经宿主 Connection 进程内分发到 `/api/channel-pack`，不使用网络端口；提供方按自己的配置查询上游 |
-| 独立插件联动 | 宿主 `webServer.getOrigin()` 上的 Trae / WorkBuddy 额度 GET 和 Raccoon / Loomy 状态 GET；提供方按自己的登录生命周期读取或续期 |
+| 独立插件联动 | Trae / WorkBuddy 额度 GET 和 Raccoon / Loomy 状态 GET，可由页面同源代取；提供方按自己的登录生命周期读取或续期 |
+| 本机直取与 Magpie | 本机登录态对应的各提供商额度端点，以及 Magpie 回环 GET；详见 [联动说明](ofm.md) 和 [Magpie](magpie.md) |
 
-除上面这些，插件不访问其他网络地址；MiMo 自动登录会额外打开官方平台页面，由你在该页面自行完成登录。
+声明式连接访问用户配置的额度站点；自动登录还会打开对应的官方平台页面。

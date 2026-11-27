@@ -112,11 +112,14 @@ assert.throws(() => save.parameters[0].codec.schema.parse({ providerId: 'xai-oau
  assert.throws(() => hostSave.parse({ sources: { bindings: { r1: { linkedId: 'raccoon', source: 'magpie' } } } }), /不支持来源/, 'Host 拒绝条目未声明的来源');
  assert.throws(() => hostSave.parse({ sources: { disabled: {} }, extra: 1 }), /Invalid sources patch/, 'sources 补丁不接受顶层额外键');
 }
-// 被动接入（ingest）双端契约：save 只放行合法 hidden source；read/refresh query 放行 ingest:<source>。
+// 被动接入（ingest）双端契约：接受开关、逐源显隐及查询 ID。
 {
  const hostSave = host.subUsageRemote.descriptors.find(d => d.method === 'save').parameters[0].codec.schema;
  const clientSave = mounted.descriptors.find(d => d.method === 'save').parameters[0].codec.schema;
  for (const codec of [hostSave, clientSave]) {
+   assert.equal(codec.parse({ expectedRevision: 'r1', ingest: { accepting: false } }).ingest.accepting, false);
+   assert.throws(() => codec.parse({ ingest: { accepting: 'false' } }), /Invalid ingest acceptance setting/);
+   assert.throws(() => codec.parse({ ingest: {} }), /Invalid ingest patch/);
   assert.deepEqual(codec.parse({ expectedRevision: 'r1', ingest: { hidden: ['relay-a', 'a.b_1'] } }).ingest.hidden, ['relay-a', 'a.b_1'], '两端都放行合法的 ingest 补丁');
   assert.throws(() => codec.parse({ expectedRevision: 'r1', ingest: { hidden: ['bad:colon'] } }), /Invalid hidden ingest sources/, '非法 source 拒绝');
   assert.throws(() => codec.parse({ expectedRevision: 'r1', ingest: { hidden: [] }, extra: 1 }), /Invalid ingest patch/, 'ingest 补丁不接受顶层额外键');

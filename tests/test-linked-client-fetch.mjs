@@ -28,7 +28,7 @@ function harness(now) {
 	const files = new Map();
 	const io = {
 		readFileSync(path) { if (!files.has(path)) throw Object.assign(new Error('missing'), { code: 'ENOENT' }); return files.get(path); },
-		mkdirSync() {}, writeFileSync(path, value) { files.set(path, value); }, chmodSync() {}, renameSync() {}
+		mkdirSync() {}, writeFileSync(path, value) { files.set(path, value); }, chmodSync() {}, renameSync(from, to) { files.set(to, files.get(from)); files.delete(from); }
 	};
 	// 宿主侧不再发任何本机 HTTP；fetch 若被调用就说明又走回老路了。
 	const calls = [];
@@ -171,7 +171,32 @@ const row = (key, body, status = 200) => ({ key, status, ok: status >= 200 && st
 	service.dispose();
 }
 
-// ── [4d] 非法响应行直接拒绝，不静默丢弃（丢弃会让同一个 key 被反复索要） ────
+// 来源与联动开关先于缓存判断。
+{
+	const { service } = harness();
+	await service.save({ sources: { bindings: { alternate: { linkedId: 'raccoon', source: 'ofm' } } } });
+	const response = [row('status', RACCOON)];
+	assert.equal((await service.linkedStep({ providerId: 'raccoon', responses: response })).entry.state, 'ok');
+	assert.notEqual((await service.linkedStep({ providerId: 'raccoon', routeId: 'alternate', responses: [] })).entry?.state, 'ok');
+	await service.save({ visibility: { linked: { raccoon: false } }, expectedRevision: service.result(service.load(), []).settings.revision });
+	assert.deepEqual(JSON.parse(JSON.stringify(await service.linkedStep({ providerId: 'raccoon', responses: [] }))), { absent: true });
+	service.dispose();
+}
+
+{
+	const { service } = harness();
+	const read = (responses, readId) => service.linkedStep({ providerId: 'raccoon', responses, force: true, ...(readId === undefined ? {} : { readId }) });
+	const older = await read([]);
+	const newer = await read([]);
+	assert.ok(newer.readId > older.readId);
+	await read([row('status', { ...RACCOON, points: { total: 200 } })], newer.readId);
+	assert.equal((await read([row('status', RACCOON)], older.readId)).absent, true);
+	const cached = await service.linkedStep({ providerId: 'raccoon', responses: [] });
+	assert.equal(cached.entry.extras.find(x => x.kind === 'balance').value, '200 积分');
+	service.dispose();
+}
+
+// 非法响应行直接拒绝，避免反复索要同一个 key。
 {
 	const { service } = harness();
 	await assert.rejects(() => service.linkedStep({ providerId: 'raccoon', responses: [{ key: '', status: 200 }] }), /Invalid linked step response/);

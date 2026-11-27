@@ -156,8 +156,11 @@ const io = {
 
 const serviceCreds = new Map([
 	["SUB2API_KEY_A", "sk-key-a-secret"],
-	["SUB2API_KEY_B", "sk-key-b-secret"]
+	["SUB2API_KEY_B", "sk-key-b-secret"],
+	["SUB2API_API_KEY", "fixture-built-in"],
+	["DRAFT_REF", "fixture-draft-ref"]
 ]);
+const requests = [];
 
 const service = new SubUsageService(
 	{
@@ -184,6 +187,10 @@ const service = new SubUsageService(
 		resolveEnvironmentByName: async () => undefined,
 		fetch: async (url, init) => {
 			const auth = init?.headers?.Authorization ?? init?.headers?.authorization ?? "";
+			requests.push({ url, auth });
+			if (url.startsWith("https://probe.example.com/") || url.startsWith("https://sub2api.team.internal/new-tenant/")) {
+				return { ok: true, status: 200, url, headers: { get: () => null }, text: async () => JSON.stringify({ balance: 5 }) };
+			}
 			if (url.startsWith("https://sub2api.team.internal/v1/usage")) {
 				const isKeyB = auth.includes("sk-key-b-secret");
 				return {
@@ -249,9 +256,11 @@ await service.save({
 			limitPointer: "/data/credits_limit",
 			resetAtPointer: "/data/reset_time",
 			unit: "credits",
-			windowPeriod: "month"
+			windowPeriod: "month",
+			mappingLock: { lockedFields: ["usedPointer"], lockedAt: "2026-01-01" }
 		}
 	},
+	displayProfile: { profile: { primaryMetric: "account:private-account", hiddenElementIds: ["note"], precision: 2 } },
 	secretUpdate: {
 		action: "replace",
 		value: "sk-custom-relay-secret-999"
@@ -296,6 +305,8 @@ assert(!exportedStr.includes("relay.custom.internal"), "Recipe 导出剥离私�
 assert.equal(exportedRecipe.adapterId, "custom-http");
 assert.equal(exportedRecipe.usagePath, "/api/quota");
 assert.equal(exportedRecipe.mapping.unit, "credits");
+assert.deepEqual(exportedRecipe.mapping.mappingLock, { lockedFields: ["usedPointer"] });
+assert.deepEqual(exportedRecipe.displayProfile, { hiddenElementIds: ["note"], precision: 2 });
 
 const imported = service.importRecipe(exportedRecipe, {
 	id: "custom-relay-copy",
@@ -305,6 +316,38 @@ const imported = service.importRecipe(exportedRecipe, {
 assert.equal(imported.instance.id, "custom-relay-copy");
 assert.equal(imported.instance.usagePath, "/api/quota");
 assert.equal(imported.instance.mapping.unit, "credits");
+assert.deepEqual(imported.displayProfile, exportedRecipe.displayProfile);
+assert.equal(service.load().instances.some(instance => instance.id === imported.instance.id), false, "导入预检不保存");
+const copied = service.importRecipe({ recipe: exportedRecipe, overrides: { id: "custom-relay-copy", baseUrl: "https://copy.example.com", save: true } });
+assert.deepEqual(service.load().displayProfiles[copied.instance.id], exportedRecipe.displayProfile);
+assert.throws(() => service.importRecipe(exportedRecipe, { id: "custom-relay", baseUrl: "https://other.example.com", save: true }), /ID 已存在/);
+assert.throws(() => service.importRecipe(exportedRecipe, { id: "ingest:relay", baseUrl: "https://other.example.com", save: true }), /保留命名空间/);
+assert.equal(service.load().instances.find(instance => instance.id === "custom-relay").baseUrl, "https://relay.custom.internal");
+
+// 草稿探测与正式读取同一优先级，但换站点/适配器不能借原部署的 Key。
+const cacheSize = service.cache.size;
+const detect = async (params, expectedAuth) => {
+	requests.length = 0;
+	const result = await service.detectInstance(params);
+	assert.ok(requests.length);
+	assert.ok(requests.every(request => request.auth === expectedAuth), "探测必须使用预期的凭据来源");
+	assert.equal(service.cache.size, cacheSize, "探测不污染额度缓存");
+	assert.ok(["identified", "needs-review", "auth-required", "unsupported"].includes(result.status));
+	assert.equal(result.matched, ["identified", "needs-review"].includes(result.status));
+	assert.ok(Array.isArray(result.attempts) && Array.isArray(result.conflicts) && Array.isArray(result.explanations));
+	return result;
+};
+await detect({ baseUrl: "https://probe.example.com", adapterId: "custom-http", credentialRefs: ["DRAFT_REF"] }, "Bearer fixture-draft-ref");
+await detect({ instanceId: "sub2api-team", credentialRefs: ["SUB2API_KEY_B"] }, "Bearer sk-key-b-secret");
+await detect({ instanceId: "sub2api-team", credentialRefs: [] }, "Bearer fixture-built-in");
+await detect({ instanceId: "custom-relay", credentialMode: "inherit", credentialRefs: ["DRAFT_REF"], secretAction: "replace", secret: "fixture-fresh" }, "Bearer fixture-draft-ref");
+await detect({ instanceId: "custom-relay", credentialMode: "manual", credentialRefs: ["DRAFT_REF"], secretAction: "replace", secret: "fixture-fresh" }, "Bearer fixture-fresh");
+await detect({ instanceId: "custom-relay", secretAction: "clear" }, "");
+await detect({ instanceId: "custom-relay", baseUrl: "https://probe.example.com", usagePath: "/api/quota" }, "");
+await detect({ instanceId: "sub2api-team", baseUrl: "https://sub2api.team.internal/new-tenant", usagePath: "/usage", credentialRefs: ["SUB2API_KEY_A", "SUB2API_API_KEY"] }, "");
+await detect({ instanceId: "sub2api-team", baseUrl: "https://sub2api.team.internal/new-tenant", usagePath: "/usage", credentialRefs: ["SUB2API_KEY_A", "DRAFT_REF"] }, "Bearer fixture-draft-ref");
+await detect({ instanceId: "custom-relay", adapterId: "sub2api", baseUrl: "https://probe.example.com", usagePath: "/api/quota" }, "");
+assert.equal(Boolean(service.load().instanceSecrets["custom-relay"]), true, "草稿清除不修改保存的秘密");
 
 // 5d. DSH Go 原生面板与路由绑定联动
 const storedSettings = service.load();
