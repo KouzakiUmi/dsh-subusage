@@ -154,6 +154,10 @@ assert.equal(explicitEmpty.extras.length, 1, "已存在的 extras 保留（附�
 // pool 无 poolLabel 时 pool 本身就是 legacy 池身份
 const poolOnly = legacyFromQuotas([{ type: "window", period: "day", percent: 10, pool: "gemini", order: 0 }]);
 assert.equal(poolOnly.windows[0].groupLabel, "gemini", "pool 兜底 groupLabel");
+const namedPool = legacyFromQuotas([{ type: "window", percent: 10, pool: "ocr", poolLabel: "云知声" }]);
+assert.equal(namedPool.windows[0].pool, "ocr");
+assert.equal(namedPool.windows[0].groupLabel, "云知声");
+assert.equal(quotasFromLegacy(namedPool)[0].pool, "ocr", "往返派生不会把同名池改为展示名");
 
 // used/limit 能推导时 percent 不出 NaN
 const derivable = legacyFromQuotas([{ type: "window", period: "week", used: 40, limit: 100, order: 0 }]);

@@ -37,7 +37,7 @@ QuotaEntry
 
 所有元素共享 `id`（稳定身份）、`order`（缺省取数组位序）、`label`、`pool`/`poolLabel`。枚举字段只按白名单收，认不出的丢或归安全值（`period`→period、`role`→balance/note），**不猜**；未知字段原样透传。
 
-**池语义**：`pool`/`poolLabel` 标识归属；`poolScope:"independent"`（window 元素）表示独立预算。同池内按约束判断，跨池分别报告。`groupLabel` 不会自动升级为独立池；Antigravity 的组标识来自实际响应，组数不是常量。
+**池语义**：`pool` 是池 ID，`poolLabel` 是可重复的显示名；`poolScope:"independent"`（window 元素）表示独立预算。不同 ID 即使同名也分别报告。同池内按约束判断；从元素派生窗口时，池 ID 与 `groupLabel` 不同时另存为窗口的 `pool`。`groupLabel` 不会自动升级为独立池；Antigravity 的组标识来自实际响应，组数不是常量。
 
 **单位与合计**：`amount.unitId` 是聚合键（`unitIdOf()` 归一：credit(s)/积分→credit、token(s)→token、usd/$→usd、cny/¥/元→cny、request(s)/次→request；未知单位小写原文，不猜）。账号总额 = `role:balance` 金额按 `unitId` 分组求和；`componentOf` 元素是总额的分项（Trae Work/通用积分 ⊆ available），跳过防重复计数；package/bonus/wallet/plan/monthly/spend 不进总额；多单位永不合并。
 

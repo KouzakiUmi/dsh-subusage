@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import assert from "node:assert/strict";
+import { ingestEntry, parseIngestPayload } from "../lib/ingest.js";
 
 let spec;
 const react = {
@@ -166,5 +167,24 @@ assert.equal(computeStatus(entry({ extras: [{ kind: "quota-status", value: "unli
 const scoped = [w("day", 100, { detail: { scope: "daily-capabilities" } }), w("5h", 10, { detail: { scope: "text" } }), w("month", 20, { detail: { scope: "all" } })];
 assert.equal(computeStatus(entry({ windows: scoped }), args()).key, "scope", "部分能力日池耗尽不能写成全套餐耗尽");
 assert.equal(computeStatus(entry({ windows: [...scoped, w("month", 100, { detail: { scope: "all" } })] }), args()).key, "blocked", "共享月池耗尽仍约束全能力");
+
+// 上报的不同额度池可共用展示名称：一个模型池用尽不能让整张卡变红。
+{
+	const statusFor = (percents, sharedPercent) => {
+		const quotas = ["window-points", "weekly-points", "u2-ocr", "u2-radimed", "u2-asr", "u2-tts", "u2-ocr-med"].map((pool, i) => ({
+			type: "window", pool, poolLabel: "云知声", poolScope: "independent", percent: percents[i], status: percents[i] === 100 ? "rate-limited" : undefined
+		}));
+		if (sharedPercent !== undefined) quotas.push({ type: "window", poolLabel: "window-points", percent: sharedPercent });
+		const { record } = parseIngestPayload({ source: "fixture", quotas });
+		return computeStatus(ingestEntry(record), args({ providerId: "ingest:fixture", t: key => key === "agyPoolsLimitedShort" ? "{n}/{total}" : key }));
+	};
+	const mixed = statusFor([8.9, 1.8, 0.1, 100, 3.3, 0, 0]);
+	assert.equal(mixed.title, "agyPoolsLimited");
+	assert.equal(mixed.short, "1/7");
+	assert.equal(mixed.color, "#eab308");
+	assert.equal(statusFor(Array(7).fill(100)).title, "agyPoolsExhausted");
+	assert.equal(statusFor(Array(7).fill(100), 10).title, "agyPoolsLimited", "共享窗口有余量时不宣告全部用尽");
+	assert.equal(statusFor([8.9, 1.8, 0.1, 100, 3.3, 0, 0], 100).key, "blocked", "共享窗口自身用尽只报告它的限制");
+}
 assert.ok(computeStatus(entry({ extras: [{ kind: "spend", value: "1 USD" }] }), args()).title.includes("spendLabel"), "已花费不得标为余额");
 console.log("PASS computeStatus：旧分支与支付续用、企业限制、轮换池、能力范围新矩阵");

@@ -18,7 +18,7 @@
 
 </div>
 
-> **1.1.1**：外部额度快照五分钟未更新后自动清理。详见 [更新记录](docs/changelog.md)。
+> **1.1.2**：按池 ID 汇总独立额度；单个同名池用尽时只提示部分额度池用尽。详见 [更新记录](docs/changelog.md)。
 >
 > **版本间可能出现 bug**——发现异常请[回报 issue](https://github.com/KouzakiUmi/dsh-subusage/issues)。报告/药丸缺数据时会写 `omitted` 计数或读取失败原因，不把未知当充足；数字只作参考，不是计费依据。
 

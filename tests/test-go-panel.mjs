@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { loadHostModule } from "./helpers.mjs";
+import { canonicalizeEntry } from "../lib/quota-entry.js";
 import { goPanelData, goPanelModel, goPanelProviderName, goPanelUsageId, goPanelView, goPanelWords, ROUTE_USAGE_ID, LINKED_LABELS } from "../lib/go-panel.js";
 
 const host = await loadHostModule();
@@ -112,6 +113,16 @@ assert.equal(goPanelProviderName("nope", host.PROVIDERS, "zh"), "nope");
 }
 
 // ── 4.5 聚合卡服务卡：当前调用的上游卡（与药丸同一命中顺序）──────────────────
+{
+	const quotas = [
+		{ type: "window", pool: "ocr", poolLabel: "云知声", poolScope: "independent", percent: 8.9 },
+		{ type: "window", pool: "radimed", poolLabel: "云知声", poolScope: "independent", percent: 100, status: "rate-limited" }
+	];
+	const data = (items) => goPanelData({ name: "云知声" }, canonicalizeEntry({ state: "ok", quotas: items }), { locale: "zh" });
+	assert.equal(data(quotas).headline, words.partialLimited);
+	assert.equal(data(quotas.slice(1)).headline, words.limited);
+	assert.equal(data([...quotas.slice(1), { type: "window", poolLabel: "radimed", percent: 10 }]).headline, words.partialLimited);
+}
 {
 	const card = (id, group, name, windows = [], extras = []) =>
 		({ accountId: id, account: `${name} 卡`, providerGroup: group, providerName: name, windows, extras });
